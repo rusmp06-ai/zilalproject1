@@ -282,3 +282,31 @@ test('study calendar uses Bishkek month boundaries and keeps midnight-spanning c
  await waitFor(()=>assert.deepEqual(calls.at(-1),{from:'2026-10-31T18:00:00.000Z',to:'2026-11-30T18:00:00.000Z'}));
  await screen.findByRole('button',{name:/Вечерняя подготовка/});
 });
+
+test('registered student keeps their group without selectors across study screens',async()=>{
+ resetDemo();selectDemo('student');render(<App/>);
+ await screen.findByText(/Здравствуйте, Студент/);
+ await waitFor(()=>assert.equal(screen.queryByText('Собираем ваше учебное пространство…')===null,true));
+ assert.equal(screen.queryByRole('combobox')===null,true);
+ assert.ok(screen.getByText('ИФ-1-24'));
+ for(const name of ['Календарь','Все задания','Расписание','Объявления','Группы и дисциплины']){
+  fireEvent.click(screen.getByRole('button',{name,exact:true}));
+  assert.equal(screen.queryByRole('combobox')===null,true);
+  assert.ok(screen.getByText('ИФ-1-24'));
+ }
+ assert.equal(screen.queryByText('Создание группы')===null,true);
+});
+
+test('group context follows student membership and transfers; staff retain switching',async()=>{
+ const {groupContext}=await import('../src/group-context');
+ resetDemo();selectDemo('owner');const all=await demoGateway.snapshot();
+ const student={...all,owner:false,me:all.profiles.find(p=>p.id==='student')!};
+ assert.equal(groupContext(student,'g1').id,'g0');assert.equal(groupContext(student).canChoose,false);
+ const moved={...student,memberships:student.memberships.map(m=>m.user_id==='student'?{...m,group_id:'g2'}:m)};
+ assert.equal(groupContext(moved,'g0').id,'g2');
+ const missing={...student,groups:student.groups.filter(g=>g.id!=='g0')};
+ assert.equal(groupContext(missing).id,'');assert.equal(groupContext(missing).canChoose,false);
+ const teacher={...all,owner:false,me:all.profiles.find(p=>p.id==='teacher')!};
+ assert.equal(groupContext(teacher,'g1').id,'g1');assert.equal(groupContext(teacher).canChoose,true);
+ assert.equal(groupContext({...teacher,groups:teacher.groups.slice(0,1)}).canChoose,false);
+});

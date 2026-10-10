@@ -21,6 +21,7 @@ try{
  });
  await page.getByRole('button',{name:'Студент',exact:true}).click();
  await page.getByRole('button',{name:/Семинар по финансам/}).waitFor();
+ assert.equal(await page.getByRole('combobox').count(),0,'registered student must not select group again');
  await page.screenshot({path:join(artifacts,'day-desktop.png'),fullPage:true});
  await page.getByRole('button',{name:/Подготовить конспект/}).click();
  await page.getByText('Прочитать главу 2',{exact:true}).waitFor();
