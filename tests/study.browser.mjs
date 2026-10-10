@@ -1,0 +1,45 @@
+import {chromium} from 'playwright-core';
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {join} from 'node:path';
+const artifacts=process.env.STUDY_TEST_ARTIFACTS||'/tmp/studyhub-study-browser';
+await mkdir(artifacts,{recursive:true});
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+try{
+ const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(process.env.STUDY_TEST_URL||'http://127.0.0.1:5175/');
+ await page.locator('.demo-roles').waitFor();
+ await page.evaluate(async()=>{
+  const d=await import('/src/demo.ts');d.resetDemo();d.selectDemo('owner');
+  const s=await d.demoGateway.snapshot(),c=s.courses[0];
+  await d.demoGateway.saveBoard({group:c.group_id,course:c.id,kind:'schedule',title:'Семинар по финансам',body:'Тема: бюджет',location:'Аудитория 204',start:new Date(Date.now()+1800000).toISOString(),end:new Date(Date.now()+5400000).toISOString(),id:null});
+  await d.demoGateway.createAssignment(c.id,'Подготовить конспект','Прочитать главу 2',new Date(Date.now()+86400000).toISOString(),10,true);
+  await d.demoGateway.uploadLibrary(c.group_id,'Основы экономики',new File(['Первая страница. '.repeat(400)],'economics.txt',{type:'text/plain'}));
+  const b=(await d.demoGateway.library('',0)).items.find(b=>b.title==='Основы экономики');d.selectDemo('student');
+  const r=await d.demoGateway.readingState(b.id);await d.demoGateway.saveReading({...r,page:2,total_pages:2,favorite:true});
+ });
+ await page.getByRole('button',{name:'Студент',exact:true}).click();
+ await page.getByRole('button',{name:/Семинар по финансам/}).waitFor();
+ await page.screenshot({path:join(artifacts,'day-desktop.png'),fullPage:true});
+ await page.getByRole('button',{name:/Подготовить конспект/}).click();
+ await page.getByText('Прочитать главу 2',{exact:true}).waitFor();
+ const id=await page.getByLabel('Выберите задание').inputValue();assert.ok(id);
+ await page.getByRole('button',{name:'Мой день',exact:true}).click();
+ await page.getByRole('button',{name:/Основы экономики/}).click();
+ await page.getByText(/Страница 2 из 2 · Прогресс/).waitFor();
+ await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'Быстрый переход: Мой день'}).click();
+ await page.getByRole('button',{name:/Семинар по финансам/}).waitFor();
+ await page.screenshot({path:join(artifacts,'day-mobile.png'),fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile horizontal overflow');
+ await page.getByRole('button',{name:'Быстрый переход: План'}).click();
+ await page.getByLabel('Месяц',{exact:true}).waitFor();
+ const future=new Date(Date.now()+1800000);const day=future.toLocaleDateString('ru-RU',{timeZone:'Asia/Bishkek',weekday:'long',day:'numeric',month:'long'});
+ await page.getByRole('button',{name:new RegExp(day)}).click();
+ await page.getByRole('button',{name:/Семинар по финансам/}).waitFor();
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'calendar horizontal overflow');
+ await page.screenshot({path:join(artifacts,'calendar-mobile.png'),fullPage:true});
+ assert.deepEqual(errors,[]);console.log('PASS desktop/mobile day, exact task, saved reading, calendar, no horizontal overflow or page errors');
+}finally{await browser.close();}

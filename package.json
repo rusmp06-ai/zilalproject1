@@ -1,6 +1,6 @@
 {
   "name": "studyhub",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "build:preview": "npm run build && node scripts/make-preview.mjs",
-    "test:reader:browser": "node tests/reader.browser.mjs"
+    "test:reader:browser": "node tests/reader.browser.mjs",
+    "test:study:browser": "node tests/study.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

@@ -218,3 +218,67 @@ test('leader revokes own invitation and removes only one teaching assignment',as
  fireEvent.click(screen.getByRole('button',{name:'Группы и дисциплины',exact:true}));fireEvent.click(await screen.findByRole('button',{name:'Снять назначение'}));fireEvent.click(screen.getByRole('button',{name:'Подтвердить снятие назначения'}));await screen.findByText('Назначение преподавателя снято.');await screen.findByText('Назначений в этой группе нет.');await assert.rejects(()=>demoGateway.removeTeaching('g1c0','teacher'),/прав/);
  selectDemo('teacher');assert.equal((await demoGateway.assignments('g1c0')).canGrade,true);await assert.rejects(()=>demoGateway.assignments('g0c0'),/Доступ/);
 });
+
+test('student day connects schedule, exact assignment, calendar and saved reading',async()=>{
+ resetDemo();selectDemo('owner');
+ const owner=await demoGateway.snapshot(),course=owner.courses[0];
+ const start=new Date(Date.now()+30*60000).toISOString(),end=new Date(Date.now()+90*60000).toISOString();
+ await demoGateway.saveBoard({group:course.group_id,course:course.id,kind:'schedule',title:'Семинар учебного дня',body:'Подготовить конспект',location:'Аудитория 204',start,end,id:null});
+ await demoGateway.createAssignment(course.id,'Задание учебного дня','Прочитать главу',new Date(Date.now()+86400000).toISOString(),10,true);
+ const task=(await demoGateway.assignments(course.id)).items.find(a=>a.title==='Задание учебного дня')!;
+ const file=new File(['А'.repeat(4500)],'учебный-день.txt',{type:'text/plain'});
+ await demoGateway.uploadLibrary(course.group_id,'Книга учебного дня',file);
+ const book=(await demoGateway.library('',0)).items.find(b=>b.title==='Книга учебного дня')!;
+ selectDemo('student');const state=await demoGateway.readingState(book.id);
+ await demoGateway.saveReading({...state,page:2,total_pages:2,favorite:true});
+ render(<App/>);
+ await screen.findByText(/Здравствуйте, Студент/);
+ await screen.findByRole('button',{name:/Семинар учебного дня/});
+ assert.ok(screen.getByText('Аудитория 204'));
+ fireEvent.click(screen.getByRole('button',{name:/Задание учебного дня/}));
+ const select=await screen.findByLabelText('Выберите задание');
+ await waitFor(()=>assert.equal((select as HTMLSelectElement).value,task.id));
+ await screen.findByText('Прочитать главу');
+ fireEvent.click(screen.getByRole('button',{name:'Календарь',exact:true}));
+ await screen.findByLabelText('Месяц');
+ const day=new Date(start).toLocaleDateString('ru-RU',{timeZone:'Asia/Bishkek',weekday:'long',day:'numeric',month:'long'});
+ fireEvent.click(screen.getByRole('button',{name:new RegExp(day)}));
+ await screen.findByRole('button',{name:/Семинар учебного дня/});
+ fireEvent.click(screen.getByRole('button',{name:'Мой день',exact:true}));
+ fireEvent.click(await screen.findByRole('button',{name:/Книга учебного дня/}));
+ await screen.findByRole('dialog');
+ await screen.findByText(/Страница 2 из 2 · Прогресс/);
+});
+
+test('study day preserves working widgets when schedule fails and retries without stale data',async()=>{
+ const {StudyHome}=await import('../src/StudyHome');
+ resetDemo();selectDemo('student');const snapshot=await demoGateway.snapshot();
+ let failing=true,calls=0;
+ const api={...demoGateway,board:async()=>{calls++;if(failing)throw Error('network');return {items:[],canRead:false,writeScopes:[]};}};
+ render(<StudyHome api={api} snapshot={snapshot} onNavigate={()=>{}} onCourse={()=>{}} onRead={()=>{}}/>);
+ await screen.findByText('Расписание не удалось загрузить. Попробуйте ещё раз.');
+ assert.ok(screen.getByRole('button',{name:/Читать и учиться/}));
+ failing=false;fireEvent.click(screen.getByRole('button',{name:'Попробовать снова'}));
+ await screen.findByText('Доступ к расписанию закрыт.');
+ await waitFor(()=>assert.equal(screen.queryByText('Расписание не удалось загрузить. Попробуйте ещё раз.')===null,true));
+ assert.equal(calls,2);
+});
+
+test('study calendar uses Bishkek month boundaries and keeps midnight-spanning classes',async()=>{
+ const {StudyHome}=await import('../src/StudyHome');
+ resetDemo();selectDemo('student');const snapshot=await demoGateway.snapshot();
+ const event={id:'midnight',group_id:snapshot.groups[0].id,course_id:null,kind:'schedule' as const,title:'Вечерняя подготовка',body:'',location:'Онлайн',starts_at:'2026-10-31T17:59:30.000Z',ends_at:'2026-10-31T18:30:00.000Z',author_name:'Староста',created_at:'2026-10-01T00:00:00Z',can_manage:false};
+ const calls:{from:string|null;to:string|null}[]=[];
+ const api={...demoGateway,assignments:async()=>({items:[],canGrade:false,canSubmit:true,userId:snapshot.me.id}),board:async(_g:string,_k:any,from:string|null,to:string|null)=>{calls.push({from,to});return {items:[event],canRead:true,writeScopes:[]};}};
+ render(<StudyHome api={api} snapshot={snapshot} view="calendar" onNavigate={()=>{}} onCourse={()=>{}} onRead={()=>{}}/>);
+ fireEvent.change(screen.getByLabelText('Месяц'),{target:{value:'2026-10'}});
+ await waitFor(()=>assert.equal(screen.queryByText('Собираем ваше учебное пространство…')===null,true));
+ assert.deepEqual(calls.at(-1),{from:'2026-09-30T18:00:00.000Z',to:'2026-10-31T18:00:00.000Z'});
+ const count=calls.length;
+ fireEvent.click(screen.getByRole('button',{name:/31 октября/}));
+ await screen.findByRole('button',{name:/Вечерняя подготовка/});
+ assert.equal(calls.length,count);
+ fireEvent.change(screen.getByLabelText('Месяц'),{target:{value:'2026-11'}});
+ await waitFor(()=>assert.deepEqual(calls.at(-1),{from:'2026-10-31T18:00:00.000Z',to:'2026-11-30T18:00:00.000Z'}));
+ await screen.findByRole('button',{name:/Вечерняя подготовка/});
+});
