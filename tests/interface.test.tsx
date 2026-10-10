@@ -310,3 +310,82 @@ test('group context follows student membership and transfers; staff retain switc
  assert.equal(groupContext(teacher,'g1').id,'g1');assert.equal(groupContext(teacher).canChoose,true);
  assert.equal(groupContext({...teacher,groups:teacher.groups.slice(0,1)}).canChoose,false);
 });
+
+test('reader searches pages, remembers appearance and shares private quoted notes with notebook',async()=>{
+ const {ReaderPanel}=await import('../src/ReaderPanel');
+ resetDemo();selectDemo('owner');
+ const text='Глава 1. Введение\n'+('Текст учебника. '.repeat(280))+'\nГлава 2. Рынок\nСпрос и предложение.';
+ const file=Object.assign(new Blob([text],{type:'text/plain'}),{name:'reader-study.txt'});
+ await demoGateway.uploadLibrary('g0','Учебная книга',file as File);
+ const item=(await demoGateway.library('',0)).items.find(i=>i.title==='Учебная книга')!;
+ selectDemo('student');
+ render(<ReaderPanel api={demoGateway} item={item} onChanged={()=>{}}/>);
+ await screen.findByLabelText('Текст страницы');
+ fireEvent.click(screen.getByRole('button',{name:'Настройки чтения'}));
+ fireEvent.click(screen.getByRole('button',{name:'Сепия'}));
+ fireEvent.change(screen.getByLabelText('Размер текста'),{target:{value:'25'}});
+ assert.equal(document.querySelector('.reader')?.getAttribute('data-theme'),'sepia');
+ fireEvent.click(screen.getByRole('button',{name:'Поиск в документе'}));
+ fireEvent.change(screen.getByLabelText('Найти в тексте'),{target:{value:'Спрос и предложение'}});
+ fireEvent.click(screen.getByRole('button',{name:'Найти фрагмент'}));
+ fireEvent.click(await screen.findByRole('button',{name:/Страница 2.*Спрос и предложение/s}));
+ await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
+ fireEvent.click(screen.getByRole('button',{name:'Заметка к странице'}));
+ fireEvent.change(screen.getByLabelText('Мысль или вопрос'),{target:{value:'Повторить определение спроса'}});
+ fireEvent.click(screen.getByRole('button',{name:'Сохранить запись'}));
+ await screen.findByText('Заметка сохранена в «Мои заметки».');
+ await screen.findByText('Повторить определение спроса');
+ const notes=await demoGateway.notes(item.id,0);assert.equal(notes.length,1);
+ const {decodeReaderNote}=await import('../src/reader-tools');
+ assert.equal(decodeReaderNote(notes[0].body)?.page,2);
+ cleanup();const {NotesPanel}=await import('../src/NotesPanel');render(<NotesPanel api={demoGateway}/>);
+ await screen.findByText('Повторить определение спроса');
+ assert.ok(screen.getByText('Источник: Учебная книга · страница 2'));
+ fireEvent.click(screen.getByRole('button',{name:'Редактировать заметку'}));
+ fireEvent.change(screen.getByLabelText('Текст заметки'),{target:{value:'Дополненное определение'}});
+ fireEvent.click(screen.getByRole('button',{name:'Сохранить заметку'}));
+ await screen.findByText('Заметка сохранена.');
+ const updated=(await demoGateway.notes(item.id,0))[0];
+ assert.equal(decodeReaderNote(updated.body)?.text,'Дополненное определение');
+ selectDemo('owner');assert.equal((await demoGateway.notes(item.id,0)).length,0);
+ cleanup();selectDemo('student');render(<ReaderPanel api={demoGateway} item={item} onChanged={()=>{}}/>);
+ await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
+ assert.equal(document.querySelector('.reader')?.getAttribute('data-theme'),'sepia');
+ fireEvent.click(screen.getByRole('button',{name:'Настройки чтения'}));
+ assert.equal((screen.getByLabelText('Размер текста') as HTMLInputElement).value,'25');
+});
+
+test('reader validates preferences, keeps document text literal and recognizes only linked note format',async()=>{
+ const {readerPreferences,textOutline,findText,decodeReaderNote,encodeReaderNote}=await import('../src/reader-tools');
+ assert.deepEqual(readerPreferences({theme:'invalid',fontSize:100,lineHeight:0,zoom:500}),{theme:'light',fontSize:32,lineHeight:1.4,zoom:200});
+ assert.equal(readerPreferences(null).fontSize,20);
+ assert.deepEqual(textOutline(['Глава 1. Начало\nТекст','## Глава 2. Продолжение']),[{title:'Глава 1. Начало',page:1,level:1},{title:'Глава 2. Продолжение',page:2,level:2}]);
+ assert.equal(findText(['Без совпадений','Спрос И Предложение'],'спрос и предложение')[0].page,2);
+ assert.equal(decodeReaderNote('{"sourceId":"x"}'),null);
+ const n={sourceId:'id',sourceTitle:'Книга',page:2,quote:'<script>alert(1)</script>',text:'Моя мысль'};
+ assert.deepEqual(decodeReaderNote(encodeReaderNote(n)),n);
+});
+
+test('course reader isolates device progress by account and retains progress if storage is full',async()=>{
+ const {CourseReader}=await import('../src/CourseReader');
+ resetDemo();selectDemo('owner');const snap=await demoGateway.snapshot(),course=snap.courses.find(c=>c.group_id==='g0')!;
+ const file=Object.assign(new Blob(['Текст документа. '.repeat(400)],{type:'text/plain'}),{name:'course-reader.txt'});
+ await demoGateway.saveMaterial(course.id,'lecture','Чтение курса','',file as File,null);
+ const material=(await demoGateway.courseMaterials(course.id,'lecture',0)).items[0];
+ selectDemo('student');render(<CourseReader api={demoGateway} material={material} onClose={()=>{}}/>);
+ await screen.findByText('Страница 1 из 2 · Прогресс: 50%');
+ fireEvent.click(screen.getByRole('button',{name:'Следующая страница'}));await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
+ fireEvent.click(screen.getByRole('button',{name:'Добавить закладку'}));await screen.findByRole('button',{name:'К странице 2'});
+ cleanup();selectDemo('owner');render(<CourseReader api={demoGateway} material={material} onClose={()=>{}}/>);
+ await screen.findByText('Страница 1 из 2 · Прогресс: 50%');assert.equal(screen.queryByRole('button',{name:'К странице 2'})===null,true);
+ cleanup();selectDemo('student');
+ const proto=Object.getPrototypeOf(localStorage),original=proto.setItem;
+ proto.setItem=function(key:string,value:string){if(key.startsWith('studyhub-course-reading-v1:'))throw Error('QuotaExceeded');return original.call(this,key,value);};
+ try{
+  render(<CourseReader api={demoGateway} material={material} onClose={()=>{}}/>);await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
+  fireEvent.click(screen.getByRole('button',{name:'Предыдущая страница'}));await screen.findByText('Страница 1 из 2 · Прогресс: 50%');
+  fireEvent.click(screen.getByRole('button',{name:'К странице 2'}));await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
+  fireEvent.click(screen.getByRole('button',{name:'Убрать закладку'}));await waitFor(()=>assert.equal(screen.queryByRole('button',{name:'К странице 2'})===null,true));
+  assert.equal(screen.queryByRole('button',{name:'К странице 2'})===null,true);
+ }finally{proto.setItem=original;}
+});
