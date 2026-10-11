@@ -103,3 +103,16 @@ test('speech preserves text, chunks long pages, supports pause/resume, cancels s
   act(()=>result.current.start('Ещё фраза'));act(()=>spoken.at(-1).onerror({error:'not-allowed'}));assert.match(result.current.error,/заблокировал/);assert.equal(result.current.state,'idle');unmount();
  }finally{cleanup();if(previous)Object.defineProperty(globalThis,'speechSynthesis',previous);else delete (globalThis as any).speechSynthesis;if(oldUtterance)Object.defineProperty(globalThis,'SpeechSynthesisUtterance',oldUtterance);else delete (globalThis as any).SpeechSynthesisUtterance;localStorage.removeItem('studyhub-speech-preferences-v1');}
 });
+
+test('course catalog loads all pages, keeps denied sections separate and reports unknown submission status',async()=>{
+ const {loadCourseData,assignmentStatus}=await import('../src/course-workspace');
+ const m={id:'m',course_id:'c',kind:'lecture',title:'Lecture',body:'',author_name:'Teacher',created_at:'2026-01-01',file_id:null,storage_path:null,original_name:null,mime_type:null,size_bytes:null,status:'published',can_manage:false};
+ const calls:number[]=[];const api={courseWorkspace:async()=>{throw Object.assign(Error('missing'),{code:'PGRST202'});},courseMaterials:async(_c:string,kind:string,offset:number)=>{if(kind==='material')throw Error('denied');if(kind==='presentation')return {items:[],canManage:false};calls.push(offset);return {items:offset===0?Array.from({length:50},(_,i)=>({...m,id:'m'+i})):[{...m,id:'last'}],canManage:false};},assignments:async()=>({items:[{id:'task',course_id:'c',title:'Task',description:'',due_at:null,max_score:100,allow_late:false,created_at:'2026-01-01'}],canSubmit:true,canGrade:false}),assignmentProgress:async()=>{throw Error('offline');},board:async()=>({items:[],canRead:true,writeScopes:[]})} as unknown as import('../src/types').Gateway;
+ const data=await loadCourseData(api,{id:'c',group_id:'g',title:'Course',archived:false});assert.deepEqual(calls,[0,50]);assert.equal(data.materials.length,51);assert.equal(data.needsUpdate,true);assert.equal(assignmentStatus(data,'task'),'unknown');assert.ok(data.issues.some(i=>i.includes('Дополнительные материалы')));
+});
+
+
+test('existing note draft survives additional course fields',async()=>{
+ resetDemo();selectDemo('student');sessionStorage.setItem('studyhub-draft-v1:demo:student:note',JSON.stringify({edit:null,title:'Previous draft',body:'Keep this text'}));
+ const {NotesPanel}=await import('../src/NotesPanel');render(<NotesPanel api={demoGateway} userId="student"/>);await waitFor(()=>assert.equal((screen.getByLabelText('Название заметки') as HTMLInputElement).disabled,false));assert.equal((screen.getByLabelText('Название заметки') as HTMLInputElement).value,'Previous draft');assert.equal((screen.getByLabelText('Текст заметки') as HTMLTextAreaElement).value,'Keep this text');
+});

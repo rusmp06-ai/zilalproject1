@@ -2,7 +2,7 @@ import {decodePlan} from './personal-plan';
 import {createClient} from '@supabase/supabase-js';
 import {emptyReading,validateReading} from './reader-state';
 import {validateFile} from './files';
-import type {ManagedInvitation,TeachingAssignment,ReadingState,Note,BoardItem,Assignment,Work,CourseMaterial,LibraryItem,Gateway,Snapshot,Profile,Group,Course,Membership,Denial} from './types';
+import type {CourseWorkspace,ManagedInvitation,TeachingAssignment,ReadingState,Note,BoardItem,Assignment,Work,CourseMaterial,LibraryItem,Gateway,Snapshot,Profile,Group,Course,Membership,Denial} from './types';
 const env=import.meta.env||{};
 const url=env.VITE_SUPABASE_URL,key=env.VITE_SUPABASE_ANON_KEY;
 export const configured=Boolean(url&&key);
@@ -13,6 +13,11 @@ async function rows<T>(table:string){const {data,error}=await db().from(table).s
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').insert({id:data.user.id,full_name:name});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
  demo:false,
+ async courseWorkspace(course){return rpc<CourseWorkspace>('course_workspace',{p_course:course});},
+ async saveCourseTopic(course,title,description,position,id,version){await rpc('save_course_topic',{p_course:course,p_title:title,p_description:description,p_position:position,p_id:id,p_version:version});},
+ async deleteCourseTopic(id,version){await rpc('delete_course_topic',{p_id:id,p_version:version});},
+ async linkCourseTopic(course,source,kind,topic){await rpc('link_course_topic',{p_course:course,p_source:source,p_kind:kind,p_topic:topic});},
+ async completeCourseTopic(topic,done){await rpc('complete_course_topic',{p_topic:topic,p_done:done});},
  async taskRecords(offset){try{return await rpc<Note[]>('task_catalog',{p_search:'',p_offset:offset});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;const items:Note[]=[];for(let page=0;page<1000;page+=50){const rows=await this.notes('',page);items.push(...rows.filter(n=>decodePlan(n.body)));if(rows.length<50)break;}return items.slice(offset,offset+50);}},
  async saveTask(title,body,id,version){try{await rpc('save_private_task',{p_title:title,p_body:body,p_id:id,p_version:version});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;await this.saveNote(title,body,id,version);}},
  async deleteTask(id,version){try{await rpc('delete_private_task',{p_id:id,p_version:version});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;await this.deleteNote(id,version);}},

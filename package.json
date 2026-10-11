@@ -1,6 +1,6 @@
 {
   "name": "studyhub",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,7 +20,8 @@
     "test:offline:browser": "node tests/offline.browser.mjs",
     "test:ocr:browser": "node tests/ocr.browser.mjs",
     "test:library:world:browser": "node tests/library-world.browser.mjs",
-    "test:reader:comfort:browser": "node tests/reader-comfort.browser.mjs"
+    "test:reader:comfort:browser": "node tests/reader-comfort.browser.mjs",
+    "test:course:workspace:browser": "node tests/course-workspace.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

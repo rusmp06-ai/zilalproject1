@@ -1,3 +1,4 @@
+import {decodeCourseNote} from './course-notes';
 import type {Note} from './types';
 export type ReaderPreferences={theme:'light'|'sepia'|'dark';fontSize:number;lineHeight:number;zoom:number;font:'serif'|'sans';column:number};
 export const defaultPreferences:ReaderPreferences={theme:'light',fontSize:20,lineHeight:1.8,zoom:100,font:'serif',column:72};
@@ -12,7 +13,7 @@ export function decodeReaderNote(body:string):ReaderNote|null{
  try{const v=JSON.parse(body);if(v.studyhub_reader_note!==1||typeof v.sourceId!=='string'||!v.sourceId||typeof v.sourceTitle!=='string'||!Number.isInteger(v.page)||v.page<1||typeof v.quote!=='string'||typeof v.text!=='string')return null;
  return {sourceId:v.sourceId,sourceTitle:v.sourceTitle,page:v.page,quote:v.quote,text:v.text};}catch{return null;}
 }
-export function noteText(note:Note){return decodeReaderNote(note.body)?.text??note.body;}
+export function noteText(note:Note){return decodeReaderNote(note.body)?.text??decodeCourseNote(note.body)?.text??note.body;}
 export type ReaderHeading={title:string;page:number;level:number};
 export function textOutline(pages:string[]):ReaderHeading[]{
  const entries:ReaderHeading[]=[];

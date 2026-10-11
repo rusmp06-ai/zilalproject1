@@ -1,0 +1,87 @@
+begin;
+create table if not exists public.course_topics (
+ id uuid primary key default gen_random_uuid(),course_id uuid not null references public.courses(id) on delete cascade,
+ title text not null check(length(trim(title)) between 1 and 200),description text not null default '' check(length(description)<=5000),
+ position integer not null check(position between 1 and 1000),version integer not null default 1,created_at timestamptz not null default now()
+);
+create table if not exists public.course_topic_links (
+ course_id uuid not null references public.courses(id) on delete cascade,topic_id uuid not null references public.course_topics(id) on delete cascade,
+ material_id uuid references public.course_content(id) on delete cascade,assignment_id uuid references public.assignments(id) on delete cascade,
+ check((material_id is null)<>(assignment_id is null)),unique(material_id),unique(assignment_id)
+);
+create table if not exists public.course_topic_progress (
+ user_id uuid not null references public.profiles(id) on delete cascade,topic_id uuid not null references public.course_topics(id) on delete cascade,
+ primary key(user_id,topic_id)
+);
+alter table public.course_topics enable row level security;
+alter table public.course_topic_links enable row level security;
+alter table public.course_topic_progress enable row level security;
+revoke all on public.course_topics,public.course_topic_links,public.course_topic_progress from anon,authenticated;
+create or replace function public.manage_course_workspace(c uuid) returns boolean language sql stable security definer set search_path=pg_catalog as $$
+ select public.is_active_user() and public.can_view_course(c) and (public.manage_course_material(c,'lecture') or public.manage_course_material(c,'presentation') or public.manage_course_material(c,'material') or public.can_grade_course(c));
+$$;
+create or replace function public.course_workspace(p_course uuid) returns jsonb language plpgsql stable security definer set search_path=pg_catalog as $$
+declare result jsonb;
+begin
+ if not public.is_active_user() or not public.can_view_course(p_course) then raise exception 'Course access denied';end if;
+ select jsonb_build_object(
+ 'topics',coalesce((select jsonb_agg(to_jsonb(t) order by t.position,t.created_at,t.id) from public.course_topics t where t.course_id=p_course),'[]'::jsonb),
+ 'links',coalesce((select jsonb_agg(jsonb_build_object('topic_id',l.topic_id,'source_id',coalesce(l.material_id,l.assignment_id),'source_kind',case when l.material_id is not null then 'material' else 'assignment' end)) from public.course_topic_links l where l.course_id=p_course and ((l.material_id is not null and public.read_course_material(l.material_id)) or (l.assignment_id is not null and public.can_read_assignment(l.assignment_id)))),'[]'::jsonb),
+ 'completed',coalesce((select jsonb_agg(p.topic_id) from public.course_topic_progress p join public.course_topics t on t.id=p.topic_id where p.user_id=auth.uid() and t.course_id=p_course),'[]'::jsonb),
+ 'canManage',public.manage_course_workspace(p_course),
+ 'resume',(select jsonb_build_object('item_id',r.item_id,'page',r.page,'total_pages',r.total_pages) from public.course_reader_states r join public.course_content i on i.id=r.item_id where r.user_id=auth.uid() and i.course_id=p_course and r.total_pages>0 and public.can_read_course_document(r.item_id) order by r.updated_at desc,r.item_id limit 1)) into result;
+ return result;
+end $$;
+create or replace function public.save_course_topic(p_course uuid,p_title text,p_description text,p_position integer,p_id uuid default null,p_version integer default null) returns uuid language plpgsql security definer set search_path=pg_catalog as $$
+declare result uuid;
+begin
+ if not public.manage_course_workspace(p_course) then raise exception 'Access denied';end if;
+ if p_title is null or length(trim(p_title)) not between 1 and 200 or p_description is null or length(p_description)>5000 or p_position is null or p_position not between 1 and 1000 then raise exception 'Invalid topic';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_course::text,14));
+ if p_id is null then
+  if (select count(*) from public.course_topics where course_id=p_course)>=200 then raise exception 'Topic limit reached';end if;
+  insert into public.course_topics(course_id,title,description,position) values(p_course,trim(p_title),p_description,p_position) returning id into result;
+ else
+  update public.course_topics set title=trim(p_title),description=p_description,position=p_position,version=version+1 where id=p_id and course_id=p_course and version=p_version returning id into result;
+  if not found then raise exception 'Topic changed. Refresh before saving';end if;
+ end if;
+ insert into public.audit_events(actor_id,action,entity_id) values(auth.uid(),'course.topic_saved',result);
+ return result;
+end $$;
+create or replace function public.delete_course_topic(p_id uuid,p_version integer) returns void language plpgsql security definer set search_path=pg_catalog as $$
+declare c uuid;
+begin
+ select course_id into c from public.course_topics where id=p_id;
+ if c is null or not public.manage_course_workspace(c) then raise exception 'Access denied';end if;
+ perform pg_advisory_xact_lock(hashtextextended(c::text,14));
+ delete from public.course_topics where id=p_id and version=p_version;
+ if not found then raise exception 'Topic changed. Refresh before deleting';end if;
+ insert into public.audit_events(actor_id,action,entity_id) values(auth.uid(),'course.topic_deleted',p_id);
+end $$;
+create or replace function public.link_course_topic(p_course uuid,p_source uuid,p_kind text,p_topic uuid) returns void language plpgsql security definer set search_path=pg_catalog as $$
+begin
+ if p_kind is null or p_kind not in ('material','assignment') then raise exception 'Invalid source';end if;
+ if p_kind='material' then
+  if not exists(select 1 from public.course_content i where i.id=p_source and i.course_id=p_course and i.kind<>'assignment' and public.manage_course_material(p_course,i.kind)) then raise exception 'Access denied';end if;
+ else
+  if not public.can_grade_course(p_course) or not exists(select 1 from public.assignments a where a.id=p_source and a.course_id=p_course) then raise exception 'Access denied';end if;
+ end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_course::text,14));
+ if p_topic is not null and not exists(select 1 from public.course_topics where id=p_topic and course_id=p_course) then raise exception 'Topic belongs to another course';end if;
+ delete from public.course_topic_links where (p_kind='material' and material_id=p_source) or (p_kind='assignment' and assignment_id=p_source);
+ if p_topic is not null then insert into public.course_topic_links(course_id,topic_id,material_id,assignment_id) values(p_course,p_topic,case when p_kind='material' then p_source end,case when p_kind='assignment' then p_source end);end if;
+end $$;
+create or replace function public.complete_course_topic(p_topic uuid,p_done boolean) returns void language plpgsql security definer set search_path=pg_catalog as $$
+begin
+ if p_done is null or not public.is_active_user() or not exists(select 1 from public.course_topics t where t.id=p_topic and public.can_view_course(t.course_id)) then raise exception 'Access denied';end if;
+ if p_done then insert into public.course_topic_progress(user_id,topic_id) values(auth.uid(),p_topic) on conflict do nothing;
+ else delete from public.course_topic_progress where user_id=auth.uid() and topic_id=p_topic;end if;
+end $$;
+do $$ declare f record; begin
+ for f in select p.oid::regprocedure signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('manage_course_workspace','course_workspace','save_course_topic','delete_course_topic','link_course_topic','complete_course_topic') loop
+ execute format('revoke all on function %s from public,anon,authenticated',f.signature);
+ execute format('grant execute on function %s to authenticated',f.signature);
+ end loop;
+end $$;
+notify pgrst,'reload schema';
+commit;

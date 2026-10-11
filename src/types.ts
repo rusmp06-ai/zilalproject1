@@ -20,8 +20,16 @@ export type BoardItem={id:string;group_id:string;course_id:string|null;kind:Boar
 export type BoardInput={repeatWeeks?:number;group:string;course:string|null;kind:BoardKind;title:string;body:string;location:string;start:string|null;end:string|null;id:string|null};
 export type Note={id:string;title:string;body:string;version:number;created_at:string;updated_at:string};
 export type ReaderSource={kind:'library';item:LibraryItem}|{kind:'course';item:CourseMaterial};
+export type CourseTopic={id:string;course_id:string;title:string;description:string;position:number;version:number};
+export type CourseLink={topic_id:string;source_id:string;source_kind:'material'|'assignment'};
+export type CourseWorkspace={topics:CourseTopic[];links:CourseLink[];completed:string[];canManage:boolean;resume:{item_id:string;page:number;total_pages:number}|null};
 export type AssignmentProgress={assignment_id:string;status:string;attempt_no:number};
 export interface Gateway {
+ courseWorkspace(course:string):Promise<CourseWorkspace>;
+ saveCourseTopic(course:string,title:string,description:string,position:number,id:string|null,version:number|null):Promise<void>;
+ deleteCourseTopic(id:string,version:number):Promise<void>;
+ linkCourseTopic(course:string,source:string,kind:'material'|'assignment',topic:string|null):Promise<void>;
+ completeCourseTopic(topic:string,done:boolean):Promise<void>;
  taskRecords(offset:number):Promise<Note[]>;
  saveTask(title:string,body:string,id:string|null,version:number|null):Promise<void>;
  deleteTask(id:string,version:number):Promise<void>;

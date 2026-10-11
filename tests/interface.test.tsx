@@ -113,18 +113,18 @@ test('file validation rejects empty, oversized and executable web files',async()
 test('leader publishes lecture and course file; student reads without editing rights',async()=>{
  resetDemo();render(<App/>);fireEvent.click(screen.getByRole('button',{name:'Староста',exact:true}));await screen.findByText('Ваше пространство');
  fireEvent.click(screen.getByRole('button',{name:'Группы и дисциплины',exact:true}));fireEvent.click(screen.getAllByRole('button',{name:'Открыть дисциплину'})[0]);
- await screen.findByText('Опубликовать материал');
+ fireEvent.click(await screen.findByRole('button',{name:'Материалы',exact:true}));fireEvent.click(await screen.findByRole('button',{name:'Опубликовать материал',exact:true}));await screen.findByRole('heading',{name:'Новый материал',exact:true});
  fireEvent.change(screen.getByLabelText('Название',{exact:true}),{target:{value:'Лекция по финансам'}});
  fireEvent.change(screen.getByLabelText('Текст или описание'),{target:{value:'Текст лекции для своей группы.'}});
  fireEvent.click(screen.getByRole('button',{name:'Опубликовать',exact:true}));await screen.findByText('Материал сохранён.');await screen.findByText('Лекция по финансам');
- fireEvent.click(screen.getByRole('button',{name:'Презентации',exact:true}));await screen.findByText('Опубликовать материал');
+ fireEvent.click(screen.getByRole('button',{name:'Презентации',exact:true}));await screen.findByRole('heading',{name:'Новый материал',exact:true});
  fireEvent.change(screen.getByLabelText('Название',{exact:true}),{target:{value:'Слайды к лекции'}});
  fireEvent.change(screen.getByLabelText('Файл — необязательно'),{target:{files:[new dom.window.File(['slides'],'slides.txt',{type:'text/plain'})]}});
  fireEvent.click(screen.getByRole('button',{name:'Опубликовать',exact:true}));await screen.findByText('Материал сохранён.');await screen.findByText('Слайды к лекции');
  fireEvent.click(screen.getByRole('button',{name:'Студент',exact:true}));await screen.findByText('Ваше пространство');
  fireEvent.click(screen.getByRole('button',{name:'Группы и дисциплины',exact:true}));fireEvent.click(screen.getAllByRole('button',{name:'Открыть дисциплину'})[0]);
- await screen.findByText('Лекция по финансам');assert.equal(screen.queryByRole('button',{name:'Опубликовать',exact:true})===null,true);assert.equal(screen.queryByRole('button',{name:'Изменить',exact:true})===null,true);
- fireEvent.click(screen.getByRole('button',{name:'Презентации',exact:true}));await screen.findByText('Слайды к лекции');await screen.findByRole('button',{name:'Скачать файл'});
+ fireEvent.click(await screen.findByRole('button',{name:'Темы',exact:true}));await screen.findByText('Лекция по финансам');assert.equal(screen.queryByRole('button',{name:'Опубликовать',exact:true})===null,true);assert.equal(screen.queryByRole('button',{name:'Изменить',exact:true})===null,true);
+ await screen.findByText('Слайды к лекции');await screen.findByRole('button',{name:'Скачать файл'});
 });
 test('lecture denial is separate from presentations and teacher cannot manage unassigned course',async()=>{
  resetDemo();selectDemo('leader');await demoGateway.saveMaterial('g0c0','lecture','Lecture','body',null,null);await demoGateway.saveMaterial('g0c0','presentation','Slides','body',null,null);
