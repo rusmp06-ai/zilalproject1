@@ -20,7 +20,7 @@ try{
   const r=await d.demoGateway.readingState(b.id);await d.demoGateway.saveReading({...r,page:2,total_pages:2,favorite:true});
  });
  await page.getByRole('button',{name:'Студент',exact:true}).click();
- await page.getByRole('button',{name:/Семинар по финансам/}).waitFor();
+ await page.getByRole('region',{name:'Сейчас и следующая пара'}).getByRole('heading',{name:'Семинар по финансам',exact:true}).waitFor();
  assert.equal(await page.getByRole('combobox').count(),0,'registered student must not select group again');
  await page.screenshot({path:join(artifacts,'day-desktop.png'),fullPage:true});
  await page.getByRole('button',{name:/Подготовить конспект/}).click();
@@ -32,7 +32,7 @@ try{
  await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
  await page.setViewportSize({width:390,height:844});
  await page.getByRole('button',{name:'Быстрый переход: Мой день'}).click();
- await page.getByRole('button',{name:/Семинар по финансам/}).waitFor();
+ await page.getByRole('region',{name:'Сейчас и следующая пара'}).getByRole('heading',{name:'Семинар по финансам',exact:true}).waitFor();
  await page.screenshot({path:join(artifacts,'day-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile horizontal overflow');
  await page.getByRole('button',{name:'Быстрый переход: План'}).click();

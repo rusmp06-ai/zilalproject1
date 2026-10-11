@@ -238,8 +238,8 @@ test('student day connects schedule, exact assignment, calendar and saved readin
  await demoGateway.saveReading({...state,page:2,total_pages:2,favorite:true});
  render(<App/>);
  await screen.findByText(/Здравствуйте, Студент/);
- await screen.findByRole('button',{name:/Семинар учебного дня/});
- assert.ok(screen.getByText('Аудитория 204'));
+ await within(screen.getByRole('region',{name:'Сейчас и следующая пара'})).findByRole('heading',{name:'Семинар учебного дня',exact:true});
+ assert.ok(within(screen.getByRole('region',{name:'Сейчас и следующая пара'})).getByText('Аудитория 204'));
  fireEvent.click(screen.getByRole('button',{name:/Задание учебного дня/}));
  const select=await screen.findByLabelText('Выберите задание');
  await waitFor(()=>assert.equal((select as HTMLSelectElement).value,task.id));
@@ -259,7 +259,7 @@ test('study day preserves working widgets when schedule fails and retries withou
  const {StudyHome}=await import('../src/StudyHome');
  resetDemo();selectDemo('student');const snapshot=await demoGateway.snapshot();
  let failing=true,calls=0;
- const api={...demoGateway,board:async()=>{calls++;if(failing)throw Error('network');return {items:[],canRead:false,writeScopes:[]};}};
+ const api={...demoGateway,board:async(_group:string,kind:string)=>{if(kind==='schedule')calls++;if(failing)throw Error('network');return {items:[],canRead:false,writeScopes:[]};}};
  render(<StudyHome api={api} snapshot={snapshot} onNavigate={()=>{}} onCourse={()=>{}} onRead={()=>{}}/>);
  await screen.findByText('Расписание не удалось загрузить полностью. Попробуйте ещё раз.');
  assert.ok(screen.getByRole('button',{name:/Читать и учиться/}));

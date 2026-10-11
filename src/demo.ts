@@ -1,3 +1,4 @@
+import {forgetSchedule} from './schedule-cache';
 import {decodePlan} from './personal-plan';
 import {emptyReading,validateReading} from './reader-state';
 import {validateFile} from './files';
@@ -22,7 +23,7 @@ function me(){const p=state.profiles.find(p=>p.id===state.session);if(!p||p.bloc
 function owner(){return me().id==='owner';}
 function leader(g:string){return owner()||state.memberships.some(m=>m.user_id===me().id&&m.group_id===g&&m.role==='leader'&&m.active)&&!state.groups.find(x=>x.id===g)?.blocked;}
 export function selectDemo(id:string){state.session=id;save();}
-export function resetDemo(){for(const item of [...state.library,...state.materials,...state.works])void deleteDemoBlob(item.id);state=seed();save();}
+export function resetDemo(){for(const profile of state.profiles)forgetSchedule('demo:'+profile.id);for(const item of [...state.library,...state.materials,...state.works])void deleteDemoBlob(item.id);state=seed();save();}
 function libraryAccess(){const p=me();if(owner())return true;const memberships=state.memberships.filter(m=>m.user_id===p.id&&m.active);return memberships.some(m=>!state.groups.find(g=>g.id===m.group_id)?.blocked)&&!state.denials.some(d=>d.section==='library'&&(d.user_id===p.id||memberships.some(m=>m.group_id===d.group_id)));}
 function manage(item:LibraryItem){return owner()||(item.author_id===me().id&&leader(item.source_group_id)&&libraryAccess());}
 function courseAccess(course:string,kind:MaterialKind|'assignment'){const p=me(),c=state.courses.find(c=>c.id===course);if(!c)throw Error('Дисциплина недоступна.');if(owner())return c;const group=state.groups.find(g=>g.id===c.group_id),members=state.memberships.filter(m=>m.user_id===p.id&&m.active&&m.group_id===c.group_id),section={lecture:'lectures',presentation:'presentations',material:'materials',assignment:'assignments'}[kind];if(group?.blocked||!members.length||(!members.some(m=>m.role!=='teacher')&&!state.assignmentsTeaching.some(a=>a.teacher===p.id&&a.course===course))||state.denials.some(d=>(d.user_id===p.id||d.group_id===c.group_id)&&(d.section===section||d.section==='course'&&d.course_id===course)))throw Error('Доступ к разделу закрыт.');return c;}

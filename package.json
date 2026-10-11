@@ -1,10 +1,10 @@
 {
   "name": "studyhub",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs",
+    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs && node --import tsx --test tests/day.test.tsx",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
@@ -21,7 +21,9 @@
     "test:ocr:browser": "node tests/ocr.browser.mjs",
     "test:library:world:browser": "node tests/library-world.browser.mjs",
     "test:reader:comfort:browser": "node tests/reader-comfort.browser.mjs",
-    "test:course:workspace:browser": "node tests/course-workspace.browser.mjs"
+    "test:course:workspace:browser": "node tests/course-workspace.browser.mjs",
+    "test:day:browser": "node tests/student-day.browser.mjs",
+    "test:day:offline:browser": "node tests/day-offline.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
