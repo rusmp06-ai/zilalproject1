@@ -54,3 +54,16 @@ test('failed load uses a labelled copy but a definitive schedule denial discards
  const app=render(<StudyHome api={failure} snapshot={snapshot} {...callbacks}/>);await screen.findByRole('heading',{name:'Saved lesson',exact:true});assert.ok(screen.getByText('Сохранённое расписание · изменения не проверены'));await waitFor(()=>assert.equal(screen.queryByText('Собираем ваше учебное пространство…'),null));
  const denied={...demoGateway,board:async()=>({items:[],canRead:false,writeScopes:[]})};app.rerender(<StudyHome api={denied} snapshot={snapshot} {...callbacks}/>);await screen.findByRole('heading',{name:'Доступ к расписанию закрыт',exact:true});assert.deepEqual(savedSchedules('demo:student'),[]);assert.equal(screen.queryByRole('heading',{name:'Saved lesson',exact:true}),null);
 });
+
+test('schedule week starts Monday across month and year boundaries',async()=>{
+ const {weekStart,moveScheduleDate}=await import('../src/SchedulePanel');
+ assert.equal(weekStart('2026-11-01'),'2026-10-26');assert.equal(weekStart('2027-01-01'),'2026-12-28');assert.equal(moveScheduleDate('2026-12-31',1),'2027-01-01');
+});
+test('student schedule opens lesson materials, has no management and renders full week',async()=>{
+ const {SchedulePanel}=await import('../src/SchedulePanel');resetDemo();selectDemo('student');const snapshot=await demoGateway.snapshot(),today=studyDate(Date.now()),w=boardWindow(today),e=event('Проверочная пара',new Date(Date.parse(w.from)+9*3600000).toISOString(),new Date(Date.parse(w.from)+10*3600000).toISOString());
+ let opened:unknown[]=[];const api={...demoGateway,board:async()=>({items:[e],canRead:true,writeScopes:[]})};
+ render(<SchedulePanel api={api} snapshot={snapshot} onCourse={(...args)=>{opened=args;}}/>);
+ const button=await screen.findByRole('button',{name:/Проверочная пара/});assert.equal(screen.queryByRole('button',{name:'Управление занятиями'}),null);
+ await act(async()=>button.click());await act(async()=>screen.getByRole('button',{name:'Материалы занятия'}).click());assert.deepEqual(opened,['g0c0',undefined,'materials']);
+ await act(async()=>screen.getByRole('button',{name:'Неделя',exact:true}).click());await waitFor(()=>assert.equal(document.querySelectorAll('.schedule-day').length,7));
+});

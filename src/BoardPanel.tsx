@@ -3,8 +3,8 @@ import {useEffect,useState} from 'react';
 import {groupContext} from './group-context';
 import type {Gateway,Snapshot,BoardKind,BoardItem} from './types';
 import {bishkekInput,boardInstant,boardWindow,boardDate} from './board-time';
-export function BoardPanel({api,snapshot,kind,courseFilter}:{api:Gateway;snapshot:Snapshot;kind:BoardKind;courseFilter?:string}){
- const [selectedGroup,setGroup]=useState(groupContext(snapshot).id),[date,setDate]=useState(bishkekInput(new Date().toISOString()).slice(0,10)),[offset,setOffset]=useState(0),[items,setItems]=useState<BoardItem[]>([]),[scopes,setScopes]=useState<(string|null)[]>([]),[read,setRead]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[edit,setEdit]=useState<BoardItem|null>(null),[deleting,setDeleting]=useState(''),[revision,setRevision]=useState(0);
+export function BoardPanel({api,snapshot,kind,courseFilter,initialGroup}:{api:Gateway;snapshot:Snapshot;kind:BoardKind;courseFilter?:string;initialGroup?:string}){
+ const [selectedGroup,setGroup]=useState(groupContext(snapshot,initialGroup).id),[date,setDate]=useState(bishkekInput(new Date().toISOString()).slice(0,10)),[offset,setOffset]=useState(0),[items,setItems]=useState<BoardItem[]>([]),[scopes,setScopes]=useState<(string|null)[]>([]),[read,setRead]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[edit,setEdit]=useState<BoardItem|null>(null),[deleting,setDeleting]=useState(''),[revision,setRevision]=useState(0);
  const context=groupContext(snapshot,courseFilter?snapshot.courses.find(c=>c.id===courseFilter)?.group_id:selectedGroup),group=courseFilter?snapshot.courses.find(c=>c.id===courseFilter)?.group_id||'':context.id;
  useEffect(()=>{setGroup(old=>groupContext(snapshot,old).id);},[snapshot]);
  useEffect(()=>{setOffset(0);setEdit(null);setDeleting('');},[group]);
