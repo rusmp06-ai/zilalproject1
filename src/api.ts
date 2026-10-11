@@ -12,6 +12,15 @@ async function rows<T>(table:string){const {data,error}=await db().from(table).s
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').insert({id:data.user.id,full_name:name});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
  demo:false,
+ async readerSource(id){
+  const {data:book,error:bookError}=await db().from('library_items').select('id,title').eq('id',id).maybeSingle();if(bookError)throw Error('Не удалось проверить источник.');
+  if(book){await this.readingState(id);for(let offset=0;offset<100000;offset+=50){const items=await rpc<LibraryItem[]>('reader_library_catalog',{p_search:book.title,p_offset:offset,p_favorites:false});const item=items.find(i=>i.id===id);if(item)return {kind:'library',item};if(items.length<50)break;}}
+  else{
+   const {data:content,error}=await db().from('course_content').select('course_id,kind').eq('id',id).maybeSingle();if(error)throw Error('Не удалось проверить источник.');
+   if(content&&content.kind!=='assignment'){await this.courseReadingState(id);for(let offset=0;offset<100000;offset+=50){const items=await rpc<CourseMaterial[]>('course_catalog',{p_course:content.course_id,p_kind:content.kind,p_offset:offset});const item=items.find(i=>i.id===id);if(item)return {kind:'course',item};if(items.length<50)break;}}
+  }
+  throw Error('Источник удалён или доступ к нему закрыт.');
+ },
  async transferStudent(user,from,to){await rpc('transfer_student',{p_user:user,p_from:from,p_to:to});},
  async teachingCatalog(group,offset){return rpc<TeachingAssignment[]>('teaching_catalog',{p_group:group,p_offset:offset});},
  async removeTeaching(course,teacher){await rpc('remove_teaching_assignment',{p_course:course,p_teacher:teacher});},

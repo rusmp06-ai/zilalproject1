@@ -19,7 +19,9 @@ export type BoardKind='schedule'|'announcement';
 export type BoardItem={id:string;group_id:string;course_id:string|null;kind:BoardKind;title:string;body:string;location:string;starts_at:string|null;ends_at:string|null;author_name:string;created_at:string;can_manage:boolean};
 export type BoardInput={group:string;course:string|null;kind:BoardKind;title:string;body:string;location:string;start:string|null;end:string|null;id:string|null};
 export type Note={id:string;title:string;body:string;version:number;created_at:string;updated_at:string};
+export type ReaderSource={kind:'library';item:LibraryItem}|{kind:'course';item:CourseMaterial};
 export interface Gateway {
+ readerSource(id:string):Promise<ReaderSource>;
  transferStudent(user:string,from:string,to:string):Promise<void>;
  teachingCatalog(group:string,offset:number):Promise<TeachingAssignment[]>;
  removeTeaching(course:string,teacher:string):Promise<void>;

@@ -427,3 +427,27 @@ test('demo course account marks are private, versioned and hidden after course d
  await demoGateway.deny('lectures','student',null,null);selectDemo('student');await assert.rejects(()=>demoGateway.courseReadingState(item.id),/Доступ к разделу закрыт/);
  selectDemo('owner');const s=await demoGateway.snapshot();await demoGateway.restore(s.denials[0].id);selectDemo('student');assert.equal((await demoGateway.courseReadingState(item.id)).page,2);
 });
+
+test('notebook opens both document sources at anchored page and keeps notes when source is gone',async()=>{
+ const {NotesPanel}=await import('../src/NotesPanel');const {encodeReaderNote}=await import('../src/reader-tools');
+ resetDemo();selectDemo('owner');const file=Object.assign(new Blob(['Учебный текст. '.repeat(450)],{type:'text/plain'}),{name:'source.txt'});
+ await demoGateway.uploadLibrary('g0','Источник книги',file as File);await demoGateway.saveMaterial('g0c0','lecture','Источник лекции','',file as File,null);
+ const book=(await demoGateway.library('',0)).items.find(b=>b.title==='Источник книги')!,material=(await demoGateway.courseMaterials('g0c0','lecture',0)).items[0];
+ selectDemo('student');for(const item of [book,material])await demoGateway.saveNote('Запись '+item.title,encodeReaderNote({sourceId:item.id,sourceTitle:item.title,page:2,quote:'Учебный текст.',text:'Моя мысль'}),null,null);
+ render(<NotesPanel api={demoGateway}/>);await screen.findByText('Запись Источник книги');
+ for(const item of [book,material]){
+  const card=screen.getByText('Запись '+item.title).closest('article')!;
+  fireEvent.click(within(card).getByRole('button',{name:'Открыть источник · стр. 2'}));const dialog=await screen.findByRole('dialog',{name:item.title});await within(dialog).findByText('Страница 2 из 2 · Прогресс: 100%');
+  fireEvent.click(within(dialog).getByRole('button',{name:'Закрыть просмотр'}));await waitFor(()=>assert.equal(screen.queryByRole('dialog')===null,true));
+ }
+ selectDemo('owner');await demoGateway.deleteLibrary(book.id);selectDemo('student');
+ fireEvent.click(within(screen.getByText('Запись Источник книги').closest('article')!).getByRole('button',{name:'Открыть источник · стр. 2'}));await screen.findByText('Источник удалён, недоступен или не удалось подключиться. Сама заметка сохранена.');assert.equal((await demoGateway.notes(book.id,0)).length,1);
+});
+
+test('source resolution enforces section access and search highlights literal matching text',async()=>{
+ const {highlightedText}=await import('../src/reader-tools');
+ assert.deepEqual(highlightedText('Спрос, СПРОС и <script>','спрос'),[{text:'Спрос',match:true},{text:', ',match:false},{text:'СПРОС',match:true},{text:' и <script>',match:false}]);
+ assert.equal(highlightedText('а'.repeat(1000),'а').filter(p=>p.match).length,200);
+ resetDemo();selectDemo('owner');await demoGateway.deny('library','student',null,null);selectDemo('student');await assert.rejects(()=>demoGateway.readerSource('sample-note'),/Доступ к чтению закрыт/);
+ resetDemo();selectDemo('owner');await demoGateway.saveMaterial('g0c0','lecture','Закрытый источник','',Object.assign(new Blob(['text'],{type:'text/plain'}),{name:'source.txt'}) as File,null);const m=(await demoGateway.courseMaterials('g0c0','lecture',0)).items[0];await demoGateway.deny('lectures','student',null,null);selectDemo('student');await assert.rejects(()=>demoGateway.readerSource(m.id),/Доступ к разделу закрыт/);
+});

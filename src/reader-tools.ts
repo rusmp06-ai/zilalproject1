@@ -26,3 +26,10 @@ export function findText(pages:string[],query:string){const q=query.trim().toLoc
 }
 export const DOCX_MIME='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export const canReadDocument=(mime:string)=>['application/pdf','text/plain',DOCX_MIME].includes(mime);
+
+export function highlightedText(text:string,query:string){
+ const q=query.trim().toLocaleLowerCase();if(!q)return [{text,match:false}];
+ const lower=text.toLocaleLowerCase(),parts:{text:string;match:boolean}[]=[];let start=0,count=0,at=lower.indexOf(q);
+ while(at>=0&&count<200){if(at>start)parts.push({text:text.slice(start,at),match:false});parts.push({text:text.slice(at,at+q.length),match:true});start=at+q.length;count++;at=lower.indexOf(q,start);}
+ if(start<text.length)parts.push({text:text.slice(start),match:false});return parts;
+}
