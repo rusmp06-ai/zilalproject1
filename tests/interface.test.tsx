@@ -232,7 +232,7 @@ test('student day connects schedule, exact assignment, calendar and saved readin
  selectDemo('student');const state=await demoGateway.readingState(book.id);
  await demoGateway.saveReading({...state,page:2,total_pages:2,favorite:true});
  render(<App/>);
- await screen.findByText(/Здравствуйте, Студент/);
+ await screen.findByText(/Привет, Студент/);
  await screen.findByRole('button',{name:/Семинар учебного дня/});
  assert.ok(screen.getByText('Аудитория 204'));
  fireEvent.click(screen.getByRole('button',{name:/Задание учебного дня/}));
@@ -285,12 +285,12 @@ test('study calendar uses Bishkek month boundaries and keeps midnight-spanning c
 
 test('registered student keeps their group without selectors across study screens',async()=>{
  resetDemo();selectDemo('student');render(<App/>);
- await screen.findByText(/Здравствуйте, Студент/);
+ await screen.findByText(/Привет, Студент/);
  await waitFor(()=>assert.equal(screen.queryByText('Собираем ваше учебное пространство…')===null,true));
  assert.equal(screen.queryByRole('combobox')===null,true);
  assert.ok(screen.getByText('ИФ-1-24'));
  for(const name of ['Календарь','Все задания','Расписание','Объявления','Группы и дисциплины']){
-  fireEvent.click(screen.getByRole('button',{name,exact:true}));
+  fireEvent.click(within(screen.getByRole('complementary')).getByRole('button',{name,exact:true}));
   assert.equal(screen.queryByRole('combobox')===null,true);
   assert.ok(screen.getByText('ИФ-1-24'));
  }
