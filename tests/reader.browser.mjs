@@ -3,10 +3,10 @@ import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
-function samplePdf(){
- const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>'];
- for(const [content,text] of [[4,'StudyHub reader page one'],[6,'StudyHub reader page two']]){
-  objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents ${content} 0 R >>`);
+function samplePdf(count=2){
+ const objects=['<< /Type /Catalog /Pages 2 0 R >>',`<< /Type /Pages /Kids [${Array.from({length:count},(_,i)=>(3+2*i)+' 0 R').join(' ')}] /Count ${count} >>`];
+ for(let i=0;i<count;i++){const content=4+2*i,text=count===2?['StudyHub reader page one','StudyHub reader page two'][i]:i===count-1?'StudyHub LASTPAGEONLY':'Reader page '+(i+1);
+  objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${3+2*count} 0 R >> >> /Contents ${content} 0 R >>`);
   const stream=`BT /F1 24 Tf 72 700 Td (${text}) Tj ET`;objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
  }
  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
@@ -33,5 +33,6 @@ try{
  await dialog.getByRole('button',{name:'Поиск в документе',exact:true}).click();await dialog.getByLabel('Найти в тексте',{exact:true}).fill('page two');await dialog.getByRole('button',{name:'Найти фрагмент',exact:true}).click();await dialog.getByRole('button',{name:/Страница 2.*page two/}).click();await dialog.locator('.reader-text mark').getByText('page two',{exact:true}).waitFor();
  await dialog.getByRole('button',{name:'Закрыть просмотр'}).click();if(offline)await page.context().setOffline(false);await page.reload();await page.getByText('Ваше пространство',{exact:true}).waitFor();if(offline)await page.context().setOffline(true);await page.getByRole('button',{name:'Библиотека',exact:true}).click();await card.getByRole('button',{name:'Открыть',exact:true}).click();await dialog.getByText('Страница 2 из 2 · Прогресс: 100%',{exact:true}).waitFor();await dialog.getByRole('button',{name:'Закладки',exact:true}).click();await dialog.getByRole('button',{name:'К странице 2',exact:true}).waitFor();
  await page.setViewportSize({width:390,height:844});await dialog.locator('canvas').waitFor();assert.ok(await dialog.evaluate(e=>e.scrollWidth<=e.clientWidth+1),'Mobile reader must not overflow horizontally');
+ if(!offline){await dialog.getByRole('button',{name:'Закрыть просмотр'}).click();await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:'Владелец',exact:true}).click();await page.getByRole('button',{name:'Библиотека',exact:true}).click();const longFile=join(folder,'long.pdf');await writeFile(longFile,samplePdf(401));await page.getByLabel('Название материала',{exact:true}).fill('Длинный PDF');await page.getByLabel('Файл',{exact:true}).setInputFiles(longFile);await page.getByRole('button',{name:'Загрузить материал',exact:true}).click();await page.getByText('Материал опубликован в общей библиотеке.').waitFor();await page.getByRole('button',{name:'Студент',exact:true}).click();await page.getByRole('button',{name:'Библиотека',exact:true}).click();await page.getByRole('button',{name:'Открыть «Длинный PDF»',exact:true}).click();const longDialog=page.getByRole('dialog',{name:'Длинный PDF'});await longDialog.getByText('Страница 1 из 401 · Прогресс: 0%',{exact:true}).waitFor();await longDialog.getByRole('button',{name:'Поиск в документе',exact:true}).click();await longDialog.getByLabel('Найти в тексте',{exact:true}).fill('LASTPAGEONLY');await longDialog.getByRole('button',{name:'Найти фрагмент',exact:true}).click();await longDialog.getByRole('button',{name:/Страница 401.*LASTPAGEONLY/}).click();await longDialog.getByText('Страница 401 из 401 · Прогресс: 100%',{exact:true}).waitFor();console.log('PASS real 401-page PDF: search reaches the final page beyond the old 400-page limit');}
  assert.deepEqual(errors,[]);console.log('PASS Chromium: PDF canvas/text, search highlights, pagination, progress, bookmarks, favorite, persisted reload, mobile layout; no page errors');
 }finally{await browser?.close();await rm(folder,{recursive:true,force:true});}

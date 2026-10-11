@@ -363,7 +363,7 @@ test('reader searches pages, remembers appearance and shares private quoted note
 
 test('reader validates preferences, keeps document text literal and recognizes only linked note format',async()=>{
  const {readerPreferences,textOutline,findText,decodeReaderNote,encodeReaderNote}=await import('../src/reader-tools');
- assert.deepEqual(readerPreferences({theme:'invalid',fontSize:100,lineHeight:0,zoom:500}),{theme:'light',fontSize:32,lineHeight:1.4,zoom:200});
+ assert.deepEqual(readerPreferences({theme:'invalid',fontSize:100,lineHeight:0,zoom:500}),{theme:'light',fontSize:32,lineHeight:1.4,zoom:200,font:'serif',column:72});
  assert.equal(readerPreferences(null).fontSize,20);
  assert.deepEqual(textOutline(['Глава 1. Начало\nТекст','## Глава 2. Продолжение']),[{title:'Глава 1. Начало',page:1,level:1},{title:'Глава 2. Продолжение',page:2,level:2}]);
  assert.equal(findText(['Без совпадений','Спрос И Предложение'],'спрос и предложение')[0].page,2);

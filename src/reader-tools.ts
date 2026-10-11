@@ -1,10 +1,10 @@
 import type {Note} from './types';
-export type ReaderPreferences={theme:'light'|'sepia'|'dark';fontSize:number;lineHeight:number;zoom:number};
-export const defaultPreferences:ReaderPreferences={theme:'light',fontSize:20,lineHeight:1.8,zoom:100};
+export type ReaderPreferences={theme:'light'|'sepia'|'dark';fontSize:number;lineHeight:number;zoom:number;font:'serif'|'sans';column:number};
+export const defaultPreferences:ReaderPreferences={theme:'light',fontSize:20,lineHeight:1.8,zoom:100,font:'serif',column:72};
 export function readerPreferences(value:unknown):ReaderPreferences{
  const v=value&&typeof value==='object'?value as Partial<ReaderPreferences>:{};
  const number=(n:unknown,min:number,max:number,fallback:number)=>typeof n==='number'&&Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;
- return {theme:v.theme==='sepia'||v.theme==='dark'?v.theme:'light',fontSize:number(v.fontSize,16,32,20),lineHeight:number(v.lineHeight,1.4,2.2,1.8),zoom:number(v.zoom,50,200,100)};
+ return {theme:v.theme==='sepia'||v.theme==='dark'?v.theme:'light',fontSize:number(v.fontSize,16,32,20),lineHeight:number(v.lineHeight,1.4,2.2,1.8),zoom:number(v.zoom,50,200,100),font:v.font==='sans'?'sans':'serif',column:number(v.column,48,90,72)};
 }
 export type ReaderNote={sourceId:string;sourceTitle:string;page:number;quote:string;text:string};
 export function encodeReaderNote(note:ReaderNote){return JSON.stringify({studyhub_reader_note:1,...note});}

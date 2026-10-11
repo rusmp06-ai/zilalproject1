@@ -83,3 +83,23 @@ test('library storefront filters the complete catalog and discards partial data 
  const denied=await libraryCatalog({...api,library:async(q,o)=>o?{items:[],canRead:false,quota:null}:api.library(q,o)},'',false);assert.equal(denied.canRead,false);assert.equal(denied.items.length,0);
  await assert.rejects(()=>libraryCatalog({...api,library:async(q,o)=>{if(o)throw Error('Network');return api.library(q,o);}},'',false),/Network/);
 });
+
+test('speech preserves text, chunks long pages, supports pause/resume, cancels stale events and restricts automatic continuation',async()=>{
+ const {useReaderSpeech,speechParts}=await import('../src/reader-speech');const {renderHook,act}=await import('@testing-library/react');
+ const text=('Учебная фраза. 🙂 Следующая мысль. ').repeat(25),parts=speechParts(text);assert.equal(parts.map(p=>p.text).join(''),text);assert.ok(parts.every(p=>p.text.length<=260));
+ const spoken:any[]=[],counts={pause:0,resume:0,finish:0};const previous=Object.getOwnPropertyDescriptor(globalThis,'speechSynthesis'),oldUtterance=Object.getOwnPropertyDescriptor(globalThis,'SpeechSynthesisUtterance');
+ const voice={voiceURI:'ru-local',name:'Русский',lang:'ru-RU',localService:true};
+ const engine={getVoices:()=>[voice],speak:(u:any)=>spoken.push(u),cancel(){},pause:()=>counts.pause++,resume:()=>counts.resume++,addEventListener(){},removeEventListener(){}};
+ class Utterance{text:string;rate=1;voice:any;lang='';onend:any;onerror:any;constructor(text:string){this.text=text;}}
+ Object.defineProperty(globalThis,'speechSynthesis',{value:engine,configurable:true});Object.defineProperty(globalThis,'SpeechSynthesisUtterance',{value:Utterance,configurable:true});
+ try{
+  const {result,unmount}=renderHook(()=>useReaderSpeech(()=>counts.finish++));
+  act(()=>result.current.start(text));assert.equal(spoken[0].voice,voice);assert.equal(result.current.state,'playing');
+  act(()=>result.current.pause());assert.equal(result.current.state,'paused');assert.equal(counts.pause,1);
+  act(()=>result.current.resume());assert.equal(counts.resume,1);
+  const stale=spoken[0];act(()=>result.current.stop());const count=spoken.length;act(()=>stale.onend());assert.equal(spoken.length,count);assert.equal(result.current.state,'idle');
+  act(()=>result.current.configure({rate:1.5,voice:'ru-local',autoNext:true}));act(()=>result.current.start('Короткая фраза.','selection'));assert.equal(spoken.at(-1).rate,1.5);act(()=>spoken.at(-1).onend());assert.equal(counts.finish,0);
+  act(()=>result.current.start(text));let n=0;while(result.current.state==='playing'&&n++<30)act(()=>spoken.at(-1).onend());assert.equal(counts.finish,1);assert.equal(result.current.state,'idle');
+  act(()=>result.current.start('Ещё фраза'));act(()=>spoken.at(-1).onerror({error:'not-allowed'}));assert.match(result.current.error,/заблокировал/);assert.equal(result.current.state,'idle');unmount();
+ }finally{cleanup();if(previous)Object.defineProperty(globalThis,'speechSynthesis',previous);else delete (globalThis as any).speechSynthesis;if(oldUtterance)Object.defineProperty(globalThis,'SpeechSynthesisUtterance',oldUtterance);else delete (globalThis as any).SpeechSynthesisUtterance;localStorage.removeItem('studyhub-speech-preferences-v1');}
+});
