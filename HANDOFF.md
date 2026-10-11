@@ -233,3 +233,7 @@ Replaced text arrows with local rounded SVG icons (decorative, hidden from acces
 ## 19. Professional visual direction (supersedes section 18)
 
 User requested a business style. Removed colourful card surfaces, welcome gradient/decoration and informal greeting. Neutral white/slate surfaces, muted blue primary/navigation and limited violet/blue/ochre/rose icon accents keep activity distinctions. Rounded icons/corners retained. Verified desktop/mobile study browser and production/demo builds; preview refreshed.
+
+## 20. Compact business layout (latest visual direction)
+
+User requested a more professional treatment beyond palette changes. Removed boxed welcome area, oversized radii, shadows, coloured icon tiles and card accent stripes. Compact shortcut rows, white cards with 10px corners, 7px controls, single blue accent and tighter sidebar. Reworked overview/course pictograms to dashboard/books; consistent 2px SVG strokes. No generated raster artwork needed for these interface symbols. Existing desktop/mobile study and mobile plan browser checks plus demo/production builds pass; preview refreshed.
