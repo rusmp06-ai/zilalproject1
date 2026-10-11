@@ -2,6 +2,11 @@ import type {ReactNode} from 'react';
 /** Consistent interface icons; the adjacent text supplies the accessible name. */
 export function StudyIcon({name,className=''}:{name:string;className?:string}){
  const paths:Record<string,ReactNode>={
+  search:<><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
+  'bookmark-add':<><path d="M6 4h10v17l-5-4-5 4V4Z"/><path d="M19 3v6m-3-3h6"/></>,
+  bookmark:<path d="M6 4h12v17l-6-4-6 4V4Z"/>,
+  settings:<><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2" fill="var(--reader-paper,white)"/><circle cx="15" cy="17" r="2" fill="var(--reader-paper,white)"/></>,
+  focus:<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/>,
   book:<><path d="M12 7c-3-2-6-2-9-1v13c3-1 6-1 9 1 3-2 6-2 9-1V6c-3-1-6-1-9 1Z"/><path d="M12 7v13M6 10h3m6 0h3"/></>,
   calendar:<><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-13 5h1m6 0h1"/></>,
   note:<><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8m-8 5h8m-8 5h4"/></>,

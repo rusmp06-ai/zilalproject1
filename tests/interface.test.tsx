@@ -188,10 +188,10 @@ test('reader resumes text pages, bookmarks and personal favorites',async()=>{
  fireEvent.click(within(dialog).getByRole('button',{name:'Следующая страница'}));await within(dialog).findByText('Страница 2 из 3 · Прогресс: 67%');
  fireEvent.click(within(dialog).getByRole('button',{name:'Добавить закладку'}));await within(dialog).findByRole('button',{name:'К странице 2'});
  fireEvent.change(within(dialog).getByLabelText('Страница',{exact:true}),{target:{value:'3'}});fireEvent.click(within(dialog).getByRole('button',{name:'Перейти к странице'}));await within(dialog).findByText('Страница 3 из 3 · Прогресс: 100%');fireEvent.click(within(dialog).getByRole('button',{name:'К странице 2'}));await within(dialog).findByText('Страница 2 из 3 · Прогресс: 67%');
- fireEvent.click(within(dialog).getByRole('button',{name:'В избранное',exact:true}));await within(dialog).findByRole('button',{name:'Убрать из избранного',exact:true});
+ fireEvent.click(within(dialog).getByText('Ещё',{exact:true}));fireEvent.click(within(dialog).getByRole('button',{name:'В избранное',exact:true}));await within(dialog).findByRole('button',{name:'Убрать из избранного',exact:true});
  fireEvent.click(within(dialog).getByRole('button',{name:'Закрыть просмотр'}));
  fireEvent.click(within((await screen.findByText('Учебник',{selector:'h3'})).closest('article')!).getByRole('button',{name:'Открыть',exact:true}));
- const reopened=await screen.findByRole('dialog',{name:'Учебник'});await within(reopened).findByText('Страница 2 из 3 · Прогресс: 67%');await within(reopened).findByRole('button',{name:'К странице 2'});
+ const reopened=await screen.findByRole('dialog',{name:'Учебник'});await within(reopened).findByText('Страница 2 из 3 · Прогресс: 67%');fireEvent.click(within(reopened).getByRole('button',{name:'Закладки',exact:true}));await within(reopened).findByRole('button',{name:'К странице 2'});
  fireEvent.click(within(reopened).getByRole('button',{name:'Убрать закладку'}));await waitFor(()=>assert.equal(within(reopened).queryByRole('button',{name:'К странице 2'})===null,true));
  fireEvent.click(within(reopened).getByRole('button',{name:'Закрыть просмотр'}));fireEvent.click(screen.getByLabelText('Только избранное'));
  await waitFor(()=>assert.equal(screen.queryByText('Как пользоваться общей библиотекой',{selector:'h3'})===null,true));assert.ok(screen.getByText('Учебник',{selector:'h3'}));
@@ -335,6 +335,7 @@ test('reader searches pages, remembers appearance and shares private quoted note
  fireEvent.click(screen.getByRole('button',{name:'Найти фрагмент'}));
  fireEvent.click(await screen.findByRole('button',{name:/Страница 2.*Спрос и предложение/s}));
  await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
+ fireEvent.click(screen.getByText('Ещё',{exact:true}));
  fireEvent.click(screen.getByRole('button',{name:'Заметка к странице'}));
  fireEvent.change(screen.getByLabelText('Мысль или вопрос'),{target:{value:'Повторить определение спроса'}});
  fireEvent.click(screen.getByRole('button',{name:'Сохранить запись'}));
@@ -390,7 +391,7 @@ test('legacy course reader isolates device progress and retains progress if stor
  try{
   render(<CourseReader api={legacyApi} material={material} onClose={()=>{}}/>);await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
   fireEvent.click(screen.getByRole('button',{name:'Предыдущая страница'}));await screen.findByText('Страница 1 из 2 · Прогресс: 50%');
-  fireEvent.click(screen.getByRole('button',{name:'К странице 2'}));await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
+  fireEvent.click(screen.getByRole('button',{name:'Закладки',exact:true}));fireEvent.click(screen.getByRole('button',{name:'К странице 2'}));await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
   fireEvent.click(screen.getByRole('button',{name:'Убрать закладку'}));await waitFor(()=>assert.equal(screen.queryByRole('button',{name:'К странице 2'})===null,true));
   assert.equal(screen.queryByRole('button',{name:'К странице 2'})===null,true);
  }finally{proto.setItem=original;}
