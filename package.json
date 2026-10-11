@@ -4,14 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx",
+    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --test tests/course-sync-runner.test.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "build:preview": "npm run build && node scripts/make-preview.mjs",
     "test:reader:browser": "node tests/reader.browser.mjs",
     "test:study:browser": "node tests/study.browser.mjs",
-    "test:reader:tools:browser": "node tests/reader-tools.browser.mjs"
+    "test:reader:tools:browser": "node tests/reader-tools.browser.mjs",
+    "test:course:sync": "node scripts/check-course-sync.mjs",
+    "test:course:sync:runner": "node --test tests/course-sync-runner.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
