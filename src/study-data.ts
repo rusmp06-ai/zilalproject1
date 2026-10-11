@@ -1,0 +1,2 @@
+import type {Gateway,BoardItem} from './types';
+export async function loadSchedule(api:Gateway,group:string,from:string,to:string){const items:BoardItem[]=[];for(let page=0;;page+=50){const p=await api.board(group,'schedule',from,to,page);if(!p.canRead)return {items:[],canRead:false};items.push(...p.items);if(p.items.length<50)return {items,canRead:true};if(page>=100000)throw Error('Слишком много записей расписания.');}}

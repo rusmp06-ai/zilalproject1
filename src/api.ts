@@ -1,3 +1,4 @@
+import {decodePlan} from './personal-plan';
 import {createClient} from '@supabase/supabase-js';
 import {emptyReading,validateReading} from './reader-state';
 import {validateFile} from './files';
@@ -12,6 +13,11 @@ async function rows<T>(table:string){const {data,error}=await db().from(table).s
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').insert({id:data.user.id,full_name:name});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
  demo:false,
+ async taskRecords(offset){try{return await rpc<Note[]>('task_catalog',{p_search:'',p_offset:offset});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;const items:Note[]=[];for(let page=0;page<1000;page+=50){const rows=await this.notes('',page);items.push(...rows.filter(n=>decodePlan(n.body)));if(rows.length<50)break;}return items.slice(offset,offset+50);}},
+ async saveTask(title,body,id,version){try{await rpc('save_private_task',{p_title:title,p_body:body,p_id:id,p_version:version});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;await this.saveNote(title,body,id,version);}},
+ async deleteTask(id,version){try{await rpc('delete_private_task',{p_id:id,p_version:version});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;await this.deleteNote(id,version);}},
+
+ async assignmentProgress(ids){if(!ids.length)return [];const user=await db().auth.getUser();if(user.error||!user.data.user)throw Error('Войдите в аккаунт.');const result:import('./types').AssignmentProgress[]=[];for(let i=0;i<ids.length;i+=100){const seen=new Set<string>();for(let offset=0;;offset+=1000){const {data,error}=await db().from('submissions').select('assignment_id,status,attempt_no').eq('student_id',user.data.user.id).in('assignment_id',ids.slice(i,i+100)).order('attempt_no',{ascending:false}).order('id').range(offset,offset+999);if(error)throw Error('Не удалось загрузить статус сдачи.');for(const row of data||[])if(!seen.has(row.assignment_id)){seen.add(row.assignment_id);result.push(row);}if(!data||data.length<1000)break;if(offset>=100000)throw Error('Слишком много попыток сдачи.');}}return result;},
  async readerSource(id){
   const {data:book,error:bookError}=await db().from('library_items').select('id,title').eq('id',id).maybeSingle();if(bookError)throw Error('Не удалось проверить источник.');
   if(book){await this.readingState(id);for(let offset=0;offset<100000;offset+=50){const items=await rpc<LibraryItem[]>('reader_library_catalog',{p_search:book.title,p_offset:offset,p_favorites:false});const item=items.find(i=>i.id===id);if(item)return {kind:'library',item};if(items.length<50)break;}}
@@ -34,7 +40,7 @@ export const liveGateway:Gateway={
  async saveNote(title,body,id,version){await rpc('save_private_note',{p_title:title,p_body:body,p_id:id,p_version:version});},
  async deleteNote(id,version){await rpc('delete_private_note',{p_id:id,p_version:version});},
  async board(group,kind,from,to,offset){const canRead=await rpc<boolean>('read_group_board',{g:group,c:null,k:kind});if(!canRead)return {items:[],canRead:false,writeScopes:[]};const courses=await rows<Course>('courses');const scopes:(string|null)[]=[null,...courses.filter(c=>c.group_id===group).map(c=>c.id)];const permissions=await Promise.all(scopes.map(c=>rpc<boolean>('write_group_board',{g:group,c,k:kind})));const items=await rpc<BoardItem[]>('board_catalog',{p_group:group,p_kind:kind,p_from:from,p_to:to,p_offset:offset});return {items,canRead:true,writeScopes:scopes.filter((_,i)=>permissions[i])};},
- async saveBoard(i){await rpc('save_group_board',{p_group:i.group,p_course:i.course,p_kind:i.kind,p_title:i.title,p_body:i.body,p_location:i.location,p_start:i.start,p_end:i.end,p_id:i.id});},
+ async saveBoard(i){if(i.repeatWeeks&&i.repeatWeeks>1){await rpc('save_board_series',{p_group:i.group,p_course:i.course,p_title:i.title,p_body:i.body,p_location:i.location,p_start:i.start,p_end:i.end,p_weeks:i.repeatWeeks});return;}await rpc('save_group_board',{p_group:i.group,p_course:i.course,p_kind:i.kind,p_title:i.title,p_body:i.body,p_location:i.location,p_start:i.start,p_end:i.end,p_id:i.id});},
  async deleteBoard(id){await rpc('delete_group_board',{p_id:id});},
  async assignments(course){const [items,canGrade]=await Promise.all([rpc<Assignment[]>('assignment_catalog',{p_course:course}),rpc<boolean>('can_grade_course',{c:course})]);const user=await db().auth.getUser();const members=await rows<Membership>('group_memberships'),courses=await rows<Course>('courses');const group=courses.find(c=>c.id===course)?.group_id;const canSubmit=members.some(m=>m.user_id===user.data.user?.id&&m.group_id===group&&m.active&&m.role!=='teacher');return {items,canGrade,canSubmit,userId:user.data.user?.id||''};},
  async createAssignment(course,title,description,due,max,late){await rpc('create_assignment',{p_course:course,p_title:title,p_description:description,p_due:due,p_max:max,p_late:late});},

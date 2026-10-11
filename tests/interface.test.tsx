@@ -2,15 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'http://localhost:5173/'});
-for(const key of ['window','document','localStorage','location','history','HTMLElement','HTMLInputElement','MutationObserver','FormData'])Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],configurable:true});
+for(const key of ['window','document','localStorage','sessionStorage','location','history','HTMLElement','HTMLInputElement','MutationObserver','DOMParser','FormData'])Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],configurable:true});
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
 const React=await import('react');
 const {render,screen,fireEvent,waitFor,cleanup,within}=await import('@testing-library/react');
 const {App}=await import('../src/App');
 const {resetDemo,demoGateway,selectDemo}=await import('../src/demo');
+const {loadSchedule}=await import('../src/study-data');
+const {calendarFile}=await import('../src/calendar-export');
+const {loadEpub}=await import('../src/epub-reader');
+const {default:JSZip}=await import('jszip');
+const {StudySearch}=await import('../src/StudySearch');
 
-test.afterEach(()=>cleanup());
+test.afterEach(async()=>{cleanup();await new Promise(resolve=>setTimeout(resolve,0));sessionStorage.clear();});
 
 test('owner creates group, invites leader, new account accepts invitation and creates own group',async()=>{
  resetDemo();render(<App/>);
@@ -256,11 +261,11 @@ test('study day preserves working widgets when schedule fails and retries withou
  let failing=true,calls=0;
  const api={...demoGateway,board:async()=>{calls++;if(failing)throw Error('network');return {items:[],canRead:false,writeScopes:[]};}};
  render(<StudyHome api={api} snapshot={snapshot} onNavigate={()=>{}} onCourse={()=>{}} onRead={()=>{}}/>);
- await screen.findByText('Расписание не удалось загрузить. Попробуйте ещё раз.');
+ await screen.findByText('Расписание не удалось загрузить полностью. Попробуйте ещё раз.');
  assert.ok(screen.getByRole('button',{name:/Читать и учиться/}));
  failing=false;fireEvent.click(screen.getByRole('button',{name:'Попробовать снова'}));
  await screen.findByText('Доступ к расписанию закрыт.');
- await waitFor(()=>assert.equal(screen.queryByText('Расписание не удалось загрузить. Попробуйте ещё раз.')===null,true));
+ await waitFor(()=>assert.equal(screen.queryByText('Расписание не удалось загрузить полностью. Попробуйте ещё раз.')===null,true));
  assert.equal(calls,2);
 });
 
@@ -458,11 +463,11 @@ test('personal plan persists, hides from notes, enforces private ownership and o
  const value={studyhub_plan:1,due:'2026-10-11',done:false,details:'Read chapter',link:null};
  await demoGateway.saveNote('Prepare seminar',JSON.stringify(value),null,null);
  const {tasks}=await loadPlan(demoGateway);assert.equal(tasks.length,1);
- const task=tasks[0];await demoGateway.saveNote(task.title,JSON.stringify({...value,done:true}),task.id,task.version);
- await assert.rejects(()=>demoGateway.saveNote(task.title,JSON.stringify(value),task.id,task.version));
+ const task=tasks[0];await demoGateway.saveTask(task.title,JSON.stringify({...value,done:true}),task.id,task.version);
+ await assert.rejects(()=>demoGateway.saveTask(task.title,JSON.stringify(value),task.id,task.version));
  assert.equal((await loadPlan(demoGateway)).tasks[0].plan.done,true);
  selectDemo('owner');assert.equal((await loadPlan(demoGateway)).tasks.length,0);
- await assert.rejects(()=>demoGateway.deleteNote(task.id,2));
+ await assert.rejects(()=>demoGateway.deleteTask(task.id,2));
  assert.equal(decodePlan(JSON.stringify({...value,due:'2026-02-31'})),null);
  selectDemo('student');render(<App/>);fireEvent.click(screen.getByRole('button',{name:'Студент',exact:true}));
  await screen.findByText('Мой план на сегодня');fireEvent.click(screen.getByRole('button',{name:'Мои заметки',exact:true}));

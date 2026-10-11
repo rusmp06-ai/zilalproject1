@@ -1,21 +1,24 @@
 {
   "name": "studyhub",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --test tests/course-sync-runner.test.mjs",
+    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "build:preview": "npm run build && node scripts/make-preview.mjs",
+    "build:preview": "STUDYHUB_SINGLE_FILE=1 npm run build && node scripts/make-preview.mjs",
     "test:reader:browser": "node tests/reader.browser.mjs",
     "test:study:browser": "node tests/study.browser.mjs",
     "test:reader:tools:browser": "node tests/reader-tools.browser.mjs",
     "test:course:sync": "node --use-env-proxy scripts/check-course-sync.mjs",
     "test:course:sync:runner": "node --test tests/course-sync-runner.test.mjs",
     "test:notes:browser": "node --use-env-proxy tests/notes-source.browser.mjs",
-    "test:plan:browser": "node tests/plan.browser.mjs"
+    "test:plan:browser": "node tests/plan.browser.mjs",
+    "test:hardening:browser": "node tests/hardening.browser.mjs",
+    "test:offline:browser": "node tests/offline.browser.mjs",
+    "test:ocr:browser": "node tests/ocr.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
@@ -35,7 +38,8 @@
     "mammoth": "1.11.0",
     "pdfjs-dist": "6.4.299",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "tesseract.js": "7.0.0"
   },
   "engines": {
     "node": "^24.15.0 || >=26.0.0"

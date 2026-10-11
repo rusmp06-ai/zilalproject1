@@ -24,8 +24,9 @@ export function findText(pages:string[],query:string){const q=query.trim().toLoc
  for(let i=0;i<pages.length;i++){const lower=pages[i].toLocaleLowerCase(),at=lower.indexOf(q);if(at>=0)result.push({page:i+1,snippet:pages[i].slice(Math.max(0,at-55),at+q.length+100)});if(result.length===100)break;}
  return result;
 }
+export const EPUB_MIME='application/epub+zip';
 export const DOCX_MIME='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-export const canReadDocument=(mime:string)=>['application/pdf','text/plain',DOCX_MIME].includes(mime);
+export const canReadDocument=(mime:string)=>['application/pdf','text/plain',DOCX_MIME,EPUB_MIME].includes(mime);
 
 export function highlightedText(text:string,query:string){
  const q=query.trim().toLocaleLowerCase();if(!q)return [{text,match:false}];

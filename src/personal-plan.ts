@@ -8,9 +8,14 @@ export function decodePlan(body:string):PlanValue|null{
  if(p.link!==null&&(!p.link||!['course','document','note'].includes(p.link.kind)||typeof p.link.id!=='string'||!p.link.id||typeof p.link.title!=='string'))return null;
  return p;}catch{return null;}
 }
-export async function loadPlan(api:Gateway):Promise<{tasks:PlanTask[];notes:Note[]}>{
- const tasks:PlanTask[]=[],notes:Note[]=[];
- // The existing private-note quota is 1000 records. Read every page, including completed tasks.
- for(let offset=0;offset<1000;offset+=50){const rows=await api.notes('',offset);for(const n of rows){const plan=decodePlan(n.body);if(plan)tasks.push({...n,plan});else notes.push(n);}if(rows.length<50)break;}
- tasks.sort((a,b)=>Number(a.plan.done)-Number(b.plan.done)||(a.plan.due||'9999').localeCompare(b.plan.due||'9999')||a.title.localeCompare(b.title));return {tasks,notes};
+export async function loadPersonalNotes(api:Gateway):Promise<Note[]>{
+ const notes:Note[]=[];
+ // Filter legacy task records before pagination; the private-note quota is 1000 records.
+ for(let offset=0;offset<1000;offset+=50){const rows=await api.notes('',offset);notes.push(...rows.filter(n=>!decodePlan(n.body)));if(rows.length<50)break;}
+ return notes;
 }
+export async function loadPlan(api:Gateway):Promise<{tasks:PlanTask[];notes:Note[]}>{
+ const [tasks,notes]=await Promise.all([loadTasks(api),loadPersonalNotes(api)]);return {tasks,notes};
+}
+
+export async function loadTasks(api:Gateway){const tasks:PlanTask[]=[];for(let offset=0;offset<1000;offset+=50){const rows=await api.taskRecords(offset);for(const n of rows){const plan=decodePlan(n.body);if(plan)tasks.push({...n,plan});}if(rows.length<50)break;}return tasks.sort((a,b)=>Number(a.plan.done)-Number(b.plan.done)||(a.plan.due||'9999').localeCompare(b.plan.due||'9999')||a.title.localeCompare(b.title));}
