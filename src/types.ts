@@ -25,6 +25,8 @@ export interface Gateway {
  removeTeaching(course:string,teacher:string):Promise<void>;
  invitationCatalog(offset:number):Promise<ManagedInvitation[]>;
  revokeInvitation(id:string):Promise<void>;
+ courseReadingState(item:string):Promise<ReadingState>;
+ saveCourseReading(state:ReadingState):Promise<ReadingState>;
  readingState(item:string):Promise<ReadingState>;
  saveReading(state:ReadingState):Promise<ReadingState>;
  notes(search:string,offset:number):Promise<Note[]>;

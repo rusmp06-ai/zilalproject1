@@ -366,26 +366,64 @@ test('reader validates preferences, keeps document text literal and recognizes o
  assert.deepEqual(decodeReaderNote(encodeReaderNote(n)),n);
 });
 
-test('course reader isolates device progress by account and retains progress if storage is full',async()=>{
+test('legacy course reader isolates device progress and retains progress if storage is full',async()=>{
+ const legacyApi={...demoGateway,courseReadingState:async()=>{throw Object.assign(Error('missing RPC'),{code:'PGRST202'});}};
  const {CourseReader}=await import('../src/CourseReader');
  resetDemo();selectDemo('owner');const snap=await demoGateway.snapshot(),course=snap.courses.find(c=>c.group_id==='g0')!;
  const file=Object.assign(new Blob(['Текст документа. '.repeat(400)],{type:'text/plain'}),{name:'course-reader.txt'});
  await demoGateway.saveMaterial(course.id,'lecture','Чтение курса','',file as File,null);
  const material=(await demoGateway.courseMaterials(course.id,'lecture',0)).items[0];
- selectDemo('student');render(<CourseReader api={demoGateway} material={material} onClose={()=>{}}/>);
+ selectDemo('student');render(<CourseReader api={legacyApi} material={material} onClose={()=>{}}/>);
  await screen.findByText('Страница 1 из 2 · Прогресс: 50%');
  fireEvent.click(screen.getByRole('button',{name:'Следующая страница'}));await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
  fireEvent.click(screen.getByRole('button',{name:'Добавить закладку'}));await screen.findByRole('button',{name:'К странице 2'});
- cleanup();selectDemo('owner');render(<CourseReader api={demoGateway} material={material} onClose={()=>{}}/>);
+ cleanup();selectDemo('owner');render(<CourseReader api={legacyApi} material={material} onClose={()=>{}}/>);
  await screen.findByText('Страница 1 из 2 · Прогресс: 50%');assert.equal(screen.queryByRole('button',{name:'К странице 2'})===null,true);
  cleanup();selectDemo('student');
  const proto=Object.getPrototypeOf(localStorage),original=proto.setItem;
  proto.setItem=function(key:string,value:string){if(key.startsWith('studyhub-course-reading-v1:'))throw Error('QuotaExceeded');return original.call(this,key,value);};
  try{
-  render(<CourseReader api={demoGateway} material={material} onClose={()=>{}}/>);await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
+  render(<CourseReader api={legacyApi} material={material} onClose={()=>{}}/>);await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
   fireEvent.click(screen.getByRole('button',{name:'Предыдущая страница'}));await screen.findByText('Страница 1 из 2 · Прогресс: 50%');
   fireEvent.click(screen.getByRole('button',{name:'К странице 2'}));await screen.findByText('Страница 2 из 2 · Прогресс: 100%');
   fireEvent.click(screen.getByRole('button',{name:'Убрать закладку'}));await waitFor(()=>assert.equal(screen.queryByRole('button',{name:'К странице 2'})===null,true));
   assert.equal(screen.queryByRole('button',{name:'К странице 2'})===null,true);
  }finally{proto.setItem=original;}
+});
+
+test('course account marks import legacy once and never overwrite newer account position',async()=>{
+ const {courseReading}=await import('../src/course-reading');const {emptyReading}=await import('../src/reader-state');
+ const item='migration-example',key='studyhub-course-reading-v1:student:'+item;let stored=emptyReading(item),writes=0;
+ const api={...demoGateway,courseReadingState:async()=>structuredClone(stored),saveCourseReading:async next=>{assert.equal(next.version,stored.version);writes++;stored={...next,version:stored.version+1};return structuredClone(stored);}};
+ localStorage.setItem(key,JSON.stringify({...emptyReading(item),page:3,total_pages:5,bookmarks:[2,3],version:4}));
+ const first=courseReading(api,'student',item,()=>assert.fail('RPC exists'));
+ assert.equal((await first.read()).page,3);assert.equal(writes,1);assert.equal(localStorage.getItem(key),null);
+ // Another device has a stale local copy, but the account is authoritative.
+ stored={...stored,page:4,version:2};localStorage.setItem(key,JSON.stringify({...stored,page:1,version:1}));
+ const second=courseReading(api,'student',item,()=>assert.fail('RPC exists'));assert.equal((await second.read()).page,4);assert.equal(writes,1);
+ await second.save({...await second.read(),page:5});assert.equal((await first.read()).page,5);
+ localStorage.removeItem(key);
+});
+
+test('course reading never silently falls back after access or network errors',async()=>{
+ const {courseReading}=await import('../src/course-reading');const {emptyReading}=await import('../src/reader-state');
+ for(const code of ['42501','NETWORK','PGRST301']){
+  const api={...demoGateway,courseReadingState:async()=>{throw Object.assign(Error('denied or offline'),{code});}};
+  const reading=courseReading(api,'student','protected-document',()=>assert.fail('unexpected fallback'));
+  await assert.rejects(()=>reading.read(),/denied or offline/);
+ }
+ const api={...demoGateway,courseReadingState:async()=>emptyReading('protected-document'),saveCourseReading:async()=>{throw Error('Network failed');}};
+ const reading=courseReading(api,'student','protected-document',()=>assert.fail('unexpected fallback'));
+ await reading.read();await assert.rejects(()=>reading.save({...emptyReading('protected-document'),total_pages:2}),/Network failed/);
+});
+
+test('demo course account marks are private, versioned and hidden after course denial',async()=>{
+ resetDemo();selectDemo('owner');await demoGateway.saveMaterial('g0c0','lecture','Account reader','',Object.assign(new Blob(['text'],{type:'text/plain'}),{name:'read.txt'}) as File,null);
+ const item=(await demoGateway.courseMaterials('g0c0','lecture',0)).items[0];
+ selectDemo('student');const original=await demoGateway.courseReadingState(item.id);
+ const saved=await demoGateway.saveCourseReading({...original,page:2,total_pages:3,bookmarks:[2]});assert.equal(saved.version,1);
+ await assert.rejects(()=>demoGateway.saveCourseReading({...original,total_pages:3}),/Отметки изменены/);
+ selectDemo('owner');assert.equal((await demoGateway.courseReadingState(item.id)).version,0);
+ await demoGateway.deny('lectures','student',null,null);selectDemo('student');await assert.rejects(()=>demoGateway.courseReadingState(item.id),/Доступ к разделу закрыт/);
+ selectDemo('owner');const s=await demoGateway.snapshot();await demoGateway.restore(s.denials[0].id);selectDemo('student');assert.equal((await demoGateway.courseReadingState(item.id)).page,2);
 });

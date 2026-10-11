@@ -7,7 +7,7 @@ const url=env.VITE_SUPABASE_URL,key=env.VITE_SUPABASE_ANON_KEY;
 export const configured=Boolean(url&&key);
 export const client=configured?createClient(url,key):null;
 function db(){if(!client)throw Error('Supabase ещё не подключён.');return client;}
-async function rpc<T>(name:string,args:Record<string,unknown>={}){const {data,error}=await db().rpc(name,args);if(error)throw Error(error.message);return data as T;}
+async function rpc<T>(name:string,args:Record<string,unknown>={}){const {data,error}=await db().rpc(name,args);if(error)throw Object.assign(Error(error.message),{code:error.code});return data as T;}
 async function rows<T>(table:string){const {data,error}=await db().from(table).select('*');if(error)throw Error(error.message);return (data||[]) as T[];}
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').insert({id:data.user.id,full_name:name});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
@@ -17,6 +17,8 @@ export const liveGateway:Gateway={
  async removeTeaching(course,teacher){await rpc('remove_teaching_assignment',{p_course:course,p_teacher:teacher});},
  async invitationCatalog(offset){return rpc<ManagedInvitation[]>('invitation_catalog',{p_offset:offset});},
  async revokeInvitation(id){await rpc('revoke_invitation',{p_id:id});},
+ async courseReadingState(item){const rows=await rpc<ReadingState[]>('course_reader_state',{p_item:item});return rows[0]||emptyReading(item);},
+ async saveCourseReading(state){validateReading(state);return rpc<ReadingState>('save_course_reader_state',{p_item:state.item_id,p_page:state.page,p_total:state.total_pages,p_favorite:false,p_bookmarks:state.bookmarks,p_version:state.version});},
  async readingState(item){const rows=await rpc<ReadingState[]>('reader_state',{p_item:item});return rows[0]||emptyReading(item);},
  async saveReading(state){validateReading(state);return rpc<ReadingState>('save_reader_state',{p_item:state.item_id,p_page:state.page,p_total:state.total_pages,p_favorite:state.favorite,p_bookmarks:state.bookmarks,p_version:state.version});},
  async notes(search,offset){return rpc<Note[]>('note_catalog',{p_search:search,p_offset:offset});},
