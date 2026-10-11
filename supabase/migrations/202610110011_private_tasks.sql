@@ -1,5 +1,5 @@
 begin;
-create function public.is_plan_record(body text) returns boolean language plpgsql immutable set search_path=pg_catalog as $$
+create or replace function public.is_plan_record(body text) returns boolean language plpgsql immutable set search_path=pg_catalog as $$
 declare p jsonb;
 begin
  p:=body::jsonb;
@@ -9,23 +9,24 @@ begin
 exception when others then return false;
 end $$;
 
-create table public.private_tasks (
+create table if not exists public.private_tasks (
  id uuid primary key default gen_random_uuid(),user_id uuid not null references public.profiles(id),
  title text not null check(length(trim(title)) between 1 and 200),body text not null default '' check(length(body)<=50000),
  version integer not null default 1,created_at timestamptz not null default now(),updated_at timestamptz not null default now()
 );
-create index tasks_by_user on public.private_tasks(user_id,updated_at desc,id);
+create index if not exists tasks_by_user on public.private_tasks(user_id,updated_at desc,id);
 alter table public.private_tasks enable row level security;
 revoke all on public.private_tasks from anon,authenticated;
 grant select on public.private_tasks to authenticated;
+drop policy if exists notes_own on public.private_tasks;
 create policy notes_own on public.private_tasks for select to authenticated using(user_id=auth.uid() and public.is_active_user());
-create function public.task_catalog(p_search text default '',p_offset integer default 0) returns setof public.private_tasks
+create or replace function public.task_catalog(p_search text default '',p_offset integer default 0) returns setof public.private_tasks
 language sql stable security definer set search_path=pg_catalog as $$
  select * from public.private_tasks n where n.user_id=auth.uid() and public.is_active_user()
  and (position(lower(coalesce(p_search,'')) in lower(n.title))>0 or position(lower(coalesce(p_search,'')) in lower(n.body))>0)
  order by n.updated_at desc,n.id limit 50 offset greatest(0,least(coalesce(p_offset,0),100000));
 $$;
-create function public.save_private_task(p_title text,p_body text,p_id uuid default null,p_version integer default null) returns uuid
+create or replace function public.save_private_task(p_title text,p_body text,p_id uuid default null,p_version integer default null) returns uuid
 language plpgsql security definer set search_path=pg_catalog as $$
 declare result uuid; used_bytes bigint; replaced_bytes bigint;
 begin
@@ -45,7 +46,7 @@ begin
  end if;
  return result;
 end $$;
-create function public.delete_private_task(p_id uuid,p_version integer) returns void
+create or replace function public.delete_private_task(p_id uuid,p_version integer) returns void
 language plpgsql security definer set search_path=pg_catalog as $$
 begin
  if not public.is_active_user() then raise exception 'Access denied'; end if;
@@ -55,8 +56,9 @@ end $$;
 revoke all on function public.task_catalog(text,integer),public.save_private_task(text,text,uuid,integer),public.delete_private_task(uuid,integer) from public,anon;
 grant execute on function public.task_catalog(text,integer),public.save_private_task(text,text,uuid,integer),public.delete_private_task(uuid,integer) to authenticated;
 -- Move existing plan records without changing their IDs, versions or timestamps.
-insert into public.private_tasks select * from public.private_notes where public.is_plan_record(body);
-delete from public.private_notes where public.is_plan_record(body);
+insert into public.private_tasks select * from public.private_notes where public.is_plan_record(body) on conflict (id) do nothing;
+delete from public.private_notes n using public.private_tasks t where n.id=t.id and n.user_id=t.user_id and n.title=t.title and n.body=t.body and n.version=t.version and n.created_at=t.created_at and n.updated_at=t.updated_at and public.is_plan_record(n.body);
+do $$ begin if exists(select 1 from public.private_notes where public.is_plan_record(body)) then raise exception 'Task migration conflict: existing task differs from note. No records were removed; contact support.';end if;end $$;
 revoke all on function public.is_plan_record(text) from public,anon;
 grant execute on function public.is_plan_record(text) to authenticated;
 commit;

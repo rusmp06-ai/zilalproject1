@@ -21,4 +21,10 @@ try {
   if(path.endsWith('0011_private_tasks.sql'))await db.exec(`do $$ begin if not exists(select 1 from public.private_tasks where id='00000000-0000-0000-0000-000000000812' and version=7) or exists(select 1 from public.private_notes where id='00000000-0000-0000-0000-000000000812') then raise exception 'Migration lost task';end if;end $$;delete from public.private_tasks where id='00000000-0000-0000-0000-000000000812';`);
   console.log('PASS',path);
  }
+ const bundle=await readFile(new URL('../supabase/StudyHub_update_v0.16.sql',import.meta.url),'utf8');
+ const snapshot=async()=>JSON.stringify((await db.query('select id,user_id,title,body,version,created_at,updated_at from public.private_tasks order by id')).rows);
+ await db.exec(`insert into auth.users values('00000000-0000-0000-0000-000000000821');insert into public.profiles(id,full_name) values('00000000-0000-0000-0000-000000000821','Repeat fixture');insert into public.private_tasks(user_id,title,body,version) values('00000000-0000-0000-0000-000000000821','Keep task','{"studyhub_plan":1,"due":null,"done":false,"details":"Keep body","link":null}',9);`);
+ const before=await snapshot();await db.exec(bundle);await db.exec(bundle);
+ if(await snapshot()!==before)throw Error('Repeated update modified existing tasks');
+ console.log('PASS complete update repeated twice; existing task content, versions and timestamps preserved');
 } finally {await db.close();}

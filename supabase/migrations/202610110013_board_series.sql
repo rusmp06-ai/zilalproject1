@@ -1,5 +1,5 @@
 begin;
-create function public.save_board_series(p_group uuid,p_course uuid,p_title text,p_body text,p_location text,p_start timestamptz,p_end timestamptz,p_weeks integer) returns uuid[]
+create or replace function public.save_board_series(p_group uuid,p_course uuid,p_title text,p_body text,p_location text,p_start timestamptz,p_end timestamptz,p_weeks integer) returns uuid[]
 language plpgsql security definer set search_path=pg_catalog as $$
 declare ids uuid[]:='{}'; i integer;
 begin
