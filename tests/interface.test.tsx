@@ -451,3 +451,20 @@ test('source resolution enforces section access and search highlights literal ma
  resetDemo();selectDemo('owner');await demoGateway.deny('library','student',null,null);selectDemo('student');await assert.rejects(()=>demoGateway.readerSource('sample-note'),/Доступ к чтению закрыт/);
  resetDemo();selectDemo('owner');await demoGateway.saveMaterial('g0c0','lecture','Закрытый источник','',Object.assign(new Blob(['text'],{type:'text/plain'}),{name:'source.txt'}) as File,null);const m=(await demoGateway.courseMaterials('g0c0','lecture',0)).items[0];await demoGateway.deny('lectures','student',null,null);selectDemo('student');await assert.rejects(()=>demoGateway.readerSource(m.id),/Доступ к разделу закрыт/);
 });
+
+test('personal plan persists, hides from notes, enforces private ownership and optimistic version',async()=>{
+ const {loadPlan,decodePlan}=await import('../src/personal-plan');
+ resetDemo();selectDemo('student');
+ const value={studyhub_plan:1,due:'2026-10-11',done:false,details:'Read chapter',link:null};
+ await demoGateway.saveNote('Prepare seminar',JSON.stringify(value),null,null);
+ const {tasks}=await loadPlan(demoGateway);assert.equal(tasks.length,1);
+ const task=tasks[0];await demoGateway.saveNote(task.title,JSON.stringify({...value,done:true}),task.id,task.version);
+ await assert.rejects(()=>demoGateway.saveNote(task.title,JSON.stringify(value),task.id,task.version));
+ assert.equal((await loadPlan(demoGateway)).tasks[0].plan.done,true);
+ selectDemo('owner');assert.equal((await loadPlan(demoGateway)).tasks.length,0);
+ await assert.rejects(()=>demoGateway.deleteNote(task.id,2));
+ assert.equal(decodePlan(JSON.stringify({...value,due:'2026-02-31'})),null);
+ selectDemo('student');render(<App/>);fireEvent.click(screen.getByRole('button',{name:'Студент',exact:true}));
+ await screen.findByText('Мой план на сегодня');fireEvent.click(screen.getByRole('button',{name:'Мои заметки',exact:true}));
+ await screen.findByText('Новая заметка');assert.equal(screen.queryByText('Prepare seminar'),null);
+});

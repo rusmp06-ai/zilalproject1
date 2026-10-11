@@ -1,6 +1,6 @@
 {
   "name": "studyhub",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,8 @@
     "test:reader:tools:browser": "node tests/reader-tools.browser.mjs",
     "test:course:sync": "node --use-env-proxy scripts/check-course-sync.mjs",
     "test:course:sync:runner": "node --test tests/course-sync-runner.test.mjs",
-    "test:notes:browser": "node --use-env-proxy tests/notes-source.browser.mjs"
+    "test:notes:browser": "node --use-env-proxy tests/notes-source.browser.mjs",
+    "test:plan:browser": "node tests/plan.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
