@@ -229,3 +229,7 @@ Validated: 33 UI tests plus existing model/SQL/runner checks; mobile plan browse
 ## 18. Warmer student visual style
 
 Replaced text arrows with local rounded SVG icons (decorative, hidden from accessibility tree); course/calendar/book/note pictograms replace shortcut numbers and course numbering. Peach/rose/lavender welcome panel, richer activity colours, softly tinted schedule/deadline/course/bookshelf cards, warm neutral page background, colour accents in navigation. Reader document themes preserved. Updated greeting and navigation selectors in existing tests; 33 UI tests, study/plan desktop/mobile browser checks and demo/production builds pass. Demo preview refreshed; site deployment unverified.
+
+## 19. Professional visual direction (supersedes section 18)
+
+User requested a business style. Removed colourful card surfaces, welcome gradient/decoration and informal greeting. Neutral white/slate surfaces, muted blue primary/navigation and limited violet/blue/ochre/rose icon accents keep activity distinctions. Rounded icons/corners retained. Verified desktop/mobile study browser and production/demo builds; preview refreshed.
