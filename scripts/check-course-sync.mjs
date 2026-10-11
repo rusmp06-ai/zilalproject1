@@ -7,7 +7,7 @@ export async function checkCourseSync({url,key,email,password},log=console.log){
  let item=null,stage='вход',failure=null;const tokens=[];
  const rpc=async(client,name,args={})=>{const {data,error}=await client.rpc(name,args);if(error)throw Error(`${name}: ${error.code||'request_failed'}`);return data;};
  try{
-  for(const client of clients){const {data,error}=await client.auth.signInWithPassword({email,password});if(error||!data.session)throw Error('Вход не выполнен. Проверьте тестовый аккаунт и подтверждение email.');tokens.push(data.session.access_token);}
+  for(const client of clients){const {data,error}=await client.auth.signInWithPassword({email,password});if(error?.status===0)throw Error('Сетевое подключение не выполнено. Проверьте прокси и доступ к Supabase.');if(error||!data.session)throw Error('Вход не выполнен. Проверьте тестовый аккаунт и подтверждение email.');tokens.push(data.session.access_token);}
   if(tokens[0]===tokens[1])throw Error('Две независимые сессии не созданы.');
   const identities=await Promise.all(clients.map(async c=>{const {data,error}=await c.auth.getUser();if(error||!data.user)throw Error('Сессия не подтверждена.');return data.user.id;}));
   assert.equal(identities[0],identities[1]);log('PASS: две независимые сессии одного аккаунта');

@@ -12,7 +12,7 @@
     "test:reader:browser": "node tests/reader.browser.mjs",
     "test:study:browser": "node tests/study.browser.mjs",
     "test:reader:tools:browser": "node tests/reader-tools.browser.mjs",
-    "test:course:sync": "node scripts/check-course-sync.mjs",
+    "test:course:sync": "node --use-env-proxy scripts/check-course-sync.mjs",
     "test:course:sync:runner": "node --test tests/course-sync-runner.test.mjs"
   },
   "devDependencies": {
