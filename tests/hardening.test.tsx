@@ -72,3 +72,14 @@ test('global search finds own notes and materials without exposing other account
  render(<StudySearch api={demoGateway} snapshot={snapshot} onCourse={()=>{}} onTasks={()=>{}}/>);fireEvent.change(screen.getByLabelText('Поиск по учебному пространству'),{target:{value:'Finance'}});fireEvent.click(screen.getByRole('button',{name:'Найти',exact:true}));
  await screen.findByText('Finance summary');await screen.findByText('Finance lecture');assert.equal(screen.queryByText('Private owner finance')===null,true);
 });
+
+test('library storefront filters the complete catalog and discards partial data on denial or failure',async()=>{
+ const {libraryCatalog,libraryShelf}=await import('../src/library-world');
+ resetDemo();selectDemo('student');const source=(await demoGateway.library('',0)).items[0];
+ const items=Array.from({length:51},(_,i)=>({...source,id:'book-'+i,title:'Книга '+String(i).padStart(2,'0'),mime_type:i===50?'application/pdf':'text/plain',favorite:i===50,page:i===50?2:1,total_pages:i===50?3:0}));
+ const calls:number[]=[];
+ const api={...demoGateway,library:async(_q:string,offset:number)=>{calls.push(offset);return {items:items.slice(offset,offset+50),canRead:true,quota:null};}};
+ const result=await libraryCatalog(api,'',false);assert.deepEqual(calls,[0,50]);assert.equal(result.items.length,51);assert.equal(libraryShelf(result.items,'reading','PDF','new')[0].id,'book-50');
+ const denied=await libraryCatalog({...api,library:async(q,o)=>o?{items:[],canRead:false,quota:null}:api.library(q,o)},'',false);assert.equal(denied.canRead,false);assert.equal(denied.items.length,0);
+ await assert.rejects(()=>libraryCatalog({...api,library:async(q,o)=>{if(o)throw Error('Network');return api.library(q,o);}},'',false),/Network/);
+});

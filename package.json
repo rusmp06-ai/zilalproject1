@@ -1,6 +1,6 @@
 {
   "name": "studyhub",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,7 +18,8 @@
     "test:plan:browser": "node tests/plan.browser.mjs",
     "test:hardening:browser": "node tests/hardening.browser.mjs",
     "test:offline:browser": "node tests/offline.browser.mjs",
-    "test:ocr:browser": "node tests/ocr.browser.mjs"
+    "test:ocr:browser": "node tests/ocr.browser.mjs",
+    "test:library:world:browser": "node tests/library-world.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
