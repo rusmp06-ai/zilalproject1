@@ -1,3 +1,4 @@
+import {catalogPages} from './catalog-pages';
 import {decodePlan} from './personal-plan';
 import {createClient} from '@supabase/supabase-js';
 import {emptyReading,validateReading} from './reader-state';
@@ -9,10 +10,11 @@ export const configured=Boolean(url&&key);
 export const client=configured?createClient(url,key):null;
 function db(){if(!client)throw Error('Supabase ещё не подключён.');return client;}
 async function rpc<T>(name:string,args:Record<string,unknown>={}){const {data,error}=await db().rpc(name,args);if(error)throw Object.assign(Error(error.message),{code:error.code});return data as T;}
-async function rows<T>(table:string){const {data,error}=await db().from(table).select('*');if(error)throw Error(error.message);return (data||[]) as T[];}
+async function rows<T>(table:string){const order=table==='group_memberships'?['group_id','user_id','role']:table==='leader_entitlements'?['user_id']:['id'];return catalogPages<T>(async(offset,limit)=>{let q=db().from(table).select('*');for(const column of order)q=q.order(column);const {data,error}=await q.range(offset,offset+limit-1);if(error)throw Error(error.message);return (data||[]) as T[];});}
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').insert({id:data.user.id,full_name:name});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
  demo:false,
+ async auditEvents(offset){if(!Number.isInteger(offset)||offset<0)throw Error('Некорректная страница.');if(!await rpc<boolean>('is_owner'))throw Error('Требуются права владельца.');const {data,error}=await db().from('audit_events').select('id,actor_id,action,entity_id,details,created_at').order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+49);if(error)throw Error(error.message);return (data||[]) as import('./types').AuditEvent[];},
  async groupMembers(group,offset){return rpc<import('./types').GroupMember[]>('group_member_catalog',{p_group:group,p_offset:offset});},
  async courseWorkspace(course){return rpc<CourseWorkspace>('course_workspace',{p_course:course});},
  async saveCourseTopic(course,title,description,position,id,version){await rpc('save_course_topic',{p_course:course,p_title:title,p_description:description,p_position:position,p_id:id,p_version:version});},

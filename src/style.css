@@ -90,3 +90,35 @@
 .account .account-admin{background:#eaf1fa;border-color:#b7cce7;color:#214f85}
 @media(max-width:650px){.leader-admin-heading{align-items:flex-start;flex-direction:column;gap:12px}.leader-admin-tabs{gap:8px}.leader-admin-tabs button{padding:10px 12px}.leader-admin .card{padding:18px}.leader-admin .people-list>div{min-width:0;overflow-wrap:anywhere}.account .account-admin{padding:8px 10px}.leader-admin .card-actions{flex-wrap:wrap}}
 @media(max-width:650px){.leader-admin-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.leader-admin-tabs button{width:100%;min-width:0;white-space:normal;line-height:1.4}.leader-admin-heading h2{font-size:24px}}
+
+/* Project ownership: overview first, explicit administration second. */
+.owner-intro{padding:28px;background:#edf3fa;border:1px solid #d4e1f0;border-radius:18px;margin-bottom:24px}
+.owner-intro h2{font-size:27px;line-height:1.35;margin:10px 0;max-width:650px}
+.owner-intro p{max-width:680px;color:var(--muted)}
+.owner-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:22px}
+.owner-stats .card{display:flex;flex-direction:column;gap:9px;padding:22px}
+.owner-stats strong{font-size:32px;color:#254d79}
+.owner-stats small{color:var(--muted)}
+.owner-overview>.card{margin-bottom:22px}
+.owner-role-counts,.owner-shortcuts{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+.owner-shortcuts{margin:20px 0}
+.owner-admin-tabs{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0 26px;padding-bottom:20px;border-bottom:1px solid #dce3ed}
+.owner-admin-tabs button[aria-current=page]{background:#e6effb;border-color:#87aadb;color:#204f87}
+.owner-admin>.card{margin:20px 0}
+.owner-admin>label{max-width:360px}
+.owner-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:24px 0}
+.owner-filters label{margin:0}
+.owner-group-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.owner-group-grid article,.owner-account-list article{min-width:0;overflow-wrap:anywhere}
+.owner-account-list{display:grid;gap:16px}
+.owner-account-list article{display:flex;justify-content:space-between;gap:20px;align-items:start}
+.owner-account-list article>div{min-width:0}
+.owner-account-list h3{margin-top:0}
+.owner-memberships{padding-left:20px;margin:14px 0 0;line-height:1.6}
+.owner-block-control{margin-top:16px}
+.owner-block-control p{max-width:430px}
+.owner-block-control .card-actions{flex-wrap:wrap}
+.owner-transfer{margin:26px 0}
+.owner-transfer summary{cursor:pointer;font-weight:600;color:#285b95;padding:12px 0}
+@media(max-width:900px){.owner-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.owner-intro{padding:20px}.owner-intro h2{font-size:23px}.owner-stats{gap:12px}.owner-stats .card{padding:16px}.owner-stats strong{font-size:27px}.owner-admin-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.owner-admin-tabs button{width:100%;min-width:0;white-space:normal;padding:10px;line-height:1.4}.owner-filters,.owner-group-grid{grid-template-columns:1fr}.owner-account-list article{display:block}.owner-admin .card{padding:18px}.owner-admin .card-actions{flex-wrap:wrap}.owner-shortcuts{gap:10px}.owner-admin .pagination{flex-wrap:wrap}.owner-overview .card-actions{flex-wrap:wrap}}

@@ -1,0 +1,25 @@
+begin;
+insert into auth.users(id) select ('00000000-0000-0000-0000-00000000160'||n)::uuid from generate_series(1,3) n;
+insert into public.profiles(id,full_name) select id,'Owner audit '||id from auth.users where id::text like '%00000000160_';
+insert into public.platform_owners values('00000000-0000-0000-0000-000000001601');
+insert into public.study_groups(id,name,created_by) values('00000000-0000-0000-0000-000000001611','Audit scope','00000000-0000-0000-0000-000000001601');
+insert into public.group_memberships(group_id,user_id,role) values('00000000-0000-0000-0000-000000001611','00000000-0000-0000-0000-000000001602','leader'),('00000000-0000-0000-0000-000000001611','00000000-0000-0000-0000-000000001603','student');
+set local role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000001601',true);
+do $$ begin
+ perform public.set_block(null,'00000000-0000-0000-0000-000000001611',true);
+ if not exists(select 1 from public.audit_events where actor_id=auth.uid() and action='access.block' and entity_id='00000000-0000-0000-0000-000000001611' and details->>'blocked'='true') then raise exception 'TEST FAILED: owner audit missing';end if;
+ perform public.set_block(null,'00000000-0000-0000-0000-000000001611',false);
+ begin insert into public.audit_events(actor_id,action) values(auth.uid(),'fabricated');raise exception 'TEST FAILED: owner can fabricate audit';exception when insufficient_privilege then null;end;
+ begin delete from public.audit_events;raise exception 'TEST FAILED: owner can erase audit';exception when insufficient_privilege then null;end;
+ perform set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000001602',true);
+ if exists(select 1 from public.audit_events) then raise exception 'TEST FAILED: leader audit leak';end if;
+ perform set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000001603',true);
+ if exists(select 1 from public.audit_events) then raise exception 'TEST FAILED: student audit leak';end if;
+end $$;
+reset role;
+update public.profiles set blocked=true where id='00000000-0000-0000-0000-000000001601';
+set local role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000001601',true);
+do $$ begin if exists(select 1 from public.audit_events) then raise exception 'TEST FAILED: blocked owner audit leak';end if;end $$;
+rollback;
