@@ -77,3 +77,16 @@
 .schedule-management{margin-top:28px}
 @media(max-width:1200px){.schedule-days.week{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:650px){.schedule-days.week{grid-template-columns:1fr}.schedule-controls{gap:12px}.schedule-controls .card-actions{flex-wrap:wrap}.schedule-controls button{padding:10px 12px}.schedule-day{padding:14px}.schedule-detail .card-actions{flex-wrap:wrap}}
+
+/* Leader administration is separate from the personal study workspace. */
+.leader-admin-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:22px}
+.leader-admin-heading h2{margin:8px 0;font-size:28px}
+.leader-admin-heading p{margin:8px 0;color:var(--muted)}
+.leader-admin-context{margin-bottom:22px}
+.leader-admin-context label{max-width:320px}
+.leader-admin-tabs{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0 24px;padding-bottom:20px;border-bottom:1px solid #dce3ed}
+.leader-admin-tabs button[aria-current=page]{background:#e6effb;border-color:#87aadb;color:#204f87}
+.leader-admin>.card,.leader-new-group{margin:20px 0}
+.account .account-admin{background:#eaf1fa;border-color:#b7cce7;color:#214f85}
+@media(max-width:650px){.leader-admin-heading{align-items:flex-start;flex-direction:column;gap:12px}.leader-admin-tabs{gap:8px}.leader-admin-tabs button{padding:10px 12px}.leader-admin .card{padding:18px}.leader-admin .people-list>div{min-width:0;overflow-wrap:anywhere}.account .account-admin{padding:8px 10px}.leader-admin .card-actions{flex-wrap:wrap}}
+@media(max-width:650px){.leader-admin-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.leader-admin-tabs button{width:100%;min-width:0;white-space:normal;line-height:1.4}.leader-admin-heading h2{font-size:24px}}

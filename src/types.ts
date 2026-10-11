@@ -5,6 +5,7 @@ export type Course={id:string;group_id:string;title:string;archived:boolean};
 export type Membership={user_id:string;group_id:string;role:Role;active:boolean};
 export type Denial={id:string;user_id:string|null;group_id:string|null;section:string;course_id:string|null};
 export type Snapshot={me:Profile;owner:boolean;groups:Group[];courses:Course[];profiles:Profile[];memberships:Membership[];denials:Denial[];availableGroups:number};
+export type GroupMember={user_id:string;full_name:string;role:Role;active:boolean};
 export type ManagedInvitation={id:string;role:Role;group_id:string|null;expires_at:string;max_uses:number;used_count:number;revoked:boolean};
 export type TeachingAssignment={course_id:string;teacher_id:string;teacher_name:string};
 export type Invitation={id?:string;revoked?:boolean;token:string;role:Role;group:string|null;courses:string[];uses:number;max:number;creator:string;expires:number;redeemed:string[]};
@@ -25,6 +26,7 @@ export type CourseLink={topic_id:string;source_id:string;source_kind:'material'|
 export type CourseWorkspace={topics:CourseTopic[];links:CourseLink[];completed:string[];canManage:boolean;resume:{item_id:string;page:number;total_pages:number}|null};
 export type AssignmentProgress={assignment_id:string;status:string;attempt_no:number};
 export interface Gateway {
+ groupMembers(group:string,offset:number):Promise<GroupMember[]>;
  courseWorkspace(course:string):Promise<CourseWorkspace>;
  saveCourseTopic(course:string,title:string,description:string,position:number,id:string|null,version:number|null):Promise<void>;
  deleteCourseTopic(id:string,version:number):Promise<void>;

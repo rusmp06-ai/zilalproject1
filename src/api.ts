@@ -13,6 +13,7 @@ async function rows<T>(table:string){const {data,error}=await db().from(table).s
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').insert({id:data.user.id,full_name:name});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
  demo:false,
+ async groupMembers(group,offset){return rpc<import('./types').GroupMember[]>('group_member_catalog',{p_group:group,p_offset:offset});},
  async courseWorkspace(course){return rpc<CourseWorkspace>('course_workspace',{p_course:course});},
  async saveCourseTopic(course,title,description,position,id,version){await rpc('save_course_topic',{p_course:course,p_title:title,p_description:description,p_position:position,p_id:id,p_version:version});},
  async deleteCourseTopic(id,version){await rpc('delete_course_topic',{p_id:id,p_version:version});},

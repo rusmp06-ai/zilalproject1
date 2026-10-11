@@ -2,11 +2,19 @@ import {useEffect,useState} from 'react';
 import type {Gateway,Assignment,Work,Course} from './types';
 import {FILE_ACCEPT,sizeLabel} from './files';
 const statuses:Record<string,string>={uploading:'Загрузка не завершена',deleting:'Удаление не завершено',submitted:'На проверке',returned:'Возвращено на доработку',graded:'Оценено'};
-export function AssignmentsPanel({api,course,initialAssignment=''}:{api:Gateway;course:Course;initialAssignment?:string}){
+// A dual-role account can grade some courses; its study view still shows only its own attempts.
+export async function studyWorks(api:Gateway,assignment:string,user:string,offset:number,studyOnly:boolean,grader:boolean){
+ if(!studyOnly)return api.works(assignment,offset);
+ let rows:Work[]=[];
+ if(!grader)rows=await api.works(assignment,offset);
+ else {for(let page=0;;page+=50){const part=await api.works(assignment,page);rows.push(...part.filter(w=>w.student_id===user));if(part.length<50)break;if(page>=100000)throw Error('Слишком много попыток сдачи.');}rows=rows.slice(offset,offset+50);}
+ return rows.filter(w=>w.student_id===user).map(w=>w.released_at?w:{...w,score:null,feedback:null});
+}
+export function AssignmentsPanel({api,course,initialAssignment='',studyOnly=false}:{api:Gateway;course:Course;initialAssignment?:string;studyOnly?:boolean}){
  const [tasks,setTasks]=useState<Assignment[]>([]),[selected,setSelected]=useState(initialAssignment),[works,setWorks]=useState<Work[]>([]),[offset,setOffset]=useState(0),[canGrade,setCanGrade]=useState(false),[canSubmit,setCanSubmit]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[userId,setUserId]=useState(''),[file,setFile]=useState<File|null>(null),[fileKey,setFileKey]=useState(0);
  const task=tasks.find(a=>a.id===selected),latest=works.filter(w=>w.student_id===userId).sort((a,b)=>b.attempt_no-a.attempt_no)[0];
- async function load(){const p=await api.assignments(course.id);setTasks(p.items);setCanGrade(p.canGrade);setCanSubmit(p.canSubmit);setUserId(p.userId);if(selected)setWorks(await api.works(selected,offset));}
- useEffect(()=>{let alive=true;setBusy(true);api.assignments(course.id).then(async p=>{const w=selected?await api.works(selected,offset):[];if(alive){setTasks(p.items);setCanGrade(p.canGrade);setCanSubmit(p.canSubmit);setUserId(p.userId);setWorks(w);setError('');}}).catch(e=>{if(alive){setError(e.message);setTasks([]);setWorks([]);setCanGrade(false);setCanSubmit(false);}}).finally(()=>{if(alive)setBusy(false);});return()=>{alive=false;};},[api,course.id,selected,offset]);
+ async function load(){const p=await api.assignments(course.id);setTasks(p.items);setCanGrade(p.canGrade&&!studyOnly);setCanSubmit(p.canSubmit);setUserId(p.userId);if(selected)setWorks(await studyWorks(api,selected,p.userId,offset,studyOnly,p.canGrade));}
+ useEffect(()=>{let alive=true;setBusy(true);api.assignments(course.id).then(async p=>{const w=selected?await studyWorks(api,selected,p.userId,offset,studyOnly,p.canGrade):[];if(alive){setTasks(p.items);setCanGrade(p.canGrade&&!studyOnly);setCanSubmit(p.canSubmit);setUserId(p.userId);setWorks(w);setError('');}}).catch(e=>{if(alive){setError(e.message);setTasks([]);setWorks([]);setCanGrade(false);setCanSubmit(false);}}).finally(()=>{if(alive)setBusy(false);});return()=>{alive=false;};},[api,course.id,selected,offset,studyOnly]);
  async function action(fn:()=>Promise<void>,ok:string){setBusy(true);setError('');setMessage('');try{await fn();await load();setMessage(ok);}catch(e){setError(e instanceof Error?e.message:'Действие не выполнено.');try{await load();}catch{setWorks([]);}}finally{setBusy(false);}}
  function form(fn:(d:FormData,form:HTMLFormElement,submitter:HTMLElement|null)=>Promise<void>,ok:string){return(e:React.FormEvent<HTMLFormElement>)=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f),s=(e.nativeEvent as SubmitEvent).submitter;void action(()=>fn(d,f,s),ok);};}
  async function download(w:Work){await action(async()=>{const blob=await api.downloadWork(w),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=w.original_name||'work';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);},'Файл передан браузеру.');}

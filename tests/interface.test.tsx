@@ -39,8 +39,8 @@ test('owner creates group, invites leader, new account accepts invitation and cr
  fireEvent.click(screen.getByRole('button',{name:'Принять приглашение'}));
  await screen.findByText('Приглашение принято.');
  assert.equal((await demoGateway.snapshot()).availableGroups,1);
- fireEvent.click(screen.getByRole('button',{name:'Группы и дисциплины',exact:true}));
- fireEvent.change(screen.getByPlaceholderText('Например, ИФ-3-24'),{target:{value:'Группа старосты'}});
+ fireEvent.click(screen.getByRole('button',{name:'Открыть админ',exact:true}));
+ fireEvent.change(screen.getByLabelText('Название группы'),{target:{value:'Группа старосты'}});
  fireEvent.click(screen.getByRole('button',{name:'Создать группу',exact:true}));
  await screen.findByText('Группа создана.');
  const s=await demoGateway.snapshot();assert.equal(s.groups.length,1);assert.equal(s.groups[0].name,'Группа старосты');
@@ -71,7 +71,7 @@ test('leader uploads material and owner deletes it; student only reads',async()=
  resetDemo();render(<App/>);
  fireEvent.click(screen.getByRole('button',{name:'Староста',exact:true}));
  await screen.findByText('Ваше пространство');
- fireEvent.click(screen.getByRole('button',{name:'Библиотека',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'Открыть админ',exact:true}));fireEvent.click(screen.getByRole('button',{name:'Публикации в библиотеке',exact:true}));
  await screen.findByText('Как пользоваться общей библиотекой');
  fireEvent.change(screen.getByLabelText('Название материала'),{target:{value:'Лекция старосты'}});
  const file=new dom.window.File(['Finance notes'],'lecture.txt',{type:'text/plain'});
@@ -112,7 +112,7 @@ test('file validation rejects empty, oversized and executable web files',async()
 
 test('leader publishes lecture and course file; student reads without editing rights',async()=>{
  resetDemo();render(<App/>);fireEvent.click(screen.getByRole('button',{name:'Староста',exact:true}));await screen.findByText('Ваше пространство');
- fireEvent.click(screen.getByRole('button',{name:'Группы и дисциплины',exact:true}));fireEvent.click(screen.getAllByRole('button',{name:'Открыть дисциплину'})[0]);
+ fireEvent.click(screen.getByRole('button',{name:'Открыть админ',exact:true}));fireEvent.click(screen.getByRole('button',{name:'Дисциплины и преподаватели'}));fireEvent.click(screen.getAllByRole('button',{name:'Управлять дисциплиной'})[0]);
  fireEvent.click(await screen.findByRole('button',{name:'Материалы',exact:true}));fireEvent.click(await screen.findByRole('button',{name:'Опубликовать материал',exact:true}));await screen.findByRole('heading',{name:'Новый материал',exact:true});
  fireEvent.change(screen.getByLabelText('Название',{exact:true}),{target:{value:'Лекция по финансам'}});
  fireEvent.change(screen.getByLabelText('Текст или описание'),{target:{value:'Текст лекции для своей группы.'}});
@@ -150,8 +150,8 @@ test('assignment return keeps attempts and denies leader grading',async()=>{
 });
 
 test('leader schedule entry can be edited; student reads without controls; owner deletes',async()=>{
- resetDemo();render(<App/>);fireEvent.click(screen.getByRole('button',{name:'Староста',exact:true}));await screen.findByText('Ваше пространство');fireEvent.click(screen.getByRole('button',{name:'Расписание',exact:true}));
- fireEvent.click(await screen.findByRole('button',{name:'Управление занятиями'}));fireEvent.change(await screen.findByLabelText('Название занятия'),{target:{value:'Финансы · семинар'}});fireEvent.change(screen.getByLabelText('Аудитория или место'),{target:{value:'Аудитория 101'}});fireEvent.click(screen.getByRole('button',{name:'Добавить занятие',exact:true}));await screen.findByText('Занятие добавлено.');await screen.findByText('Финансы · семинар');
+ resetDemo();render(<App/>);fireEvent.click(screen.getByRole('button',{name:'Староста',exact:true}));await screen.findByText('Ваше пространство');fireEvent.click(screen.getByRole('button',{name:'Открыть админ',exact:true}));fireEvent.click(screen.getAllByRole('button',{name:'Расписание',exact:true}).at(-1)!);
+ fireEvent.change(await screen.findByLabelText('Название занятия'),{target:{value:'Финансы · семинар'}});fireEvent.change(screen.getByLabelText('Аудитория или место'),{target:{value:'Аудитория 101'}});fireEvent.click(screen.getByRole('button',{name:'Добавить занятие',exact:true}));await screen.findByText('Занятие добавлено.');await screen.findByText('Финансы · семинар');
  fireEvent.click(screen.getByRole('button',{name:'Изменить запись'}));fireEvent.change(screen.getByLabelText('Название занятия'),{target:{value:'Финансы · практика'}});fireEvent.click(screen.getByRole('button',{name:'Сохранить изменения'}));await screen.findByText('Запись обновлена.');await screen.findByText('Финансы · практика');
  fireEvent.click(screen.getByRole('button',{name:'Студент',exact:true}));await screen.findByText('Ваше пространство');fireEvent.click(screen.getByRole('button',{name:'Расписание',exact:true}));await screen.findByText('Финансы · практика');assert.equal(screen.queryByRole('button',{name:'Добавить занятие',exact:true})===null,true);assert.equal(screen.queryByRole('button',{name:'Изменить запись'})===null,true);await screen.findByText('Аудитория 101');
  fireEvent.click(screen.getByRole('button',{name:'Владелец',exact:true}));await screen.findByText('Ваше пространство');fireEvent.click(screen.getByRole('button',{name:'Расписание',exact:true}));fireEvent.click(await screen.findByRole('button',{name:'Управление занятиями'}));fireEvent.click(await screen.findByRole('button',{name:'Удалить запись'}));fireEvent.click(screen.getByRole('button',{name:'Подтвердить удаление'}));await screen.findByText('Запись удалена.');await waitFor(()=>assert.equal(screen.queryByText('Финансы · практика')===null,true));
@@ -217,10 +217,10 @@ test('owner transfers student with confirmation and preserves personal notes',as
  fireEvent.click(screen.getByRole('button',{name:'Студент',exact:true}));await screen.findByText('Ваше пространство');assert.deepEqual((await demoGateway.snapshot()).groups.map(g=>g.id),['g1']);assert.equal((await demoGateway.notes('',0))[0].title,'Keep me');await assert.rejects(()=>demoGateway.transferStudent('student','g1','g0'),/владельца/);
 });
 test('leader revokes own invitation and removes only one teaching assignment',async()=>{
- resetDemo();selectDemo('owner');await demoGateway.invite('student','g0',[],60);selectDemo('leader');const token=await demoGateway.invite('student','g0',[],60);render(<App/>);await screen.findByText('Ваше пространство');fireEvent.click(screen.getByRole('button',{name:'Приглашения',exact:true}));
+ resetDemo();selectDemo('owner');await demoGateway.invite('student','g0',[],60);selectDemo('leader');const token=await demoGateway.invite('student','g0',[],60);render(<App/>);await screen.findByText('Ваше пространство');fireEvent.click(screen.getByRole('button',{name:'Открыть админ',exact:true}));fireEvent.click(screen.getByRole('button',{name:'Приглашения',exact:true}));
  fireEvent.click(await screen.findByRole('button',{name:'Отозвать приглашение'}));fireEvent.click(screen.getByRole('button',{name:'Подтвердить отзыв'}));await screen.findByText('Приглашение отозвано.');assert.equal((await demoGateway.invitationCatalog(0)).length,1);
  selectDemo('student');await assert.rejects(()=>demoGateway.redeem(token),/недоступно/);selectDemo('leader');
- fireEvent.click(screen.getByRole('button',{name:'Группы и дисциплины',exact:true}));fireEvent.click(await screen.findByRole('button',{name:'Снять назначение'}));fireEvent.click(screen.getByRole('button',{name:'Подтвердить снятие назначения'}));await screen.findByText('Назначение преподавателя снято.');await screen.findByText('Назначений в этой группе нет.');await assert.rejects(()=>demoGateway.removeTeaching('g1c0','teacher'),/прав/);
+ fireEvent.click(screen.getByRole('button',{name:'Дисциплины и преподаватели',exact:true}));fireEvent.click(await screen.findByRole('button',{name:'Снять назначение'}));fireEvent.click(screen.getByRole('button',{name:'Подтвердить снятие назначения'}));await screen.findByText('Назначение преподавателя снято.');await screen.findByText('Назначений в этой группе нет.');await assert.rejects(()=>demoGateway.removeTeaching('g1c0','teacher'),/прав/);
  selectDemo('teacher');assert.equal((await demoGateway.assignments('g1c0')).canGrade,true);await assert.rejects(()=>demoGateway.assignments('g0c0'),/Доступ/);
 });
 

@@ -35,6 +35,7 @@ function boardRead(g:string,c:string|null,k:BoardKind){const p=me();if(owner())r
 function boardWrite(g:string,c:string|null,k:BoardKind,a?:string){return boardRead(g,c,k)&&(owner()||leader(g)||k==='announcement'&&!!c&&(!a||a===me().id)&&state.assignmentsTeaching.some(t=>t.teacher===me().id&&t.course===c));}
 export const demoGateway:Gateway={
  demo:true,
+ async groupMembers(group,offset){me();if(!owner()&&!leader(group))throw Error('Нужны права старосты своей группы.');if(!Number.isInteger(offset)||offset<0)throw Error('Некорректная страница.');return state.memberships.filter(m=>m.group_id===group).map(m=>({...m,full_name:state.profiles.find(p=>p.id===m.user_id)?.full_name||''})).sort((a,b)=>a.full_name.localeCompare(b.full_name)||a.user_id.localeCompare(b.user_id)||a.role.localeCompare(b.role)).slice(offset,offset+50);},
  async courseWorkspace(course){const snap=await this.snapshot();if(!snap.courses.some(c=>c.id===course&&!c.archived))throw Error('Дисциплина недоступна.');
  const topics=state.topics.filter(t=>t.course_id===course).sort((a,b)=>a.position-b.position||a.id.localeCompare(b.id));const visible=new Set<string>();let canManage=false;
  for(const kind of ['lecture','presentation','material'] as MaterialKind[]){try{courseAccess(course,kind);canManage ||= courseManager(course,kind);state.materials.filter(i=>i.course_id===course&&i.kind===kind&&i.status==='published').forEach(i=>visible.add(i.id));}catch{/* A denied section stays hidden. */}}
