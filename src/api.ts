@@ -1,3 +1,4 @@
+import {notifyChanged} from './notifications';
 import {accountInput,profileName} from './account';
 import {catalogPages} from './catalog-pages';
 import {decodePlan} from './personal-plan';
@@ -10,11 +11,13 @@ const url=env.VITE_SUPABASE_URL,key=env.VITE_SUPABASE_ANON_KEY;
 export const configured=Boolean(url&&key);
 export const client=configured?createClient(url,key):null;
 function db(){if(!client)throw Error('Supabase ещё не подключён.');return client;}
-async function rpc<T>(name:string,args:Record<string,unknown>={}){const {data,error}=await db().rpc(name,args);if(error)throw Object.assign(Error(error.message),{code:error.code});return data as T;}
+async function rpc<T>(name:string,args:Record<string,unknown>={}){const {data,error}=await db().rpc(name,args);if(error)throw Object.assign(Error(error.message),{code:error.code});if(['mark_announcement_read','submit_work','publish_submission','save_grade','return_submission','finish_submission_cancel','save_group_board','delete_group_board'].includes(name))notifyChanged();return data as T;}
 async function rows<T>(table:string){const order=table==='group_memberships'?['group_id','user_id','role']:table==='leader_entitlements'?['user_id']:['id'];return catalogPages<T>(async(offset,limit)=>{let q=db().from(table).select('*');for(const column of order)q=q.order(column);const {data,error}=await q.range(offset,offset+limit-1);if(error)throw Error(error.message);return (data||[]) as T[];});}
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').upsert({id:data.user.id,full_name:name},{onConflict:'id',ignoreDuplicates:true});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
  demo:false,
+ async notificationCounts(){return rpc('section_notification_counts');},
+ async markAnnouncementRead(id){await rpc('mark_announcement_read',{p_id:id});},
  async cancelGroupRequest(){await rpc('cancel_group_request');},
  async groupRequests(group,offset){return rpc('group_request_catalog',{p_group:group,p_offset:offset});},
  async resolveGroupRequest(user,group,approve){await rpc('resolve_group_request',{p_user:user,p_group:group,p_approve:approve});},
@@ -56,7 +59,7 @@ export const liveGateway:Gateway={
  async notes(search,offset){return rpc<Note[]>('note_catalog',{p_search:search,p_offset:offset});},
  async saveNote(title,body,id,version){await rpc('save_private_note',{p_title:title,p_body:body,p_id:id,p_version:version});},
  async deleteNote(id,version){await rpc('delete_private_note',{p_id:id,p_version:version});},
- async board(group,kind,from,to,offset){const canRead=await rpc<boolean>('read_group_board',{g:group,c:null,k:kind});if(!canRead)return {items:[],canRead:false,writeScopes:[]};const courses=await rows<Course>('courses');const scopes:(string|null)[]=[null,...courses.filter(c=>c.group_id===group).map(c=>c.id)];const permissions=await Promise.all(scopes.map(c=>rpc<boolean>('write_group_board',{g:group,c,k:kind})));const items=await rpc<BoardItem[]>('board_catalog',{p_group:group,p_kind:kind,p_from:from,p_to:to,p_offset:offset});return {items,canRead:true,writeScopes:scopes.filter((_,i)=>permissions[i])};},
+ async board(group,kind,from,to,offset){const canRead=await rpc<boolean>('read_group_board',{g:group,c:null,k:kind});if(!canRead)return {items:[],canRead:false,writeScopes:[]};const courses=await rows<Course>('courses');const scopes:(string|null)[]=[null,...courses.filter(c=>c.group_id===group).map(c=>c.id)];const permissions=await Promise.all(scopes.map(c=>rpc<boolean>('write_group_board',{g:group,c,k:kind})));const items=await rpc<BoardItem[]>('board_catalog',{p_group:group,p_kind:kind,p_from:from,p_to:to,p_offset:offset});if(kind==='announcement'&&items.length){try{const unread=await rpc<string[]>('unread_announcements',{p_ids:items.map(i=>i.id)});for(const item of items)item.unread=unread.includes(item.id);}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;}}return {items,canRead:true,writeScopes:scopes.filter((_,i)=>permissions[i])};},
  async saveBoard(i){if(i.repeatWeeks&&i.repeatWeeks>1){await rpc('save_board_series',{p_group:i.group,p_course:i.course,p_title:i.title,p_body:i.body,p_location:i.location,p_start:i.start,p_end:i.end,p_weeks:i.repeatWeeks});return;}await rpc('save_group_board',{p_group:i.group,p_course:i.course,p_kind:i.kind,p_title:i.title,p_body:i.body,p_location:i.location,p_start:i.start,p_end:i.end,p_id:i.id});},
  async deleteBoard(id){await rpc('delete_group_board',{p_id:id});},
  async assignments(course){const [items,canGrade]=await Promise.all([rpc<Assignment[]>('assignment_catalog',{p_course:course}),rpc<boolean>('can_grade_course',{c:course})]);const user=await db().auth.getUser();const members=await rows<Membership>('group_memberships'),courses=await rows<Course>('courses');const group=courses.find(c=>c.id===course)?.group_id;const canSubmit=members.some(m=>m.user_id===user.data.user?.id&&m.group_id===group&&m.active&&m.role!=='teacher');return {items,canGrade,canSubmit,userId:user.data.user?.id||''};},

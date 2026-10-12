@@ -1,10 +1,10 @@
 {
   "name": "studyhub",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs && node --import tsx --test tests/day.test.tsx && node --import tsx --test tests/leader.test.tsx && node --import tsx --test tests/owner.test.tsx && node --import tsx --test tests/account.test.ts && node --import tsx --test tests/profile-security.test.tsx && node --import tsx --test tests/auth.test.tsx",
+    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs && node --import tsx --test tests/day.test.tsx && node --import tsx --test tests/leader.test.tsx && node --import tsx --test tests/owner.test.tsx && node --import tsx --test tests/account.test.ts && node --import tsx --test tests/profile-security.test.tsx && node --import tsx --test tests/auth.test.tsx && node --import tsx --test tests/notifications.test.tsx",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
@@ -28,7 +28,8 @@
     "test:leader:browser": "node tests/leader.browser.mjs",
     "test:owner:browser": "node tests/owner.browser.mjs",
     "test:profile:browser": "node tests/profile.browser.mjs",
-    "test:auth:browser": "node tests/auth.browser.mjs"
+    "test:auth:browser": "node tests/auth.browser.mjs",
+    "test:notifications:browser": "node tests/notifications.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

@@ -18,7 +18,7 @@ export type CourseMaterial={id:string;course_id:string;kind:MaterialKind;title:s
 export type Assignment={id:string;course_id:string;title:string;description:string;due_at:string|null;max_score:number;allow_late:boolean;created_at:string};
 export type Work={id:string;student_id:string;student_name:string;text_answer:string;attempt_no:number;status:string;submitted_at:string|null;is_late:boolean;return_feedback:string|null;storage_path:string|null;original_name:string|null;mime_type:string|null;size_bytes:number|null;score:number|null;feedback:string|null;released_at:string|null};
 export type BoardKind='schedule'|'announcement';
-export type BoardItem={id:string;group_id:string;course_id:string|null;kind:BoardKind;title:string;body:string;location:string;starts_at:string|null;ends_at:string|null;author_name:string;created_at:string;can_manage:boolean};
+export type BoardItem={unread?:boolean;id:string;group_id:string;course_id:string|null;kind:BoardKind;title:string;body:string;location:string;starts_at:string|null;ends_at:string|null;author_name:string;created_at:string;can_manage:boolean};
 export type BoardInput={repeatWeeks?:number;group:string;course:string|null;kind:BoardKind;title:string;body:string;location:string;start:string|null;end:string|null;id:string|null};
 export type Note={id:string;title:string;body:string;version:number;created_at:string;updated_at:string};
 export type ReaderSource={kind:'library';item:LibraryItem}|{kind:'course';item:CourseMaterial};
@@ -28,6 +28,8 @@ export type CourseWorkspace={topics:CourseTopic[];links:CourseLink[];completed:s
 export type AssignmentProgress={assignment_id:string;status:string;attempt_no:number};
 export type GroupRequest={user_id:string;group_id:string;full_name:string;status:string;created_at:string};
 export interface Gateway {
+ notificationCounts():Promise<import('./notifications').NotificationCounts>;
+ markAnnouncementRead(id:string):Promise<void>;
  cancelGroupRequest():Promise<void>;
  groupRequests(group:string|null,offset:number):Promise<GroupRequest[]>;
  resolveGroupRequest(user:string,group:string,approve:boolean):Promise<void>;
