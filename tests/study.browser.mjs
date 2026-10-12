@@ -26,12 +26,12 @@ try{
  await page.getByRole('button',{name:/Подготовить конспект/}).click();
  await page.getByText('Прочитать главу 2',{exact:true}).waitFor();
  const id=await page.getByLabel('Выберите задание').inputValue();assert.ok(id);
- await page.getByRole('button',{name:'Мой день',exact:true}).click();
+ await page.getByRole('button',{name:'Главная',exact:true}).click();
  await page.getByRole('button',{name:/Основы экономики/}).click();
  await page.getByText(/Страница 2 из 2 · Прогресс/).waitFor();
  await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
  await page.setViewportSize({width:390,height:844});
- await page.getByRole('button',{name:'Быстрый переход: Мой день'}).click();
+ await page.getByRole('button',{name:'Быстрый переход: Главная'}).click();
  await page.getByRole('region',{name:'Сейчас и следующая пара'}).getByRole('heading',{name:'Семинар по финансам',exact:true}).waitFor();
  await page.screenshot({path:join(artifacts,'day-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile horizontal overflow');

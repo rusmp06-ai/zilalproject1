@@ -23,8 +23,8 @@ test('note draft survives navigation and remount; declined navigation keeps edit
  fireEvent.click(within(screen.getByRole('complementary')).getByRole('button',{name:'Мои заметки',exact:true}));
  fireEvent.change(await screen.findByLabelText('Название заметки'),{target:{value:'Draft title'}});fireEvent.change(screen.getByLabelText('Текст заметки'),{target:{value:'Important unsaved text'}});
  await screen.findByText(/Черновик сохраняется/);
- fireEvent.click(within(screen.getByRole('complementary')).getByRole('button',{name:'Мой день',exact:true}));assert.ok(screen.getByLabelText('Текст заметки'));
- accept=true;fireEvent.click(within(screen.getByRole('complementary')).getByRole('button',{name:'Мой день',exact:true}));await screen.findByText(/Здравствуйте, Студент/);
+ fireEvent.click(within(screen.getByRole('complementary')).getByRole('button',{name:'Главная',exact:true}));assert.ok(screen.getByLabelText('Текст заметки'));
+ accept=true;fireEvent.click(within(screen.getByRole('complementary')).getByRole('button',{name:'Главная',exact:true}));await screen.findByText(/Здравствуйте, Студент/);
  fireEvent.click(within(screen.getByRole('complementary')).getByRole('button',{name:'Мои заметки',exact:true}));assert.equal((await screen.findByLabelText('Текст заметки') as HTMLTextAreaElement).value,'Important unsaved text');
  fireEvent.click(screen.getByRole('button',{name:'Сохранить заметку',exact:true}));await screen.findByText('Заметка сохранена.');await waitFor(()=>assert.equal(sessionStorage.getItem('studyhub-draft-v1:demo:student:note'),null));
  }finally{window.confirm=original;}

@@ -251,7 +251,7 @@ test('student day connects schedule, exact assignment, calendar and saved readin
  const day=new Date(start).toLocaleDateString('ru-RU',{timeZone:'Asia/Bishkek',weekday:'long',day:'numeric',month:'long'});
  fireEvent.click(screen.getByRole('button',{name:new RegExp(day)}));
  await screen.findByRole('button',{name:/Семинар учебного дня/});
- fireEvent.click(screen.getByRole('button',{name:'Мой день',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'Главная',exact:true}));
  fireEvent.click(await screen.findByRole('button',{name:/Книга учебного дня/}));
  await screen.findByRole('dialog');
  await screen.findByText(/Страница 2 из 2 · Прогресс/);
