@@ -1,3 +1,4 @@
+import {accountInput,profileName} from './account';
 import {catalogPages} from './catalog-pages';
 import {decodePlan} from './personal-plan';
 import {createClient} from '@supabase/supabase-js';
@@ -14,6 +15,9 @@ async function rows<T>(table:string){const order=table==='group_memberships'?['g
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').insert({id:data.user.id,full_name:name});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
  demo:false,
+ async account(){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const u=data.user;return {...accountInput(u.user_metadata.studyhub_profile||{}),email:u.email||'',confirmed:!!u.email_confirmed_at};},
+ async saveAccount(name,details){name=profileName(name);const checked=accountInput(details);if(!await rpc<boolean>('is_active_user'))throw Error('Доступ к аккаунту закрыт.');const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const result=await db().from('profiles').update({full_name:name}).eq('id',data.user.id).select('id');if(result.error)throw Error(result.error.message);if(!result.data?.length)throw Error('Профиль не обновлён.');const updated=await db().auth.updateUser({data:{full_name:name,studyhub_profile:checked}});if(updated.error)throw Error('Имя сохранено, но дополнительные сведения не обновлены. Повторите сохранение.');},
+ async changePassword(current,next){if(next.length<10||next.length>128)throw Error('Новый пароль: от 10 до 128 символов.');if(current===next)throw Error('Новый пароль должен отличаться от текущего.');const {data,error}=await db().auth.getUser();if(error||!data.user?.email)throw Error('Войдите в аккаунт.');const verified=await db().auth.signInWithPassword({email:data.user.email,password:current});if(verified.error)throw Error('Текущий пароль неверен.');const updated=await db().auth.updateUser({password:next});if(updated.error)throw Error(updated.error.message);},
  async auditEvents(offset){if(!Number.isInteger(offset)||offset<0)throw Error('Некорректная страница.');if(!await rpc<boolean>('is_owner'))throw Error('Требуются права владельца.');const {data,error}=await db().from('audit_events').select('id,actor_id,action,entity_id,details,created_at').order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+49);if(error)throw Error(error.message);return (data||[]) as import('./types').AuditEvent[];},
  async groupMembers(group,offset){return rpc<import('./types').GroupMember[]>('group_member_catalog',{p_group:group,p_offset:offset});},
  async courseWorkspace(course){return rpc<CourseWorkspace>('course_workspace',{p_course:course});},

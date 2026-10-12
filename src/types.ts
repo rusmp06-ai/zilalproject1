@@ -27,6 +27,9 @@ export type CourseLink={topic_id:string;source_id:string;source_kind:'material'|
 export type CourseWorkspace={topics:CourseTopic[];links:CourseLink[];completed:string[];canManage:boolean;resume:{item_id:string;page:number;total_pages:number}|null};
 export type AssignmentProgress={assignment_id:string;status:string;attempt_no:number};
 export interface Gateway {
+ account():Promise<import('./account').AccountDetails>;
+ saveAccount(name:string,details:import('./account').AccountInput):Promise<void>;
+ changePassword(current:string,next:string):Promise<void>;
  auditEvents(offset:number):Promise<AuditEvent[]>;
  groupMembers(group:string,offset:number):Promise<GroupMember[]>;
  courseWorkspace(course:string):Promise<CourseWorkspace>;

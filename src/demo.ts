@@ -1,10 +1,11 @@
+import {accountInput,profileName,type AccountInput} from './account';
 import {forgetSchedule} from './schedule-cache';
 import {decodePlan} from './personal-plan';
 import {emptyReading,validateReading} from './reader-state';
 import {validateFile} from './files';
 import {saveDemoBlob,readDemoBlob,deleteDemoBlob} from './blob-store';
 import type {CourseTopic,CourseLink,ReadingState,Note,BoardKind,BoardItem,Assignment,Work,CourseMaterial,MaterialKind,LibraryItem,Gateway,Snapshot,Profile,Group,Course,Membership,Denial,Invitation,Role} from './types';
-type Store={audit:import('./types').AuditEvent[];topics:CourseTopic[];topicLinks:CourseLink[];topicProgress:{user_id:string;topic_id:string}[];planTasks:(Note&{user_id:string})[];courseReading:(ReadingState&{user_id:string})[];reading:(ReadingState&{user_id:string})[];notes:(Note&{user_id:string})[];board:(BoardItem&{author_id:string})[];assignments:Assignment[];works:(Work&{assignment:string})[];materials:CourseMaterial[];library:LibraryItem[];profiles:Profile[];groups:Group[];courses:Course[];memberships:Membership[];denials:Denial[];invitations:Invitation[];entitlements:Record<string,number>;session:string|null;assignmentsTeaching:{teacher:string;course:string}[]};
+type Store={accountDetails?:Record<string,AccountInput>;audit:import('./types').AuditEvent[];topics:CourseTopic[];topicLinks:CourseLink[];topicProgress:{user_id:string;topic_id:string}[];planTasks:(Note&{user_id:string})[];courseReading:(ReadingState&{user_id:string})[];reading:(ReadingState&{user_id:string})[];notes:(Note&{user_id:string})[];board:(BoardItem&{author_id:string})[];assignments:Assignment[];works:(Work&{assignment:string})[];materials:CourseMaterial[];library:LibraryItem[];profiles:Profile[];groups:Group[];courses:Course[];memberships:Membership[];denials:Denial[];invitations:Invitation[];entitlements:Record<string,number>;session:string|null;assignmentsTeaching:{teacher:string;course:string}[]};
 const key='studyhub-demo-v08';
 function seed():Store {
  const profiles=[{id:'owner',full_name:'Владелец платформы',blocked:false},{id:'leader',full_name:'Айдана · староста',blocked:false},{id:'teacher',full_name:'Преподаватель',blocked:false},{id:'student',full_name:'Студент',blocked:false}];
@@ -37,6 +38,9 @@ function boardWrite(g:string,c:string|null,k:BoardKind,a?:string){return boardRe
 function recordAudit(action:string,entity:string|null,details:Record<string,unknown>={}){state.audit.unshift({id:crypto.randomUUID(),actor_id:me().id,action,entity_id:entity,details,created_at:new Date().toISOString()});}
 export const demoGateway:Gateway={
  demo:true,
+ async account(){const p=me();return {...accountInput(state.accountDetails?.[p.id]||{}),email:'',confirmed:false};},
+ async saveAccount(name,details){const checked=accountInput(details),checkedName=profileName(name),p=me();p.full_name=checkedName;state.accountDetails ||= {};state.accountDetails[p.id]=checked;save();},
+ async changePassword(){throw Error('Смена пароля доступна только в настоящем аккаунте.');},
  async auditEvents(offset){if(!owner())throw Error('Требуются права владельца.');if(!Number.isInteger(offset)||offset<0)throw Error('Некорректная страница.');return structuredClone(state.audit.slice(offset,offset+50));},
  async groupMembers(group,offset){me();if(!owner()&&!leader(group))throw Error('Нужны права старосты своей группы.');if(!Number.isInteger(offset)||offset<0)throw Error('Некорректная страница.');return state.memberships.filter(m=>m.group_id===group).map(m=>({...m,full_name:state.profiles.find(p=>p.id===m.user_id)?.full_name||''})).sort((a,b)=>a.full_name.localeCompare(b.full_name)||a.user_id.localeCompare(b.user_id)||a.role.localeCompare(b.role)).slice(offset,offset+50);},
  async courseWorkspace(course){const snap=await this.snapshot();if(!snap.courses.some(c=>c.id===course&&!c.archived))throw Error('Дисциплина недоступна.');
