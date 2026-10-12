@@ -5,7 +5,7 @@ const artifacts='/tmp/studyhub-library-world';await mkdir(artifacts,{recursive:t
 const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
 try{
  const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.LIBRARY_TEST_URL||'http://127.0.0.1:5194/',{waitUntil:'networkidle'});
+ await page.goto(process.env.LIBRARY_TEST_URL||'http://127.0.0.1:5194/?demo=1',{waitUntil:'networkidle'});
  await page.evaluate(async()=>{const d=await import('/src/demo.ts');d.resetDemo();d.selectDemo('owner');const names=['Основы экономики','Академическое письмо','Математика для практики','История и общество','Деловой английский','Методы исследования','Право и человек','Учиться эффективно'];for(const title of names)await d.demoGateway.uploadLibrary('g0',title,new File(['Глава 1. Введение\n'+('Полезный учебный текст. '.repeat(450))],'study.txt',{type:'text/plain'}));d.selectDemo('student');const book=(await d.demoGateway.library('',0)).items.find(i=>i.title===names[0]);await d.demoGateway.saveReading({item_id:book.id,page:2,total_pages:3,favorite:true,bookmarks:[2],version:0});});
  await page.getByRole('button',{name:'Студент',exact:true}).click();await page.locator('.sidebar').getByRole('button',{name:'Библиотека',exact:true}).click();await page.getByRole('heading',{name:'Основы экономики',exact:true}).waitFor();
  assert.equal(await page.locator('.book-cover').count(),9);await page.screenshot({path:artifacts+'/desktop.png',fullPage:true});

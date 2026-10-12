@@ -5,7 +5,7 @@ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'
 try{
  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.clock.install({time:new Date('2026-10-15T03:12:00Z')});
- await page.goto(process.env.DAY_TEST_URL||'http://127.0.0.1:5199/');await page.locator('.demo-roles').waitFor();
+ await page.goto(process.env.DAY_TEST_URL||'http://127.0.0.1:5199/?demo=1');await page.locator('.demo-roles').waitFor();
  await page.evaluate(async()=>{const {demoGateway:api,resetDemo,selectDemo}=await import('/src/demo.ts');resetDemo();selectDemo('owner');
  for(const [title,course,start,end,room] of [['Прошедшая лекция','g0c0','08:00','08:50','105'],['Финансы · текущая пара','g0c0','09:00','10:20','204'],['Экономика · следующая пара','g0c1','10:30','11:50','308']])await api.saveBoard({group:'g0',course,kind:'schedule',title,body:'',location:room,start:new Date('2026-10-15T'+start+':00+06:00').toISOString(),end:new Date('2026-10-15T'+end+':00+06:00').toISOString(),id:null});
  await api.saveMaterial('g0c0','lecture','Лекция сегодняшней пары','Полезный материал',new File(['Учебный текст'],'lecture.txt',{type:'text/plain'}),null);

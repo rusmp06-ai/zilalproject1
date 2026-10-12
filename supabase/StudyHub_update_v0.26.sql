@@ -1,0 +1,76 @@
+-- Repeatable registration access update. Existing memberships are preserved.
+create table if not exists public.group_access_requests(
+ user_id uuid primary key references public.profiles(id),
+ group_id uuid not null references public.study_groups(id),
+ status text not null default 'pending' check(status in ('pending','approved','rejected','cancelled')),
+ created_at timestamptz not null default now()
+);
+alter table public.group_access_requests enable row level security;
+alter table public.group_access_requests drop constraint if exists group_access_requests_status_check;
+alter table public.group_access_requests add constraint group_access_requests_status_check check(status in ('pending','approved','rejected','cancelled'));
+revoke all on public.group_access_requests from anon,authenticated;
+create or replace function public.request_group_access(p_group uuid) returns void
+language plpgsql security definer set search_path=pg_catalog as $$
+begin
+ if not public.is_active_user() or not exists(select 1 from public.study_groups where id=p_group and not blocked) then raise exception 'Group unavailable';end if;
+ perform 1 from public.profiles where id=auth.uid() for update;
+ if exists(select 1 from public.group_access_requests where user_id=auth.uid() and status='pending' and group_id<>p_group) then raise exception 'A request is already pending';end if;
+ if exists(select 1 from public.group_memberships where user_id=auth.uid() and active) then raise exception 'Use owner to change existing membership';end if;
+ if exists(select 1 from public.group_memberships where user_id=auth.uid() and group_id=p_group and not active) then raise exception 'Membership disabled';end if;
+ insert into public.group_access_requests(user_id,group_id) values(auth.uid(),p_group)
+ on conflict(user_id) do update set group_id=excluded.group_id,status='pending',created_at=now()
+ where public.group_access_requests.status<>'pending';
+end $$;
+create or replace function public.join_group(p_group uuid) returns void language sql security definer set search_path=pg_catalog as $$select public.request_group_access(p_group)$$;
+create or replace function public.group_request_catalog(p_group uuid default null,p_offset integer default 0)
+returns table(user_id uuid,group_id uuid,full_name text,status text,created_at timestamptz)
+language plpgsql stable security definer set search_path=pg_catalog as $$
+begin
+ if not public.is_active_user() or p_offset<0 then raise exception 'Unavailable';end if;
+ if p_group is not null and not (public.is_owner() or public.is_group_leader(p_group)) then raise exception 'No rights';end if;
+ return query select r.user_id,r.group_id,p.full_name,r.status,r.created_at from public.group_access_requests r join public.profiles p on p.id=r.user_id
+ where (p_group is null and r.user_id=auth.uid()) or (r.group_id=p_group and r.status='pending' and not p.blocked and not exists(select 1 from public.group_memberships m where m.user_id=r.user_id and m.active))
+ order by r.created_at,r.user_id limit 50 offset p_offset;
+end $$;
+create or replace function public.resolve_group_request(p_user uuid,p_group uuid,p_approve boolean) returns void
+language plpgsql security definer set search_path=pg_catalog as $$
+begin
+ if not public.is_active_user() or not (public.is_owner() or public.is_group_leader(p_group)) or not exists(select 1 from public.study_groups where id=p_group and not blocked) then raise exception 'No rights';end if;
+ -- Lock the account to serialize competing approvals, transfers and blocks.
+ perform 1 from public.profiles where id=p_user and not blocked for update;
+ if not found then raise exception 'Account unavailable';end if;
+ perform 1 from public.group_access_requests where user_id=p_user and group_id=p_group and status='pending' for update;
+ if not found then raise exception 'Request unavailable';end if;
+ if p_approve then
+  if exists(select 1 from public.group_memberships where user_id=p_user and active) then raise exception 'Account already has membership';end if;
+  if exists(select 1 from public.group_memberships where user_id=p_user and group_id=p_group and not active) then raise exception 'Membership disabled';end if;
+  insert into public.group_memberships(user_id,group_id,role) values(p_user,p_group,'student');
+ end if;
+ update public.group_access_requests set status=case when p_approve then 'approved' else 'rejected' end where user_id=p_user;
+ insert into public.audit_events(actor_id,action,entity_id,details) values(auth.uid(),'student.request_resolved',p_user,jsonb_build_object('group_id',p_group,'approved',p_approve));
+end $$;
+revoke all on function public.request_group_access(uuid),public.join_group(uuid),public.group_request_catalog(uuid,integer),public.resolve_group_request(uuid,uuid,boolean) from public,anon;
+grant execute on function public.request_group_access(uuid),public.join_group(uuid),public.group_request_catalog(uuid,integer),public.resolve_group_request(uuid,uuid,boolean) to authenticated;
+
+create or replace function public.has_section_access(s text,g uuid default null,c uuid default null) returns boolean
+language sql stable security definer set search_path=pg_catalog as $$
+ select public.is_active_user() and (public.is_owner() or (
+ (g is null or public.is_group_member(g)) and
+ -- New accounts may read the shared library; suspended memberships remain restricted.
+ (g is not null or (s='library' and not exists(select 1 from public.group_memberships where user_id=auth.uid())) or exists(select 1 from public.group_memberships m where m.user_id=auth.uid() and m.active and public.is_group_member(m.group_id))) and
+ not exists(select 1 from public.access_denials d where
+ (d.user_id=auth.uid() or d.group_id=g or (g is null and d.group_id in (
+ select group_id from public.group_memberships where user_id=auth.uid() and active)))
+ and (d.section=s or (c is not null and d.section='course' and d.course_id=c)))
+ ));
+$$;
+
+create or replace function public.cancel_group_request() returns void
+language plpgsql security definer set search_path=pg_catalog as $$
+begin
+ if not public.is_active_user() then raise exception 'Unavailable';end if;
+ perform 1 from public.profiles where id=auth.uid() for update;
+ update public.group_access_requests set status='cancelled' where user_id=auth.uid() and status='pending';
+end $$;
+revoke all on function public.cancel_group_request() from public,anon;
+grant execute on function public.cancel_group_request() to authenticated;

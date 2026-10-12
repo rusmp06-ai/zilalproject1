@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 try{
  const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.STUDY_TEST_URL||'http://127.0.0.1:5175');await page.locator('.demo-roles').waitFor();
+ await page.goto(process.env.STUDY_TEST_URL||'http://127.0.0.1:5175/?demo=1');await page.locator('.demo-roles').waitFor();
  await page.evaluate(async()=>{const d=await import('/src/demo.ts');d.resetDemo();});
  await page.getByRole('button',{name:'Студент',exact:true}).click();
  await page.getByRole('button',{name:'Добавить задачу',exact:true}).click();

@@ -2,7 +2,7 @@ import {chromium} from 'playwright-core';
 import assert from 'node:assert/strict';
 const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
 try{
- const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(15000);const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(process.env.PROFILE_TEST_URL||'http://127.0.0.1:5205/');
+ const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(15000);const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(process.env.PROFILE_TEST_URL||'http://127.0.0.1:5205/?demo=1');
  await page.locator('.demo-roles').getByRole('button',{name:'Студент',exact:true}).click();await page.getByRole('button',{name:'Открыть профиль'}).click();const profile=page.getByRole('region',{name:'Личный профиль'});
  await profile.getByLabel('Имя и фамилия').fill('Мария Иванова');await profile.getByLabel('Университет',{exact:true}).fill('Учебный университет');await profile.getByLabel('Курс',{exact:true}).fill('2');
  await profile.getByLabel('Фото профиля',{exact:true}).setInputFiles({name:'photo.png',mimeType:'image/png',buffer:await page.screenshot({clip:{x:0,y:0,width:16,height:16}})});await profile.getByRole('img',{name:'Фото профиля'}).waitFor();await profile.getByRole('button',{name:'Сохранить профиль',exact:true}).click();await profile.getByRole('status').filter({hasText:'Профиль сохранён'}).waitFor();assert.equal(await profile.getByRole('combobox').count(),0);

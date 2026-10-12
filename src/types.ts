@@ -26,7 +26,13 @@ export type CourseTopic={id:string;course_id:string;title:string;description:str
 export type CourseLink={topic_id:string;source_id:string;source_kind:'material'|'assignment'};
 export type CourseWorkspace={topics:CourseTopic[];links:CourseLink[];completed:string[];canManage:boolean;resume:{item_id:string;page:number;total_pages:number}|null};
 export type AssignmentProgress={assignment_id:string;status:string;attempt_no:number};
+export type GroupRequest={user_id:string;group_id:string;full_name:string;status:string;created_at:string};
 export interface Gateway {
+ cancelGroupRequest():Promise<void>;
+ groupRequests(group:string|null,offset:number):Promise<GroupRequest[]>;
+ resolveGroupRequest(user:string,group:string,approve:boolean):Promise<void>;
+ finishPasswordReset(password:string):Promise<void>;
+ resetPassword(email:string):Promise<void>;
  account():Promise<import('./account').AccountDetails>;
  saveAccount(name:string,details:import('./account').AccountInput):Promise<void>;
  changePassword(current:string,next:string):Promise<void>;
@@ -76,7 +82,7 @@ export interface Gateway {
  deleteLibrary(id:string):Promise<void>;
  downloadLibrary(item:LibraryItem):Promise<Blob>;
  session():Promise<boolean>;
- signup(name:string,email:string,password:string,group:string|null):Promise<void>;
+ signup(name:string,email:string,password:string,group:string|null,details?:import('./account').AccountInput):Promise<void>;
  login(email:string,password:string):Promise<void>;
  logout():Promise<void>;
  groups():Promise<{id:string;name:string}[]>;

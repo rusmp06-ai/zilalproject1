@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
 try{
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.LEADER_TEST_URL||'http://127.0.0.1:5203/');await page.locator('.demo-roles').waitFor();
+ await page.goto(process.env.LEADER_TEST_URL||'http://127.0.0.1:5203/?demo=1');await page.locator('.demo-roles').waitFor();
  await page.evaluate(async()=>{const {demoGateway:api,resetDemo,selectDemo}=await import('/src/demo.ts');resetDemo();selectDemo('teacher');await api.createAssignment('g0c0','Работа старосты','Ответьте на вопрос',null,100,false);const task=(await api.assignments('g0c0')).items[0];selectDemo('student');await api.submit(task.id,'Личный ответ другого студента',null);selectDemo('leader');await api.saveMaterial('g0c0','lecture','Лекция группы','Учебный текст',null,null);});
  await page.locator('.demo-roles').getByRole('button',{name:'Староста',exact:true}).click();await page.getByRole('heading',{name:'Ваше пространство',exact:true}).waitFor();
  const side=page.locator('.sidebar');assert.equal(await side.getByRole('button',{name:'Приглашения',exact:true}).count(),0);assert.equal(await page.getByRole('combobox').count(),0);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
-const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'http://localhost:5199/'});
+const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'http://localhost:5199/?demo=1'});
 for(const key of ['window','document','localStorage','sessionStorage','location','history','HTMLElement','HTMLInputElement','MutationObserver','DOMParser','FormData'])Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],configurable:true});
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;

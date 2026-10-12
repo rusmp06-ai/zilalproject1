@@ -10,7 +10,7 @@ const docx=await zip.generateAsync({type:'base64'}),artifacts='/tmp/studyhub-rea
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
 try{
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.READER_TEST_URL||'http://127.0.0.1:5176/');await page.locator('.demo-roles').waitFor();
+ await page.goto(process.env.READER_TEST_URL||'http://127.0.0.1:5176/?demo=1');await page.locator('.demo-roles').waitFor();
  const course=await page.evaluate(async base64=>{const d=await import('/src/demo.ts');d.resetDemo();d.selectDemo('owner');const s=await d.demoGateway.snapshot(),c=s.courses[0];
  const text='Глава 1. Учёба\nПолезная цитата для конспекта.\n'+'Текст первого раздела. '.repeat(200)+'\nГлава 2. Закрепление\nУникальный поисковый фрагмент.';
  await d.demoGateway.uploadLibrary(c.group_id,'Учебник для проверки',new File([text],'book.txt',{type:'text/plain'}));

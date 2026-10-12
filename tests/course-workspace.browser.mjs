@@ -4,7 +4,7 @@ import {mkdir} from 'node:fs/promises';
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
 try{
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.COURSE_TEST_URL||'http://127.0.0.1:5198/');await page.locator('.demo-roles').waitFor();
+ await page.goto(process.env.COURSE_TEST_URL||'http://127.0.0.1:5198/?demo=1');await page.locator('.demo-roles').waitFor();
  await page.evaluate(async()=>{const {demoGateway:api,resetDemo,selectDemo}=await import('/src/demo.ts');resetDemo();selectDemo('teacher');
  await api.saveMaterial('g0c0','lecture','Первая лекция','Текст лекции',null,null);
  await api.saveMaterial('g0c0','material','Учебник по финансам','Основная литература',new File(['Глава 1. Основы\n'+'Учебный текст. '.repeat(600)],'finance.txt',{type:'text/plain'}),null);

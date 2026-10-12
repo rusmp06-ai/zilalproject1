@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 try{
  const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.STUDY_TEST_URL||'http://127.0.0.1:5184');await page.locator('.demo-roles').waitFor();
+ await page.goto(process.env.STUDY_TEST_URL||'http://127.0.0.1:5184/?demo=1');await page.locator('.demo-roles').waitFor();
  await page.evaluate(async()=>{const {demoGateway:d,resetDemo,selectDemo}=await import('/src/demo.ts');resetDemo();selectDemo('owner');for(let i=0;i<51;i++)await d.saveBoard({group:'g0',course:null,kind:'schedule',title:'Lesson '+i,body:'',location:'204',start:'2026-10-15T03:00:00Z',end:'2026-10-15T04:00:00Z',id:null});await d.createAssignment('g0c0','Submitted test','',null,10,true);const a=(await d.assignments('g0c0')).items[0];selectDemo('student');await d.submit(a.id,'Answer',null);await d.saveNote('Search note','Find this material',null,null);});
  await page.getByRole('button',{name:'Студент',exact:true}).click();
  assert.equal(await page.getByRole('button',{name:/Submitted test/}).count(),0);

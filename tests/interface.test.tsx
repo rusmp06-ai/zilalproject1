@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
-const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'http://localhost:5173/'});
+const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'http://localhost:5173/?demo=1'});
 for(const key of ['window','document','localStorage','sessionStorage','location','history','HTMLElement','HTMLInputElement','MutationObserver','DOMParser','FormData'])Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],configurable:true});
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
@@ -36,7 +36,7 @@ test('owner creates group, invites leader, new account accepts invitation and cr
  await demoGateway.logout();cleanup();dom.window.location.hash=invite;render(<App/>);
  fireEvent.click(screen.getByRole('button',{name:'Создать аккаунт',exact:true}));
  fireEvent.change(screen.getByLabelText('Имя и фамилия'),{target:{value:'Новый староста'}});
- fireEvent.click(screen.getByRole('button',{name:'Зарегистрироваться',exact:true}));
+ fireEvent.change(screen.getByLabelText('Email'),{target:{value:'new@example.test'}});fireEvent.change(screen.getByLabelText('Пароль',{exact:true}),{target:{value:'testpassword123'}});fireEvent.change(screen.getByLabelText('Повторите пароль'),{target:{value:'testpassword123'}});fireEvent.click(screen.getByRole('button',{name:'Зарегистрироваться',exact:true}));
  await screen.findByRole('button',{name:'Принять приглашение'});
  fireEvent.click(screen.getByRole('button',{name:'Принять приглашение'}));
  await screen.findByText('Приглашение принято.');
