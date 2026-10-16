@@ -1,3 +1,5 @@
+import {uploadIntake} from './upload-intake';
+import {publishRecoverable} from './intake-recovery';
 import {notifyChanged} from './notifications';
 import {accountInput,profileName} from './account';
 import {catalogPages} from './catalog-pages';
@@ -22,17 +24,13 @@ export const liveGateway:Gateway={
  async analyzeMaterial(input,signal){
   const {data,error}=await db().functions.invoke('material-analyze',{body:input,signal});if(error){let quota:import('./material-intake-types').MaterialAiQuota|undefined;let message='ИИ недоступен. Поля можно заполнить вручную.';try{const body=await (error as {context?:Response}).context?.json();if(typeof body?.error==='string')message=body.error;if(body?.quota)quota=body.quota;}catch{}throw Object.assign(Error(message),{quota});}return data;
  },
- async publishIntake(i,file){
-  const mime=validateFile(file);const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');
-  let r:import('./material-intake-types').IntakeReservation;try{r=await rpc<import('./material-intake-types').IntakeReservation>('prepare_material_intake',{p_request:i.request,p_kind:i.kind,p_course:i.course,p_group:i.group,p_title:i.title,p_description:i.description,p_due:i.due,p_max:i.max,p_late:i.late,p_name:file.name,p_mime:mime,p_size:file.size,p_hash:hash});}catch(e){const err=e as Error&{code?:string};let message=err.message;if(err.code==='PGRST202')message='Примените SQL v0.30 перед публикацией.';else if(/previous upload/.test(message))message='Есть незавершённая загрузка. Удалите её в управлении материалами или библиотекой.';else if(/budget/.test(message))message='В хранилище недостаточно места.';else if(/Access denied|unavailable|Publisher required/.test(message))message='Права изменились. Обновите кабинет и проверьте доступ к публикации.';throw Object.assign(Error(message),{canEdit:err.code==='P0001'||err.code==='PGRST202'});}
-  if(r.published&&r.result_id)return r.result_id;
-  const {error}=await db().storage.from(r.bucket).upload(r.path,file,{contentType:mime,upsert:false});
-  if(error){
-   // A previous attempt may have uploaded successfully before the connection broke.
-   try{return await rpc<string>('finish_material_intake',{p_request:i.request});}catch{throw Error('Публикация не завершена. Повторите её с теми же полями и файлом. Незавершённый файл также доступен для удаления в управлении материалами.');}
-  }
-  try{return await rpc<string>('finish_material_intake',{p_request:i.request});}catch{throw Error('Файл загружен, но публикация не подтверждена. Нажмите повторную публикацию — второй экземпляр не создастся.');}
- },
+ async intakeStatus(request){try{return await rpc('material_intake_status',{p_request:request});}catch(e){if((e as {code?:string}).code==='PGRST202')throw Error('Для проверки и отмены публикации примените SQL v0.35. Без него можно повторить отправку того же файла.');throw e;}},
+ async cancelIntake(request){let result:import('./material-intake-types').IntakeStatus;try{result=await rpc('begin_material_intake_cancel',{p_request:request});}catch(e){if((e as {code?:string}).code==='PGRST202')throw Object.assign(Error('Для безопасной отмены требуется SQL v0.35.'),{notStarted:true});throw e;}if(result.status!=='deleting')return result;const {error}=await db().storage.from(result.bucket!).remove([result.path!]);if(error)throw Error('Файл пока не удалён. Повторите отмену: '+error.message);await rpc('finish_material_intake_cancel',{p_request:request});return {status:'cancelled'};},
+ async publishIntake(i,file){return uploadIntake({
+  prepare:(p,f,mime,hash)=>rpc('prepare_material_intake',{p_request:p.request,p_kind:p.kind,p_course:p.course,p_group:p.group,p_title:p.title,p_description:p.description,p_due:p.due,p_max:p.max,p_late:p.late,p_name:f.name,p_mime:mime,p_size:f.size,p_hash:hash}),
+  upload:async(r,f,mime)=>{const {error}=await db().storage.from(r.bucket).upload(r.path,f,{contentType:mime,upsert:false});if(error)throw error;},
+  finish:request=>rpc('finish_material_intake',{p_request:request})
+ },i,file);},
 
  async teacherCatalog(){return teacherRpc('teacher_catalog');},
  async teacherQueue(course,assignment,status,search,offset){return teacherRpc('teacher_review_queue',{p_course:course,p_assignment:assignment,p_status:status,p_search:search,p_offset:offset});},
@@ -98,11 +96,11 @@ export const liveGateway:Gateway={
  async cancelUpload(work){const path=await rpc<string>('begin_submission_cancel',{p_id:work});const {error}=await db().storage.from('studyhub-submissions').remove([path]);if(error)throw Error(error.message);await rpc('finish_submission_cancel',{p_id:work});},
  async downloadWork(work){if(!work.storage_path)throw Error('У работы нет файла.');const {data,error}=await db().storage.from('studyhub-submissions').download(work.storage_path);if(error||!data)throw Error(error?.message||'Файл недоступен.');return data;},
  async courseMaterials(course,kind,offset){const [items,canManage]=await Promise.all([rpc<CourseMaterial[]>('course_catalog',{p_course:course,p_kind:kind,p_offset:offset}),rpc<boolean>('manage_course_material',{c:course,k:kind})]);return {items,canManage};},
- async saveMaterial(course,kind,title,body,file,id){if(!file){await rpc('save_course_text',{p_course:course,p_kind:kind,p_title:title,p_body:body,p_id:id});return;}if(id)throw Error('Замена файла пока не поддерживается. Создайте новый материал.');const mime=validateFile(file),[r]=await rpc<{item_id:string;storage_path:string}[]>('reserve_course_upload',{p_course:course,p_kind:kind,p_title:title,p_body:body,p_name:file.name,p_mime:mime,p_size:file.size});const {error}=await db().storage.from('studyhub-courses').upload(r.storage_path,file,{contentType:mime,upsert:false});if(error)throw Error('Загрузка не завершена. Обновите список и удалите незавершённый материал. '+error.message);await rpc('publish_course_upload',{p_id:r.item_id});},
+ async saveMaterial(course,kind,title,body,file,id){if(!file){await rpc('save_course_text',{p_course:course,p_kind:kind,p_title:title,p_body:body,p_id:id});return;}if(id)throw Error('Замена файла пока не поддерживается. Создайте новый материал.');await publishRecoverable(this,{request:crypto.randomUUID(),kind,course,group:(await this.snapshot()).courses.find(c=>c.id===course)?.group_id||null,title:title.trim(),description:body,due:null,max:100,late:false},file);},
  async deleteMaterial(id){const path=await rpc<string|null>('begin_course_delete',{p_id:id});if(path){const {error}=await db().storage.from('studyhub-courses').remove([path]);if(error)throw Error(error.message);await rpc('finish_course_delete',{p_id:id});}},
  async downloadMaterial(item){if(!item.storage_path)throw Error('У материала нет файла.');const {data,error}=await db().storage.from('studyhub-courses').download(item.storage_path);if(error||!data)throw Error(error?.message||'Файл недоступен.');return data;},
  async library(search,offset,favorites=false){const canRead=await rpc<boolean>('has_section_access',{s:'library'});if(!canRead)return {items:[],canRead:false,quota:null};const [items,quotas]=await Promise.all([rpc<LibraryItem[]>('reader_library_catalog',{p_search:search,p_offset:offset,p_favorites:favorites}),rpc<{used_bytes:number;budget_bytes:number;file_limit_bytes:number}[]>('library_quota')]);return {items,canRead:true,quota:quotas[0]||null};},
- async uploadLibrary(group,title,file){const mime=validateFile(file);const reservations=await rpc<{item_id:string;storage_path:string}[]>('reserve_library_upload',{p_group:group,p_title:title,p_name:file.name,p_mime:mime,p_size:file.size});const reservation=reservations[0];if(!reservation)throw Error('Не удалось зарезервировать загрузку.');const {error}=await db().storage.from('studyhub-library').upload(reservation.storage_path,file,{contentType:mime,upsert:false});if(error)throw Error('Загрузка не завершена: '+error.message+'. Обновите библиотеку и удалите незавершённую публикацию перед повторной попыткой.');await rpc('publish_library_upload',{p_id:reservation.item_id});},
+ async uploadLibrary(group,title,file){await publishRecoverable(this,{request:crypto.randomUUID(),kind:'book',course:null,group,title:title.trim(),description:'',due:null,max:100,late:false},file);},
  async renameLibrary(id,title){await rpc('rename_library_item',{p_id:id,p_title:title});},
  async deleteLibrary(id){const path=await rpc<string>('begin_library_delete',{p_id:id});const {error}=await db().storage.from('studyhub-library').remove([path]);if(error)throw Error(error.message);await rpc('finish_library_delete',{p_id:id});},
  async downloadLibrary(item){const {data,error}=await db().storage.from('studyhub-library').download(item.storage_path);if(error||!data)throw Error(error?.message||'Файл недоступен.');return data;},

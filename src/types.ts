@@ -31,6 +31,8 @@ export interface Gateway {
  materialAiQuota():Promise<import('./material-intake-types').MaterialAiQuota>;
  materialIntakeContext():Promise<import('./material-intake-types').IntakeContext>;
  analyzeMaterial(input:import('./material-intake-types').AnalysisInput,signal:AbortSignal):Promise<import('./material-intake-types').MaterialAnalysis>;
+ intakeStatus(request:string):Promise<import('./material-intake-types').IntakeStatus>;
+ cancelIntake(request:string):Promise<import('./material-intake-types').IntakeStatus>;
  publishIntake(input:import('./material-intake-types').IntakePublication,file:File):Promise<string>;
 
  teacherCatalog():Promise<import('./teacher-types').TeacherCourse[]>;

@@ -7,3 +7,5 @@ export type IntakePublication={request:string;kind:IntakeKind;course:string|null
 export type IntakeReservation={item_id:string;path:string;bucket:'studyhub-library'|'studyhub-courses';published:boolean;result_id:string|null};
 
 export type MaterialAiQuota={user_daily:number;project_daily:number;rpm:number;tpm:number;max_input:number;max_output:number;user_remaining:number;project_remaining:number;minute_remaining:number;tokens_remaining:number;retry_after_seconds:number;resets_at:string};
+
+export type IntakeStatus={status:'none'|'pending'|'published'|'deleting'|'cancelled';result_id?:string;bucket?:'studyhub-library'|'studyhub-courses';path?:string};
