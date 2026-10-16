@@ -1,11 +1,11 @@
 import {isOverdue} from './notifications';
 import {LessonNow,type ScheduleStatus} from './LessonNow';
 import {LessonTimeline} from './LessonTimeline';
-import {scheduleCopy,saveSchedule,forgetSchedule,savedSchedules} from './schedule-cache';
+import {forgetSchedule,savedSchedules} from './schedule-cache';
 import {enableOffline} from './offline-files';
 import {boardNotice} from './board-notice';
 import {studyDate} from './lesson-day';
-import {loadSchedule} from './study-data';
+import {useSchedule} from './useSchedule';
 import {calendarFile,downloadCalendar} from './calendar-export';
 import {StudyIcon} from './StudyIcon';
 import {PlanPanel} from './PlanPanel';
@@ -22,28 +22,21 @@ const empty=():Data=>({notices:[],scheduleStatus:'loading',scheduleSavedAt:null,
 const dateKey=(iso:string)=>bishkekInput(iso).slice(0,10);
 const dayLabel=(date:string)=>new Date(date+'T12:00:00+06:00').toLocaleDateString('ru-RU',{timeZone:'Asia/Bishkek',weekday:'long',day:'numeric',month:'long'});
 export function StudyHome({api,snapshot,view='home',onNavigate,onCourse,onRead}:{api:Gateway;snapshot:Snapshot;view?:View;onNavigate:(tab:string)=>void;onCourse:(course:string,task?:string,start?:'materials'|'notes')=>void;onRead:(item:LibraryItem)=>void}){
- const [selectedGroup,setGroup]=useState(groupContext(snapshot).id),[date,setDate]=useState(()=>dateKey(new Date().toISOString())),[data,setData]=useState<Data>(empty),[busy,setBusy]=useState(true),[search,setSearch]=useState(''),[revision,setRevision]=useState(0),[offset,setOffset]=useState(0);
+ const [selectedGroup,setGroup]=useState(groupContext(snapshot).id),[date,setDate]=useState(()=>dateKey(new Date().toISOString())),[baseData,setData]=useState<Data>(empty),[busy,setBusy]=useState(true),[search,setSearch]=useState(''),[revision,setRevision]=useState(0),[offset,setOffset]=useState(0);
  const context=groupContext(snapshot,selectedGroup),group=context.id,user=(api.demo?'demo:':'live:')+snapshot.me.id;const todayRef=useRef<HTMLElement>(null);
  const courses=snapshot.courses.filter(c=>c.group_id===group&&!c.archived),month=date.slice(0,7);
+ const bounds=view==='calendar'?{from:boardInstant(month+'-01T00:00'),to:new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),1)-6*3600000).toISOString()}:boardWindow(date);
+ const schedule=useSchedule(api,user,view==='tasks'?'':group,context.name,bounds.from,bounds.to,revision,view==='home'?new Date(Date.parse(bounds.from)+86400000).toISOString():bounds.to);
+ const [offlineReady,setOfflineReady]=useState(false);
+ const data={...baseData,...schedule,scheduleStored:schedule.scheduleStored&&offlineReady,issues:[...baseData.issues,...(['saved','error'].includes(schedule.scheduleStatus)?['Расписание не удалось загрузить полностью. Попробуйте ещё раз.']:[])]};
+ useEffect(()=>{let active=true;if(view==='home'&&schedule.scheduleStored)void enableOffline().then(()=>{if(active)setOfflineReady(true);}).catch(()=>{});return()=>{active=false;};},[view,schedule.scheduleStored]);
  useEffect(()=>{setGroup(old=>groupContext(snapshot,old).id);},[snapshot]);
  useEffect(()=>{setOffset(0);},[group]);
  useEffect(()=>{for(const copy of savedSchedules(user))if(!snapshot.groups.some(g=>g.id===copy.groupId&&!g.blocked))forgetSchedule(user,copy.groupId);},[snapshot,user]);
- useEffect(()=>{const retry=()=>{if(view==='home')setRevision(n=>n+1);};window.addEventListener('online',retry);window.addEventListener('offline',retry);return()=>{window.removeEventListener('online',retry);window.removeEventListener('offline',retry);};},[view]);
  useEffect(()=>{let active=true;setBusy(true);setData(empty());
  const run=async()=>{
   const next=empty();
-  const from=view==='calendar'?boardInstant(month+'-01T00:00'):boardWindow(date).from;
-  const to=view==='calendar'?new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),1)-6*3600000).toISOString():boardWindow(date).to;
   const operations:Promise<void>[]=[loadTasks(api).then(p=>{next.personal=p;}).catch(()=>{next.issues.push('Личный план не удалось загрузить.');})];
-  if(group&&view!=='tasks')operations.push(Promise.resolve().then(()=>{if(view==='home'&&!navigator.onLine)throw Error('Offline');return loadSchedule(api,group,from,to);}).then(p=>{
-   if(!active)return;
-   next.scheduleAllowed=p.canRead;next.events=p.items;next.scheduleStatus=p.canRead?'fresh':'denied';
-   if(!p.canRead)forgetSchedule(user,group);
-   else if(view==='home'){const savedAt=new Date().toISOString();next.scheduleSavedAt=savedAt;const stored=saveSchedule(user,{groupId:group,groupName:context.name,from,to,savedAt,events:p.items});if(stored)void enableOffline().then(()=>{if(active){next.scheduleStored=true;setData(old=>({...old,scheduleStored:true}));}}).catch(()=>{/* The copy may still be viewed after manually reopening the app. */});}
-  }).catch(()=>{if(!active)return;next.events=[];next.scheduleStatus='error';const dayEnd=new Date(Date.parse(from)+86400000).toISOString(),copy=view==='home'?scheduleCopy(user,group,from,dayEnd):null;
-   if(copy){next.events=copy.events;next.scheduleStatus='saved';next.scheduleSavedAt=copy.savedAt;next.scheduleStored=true;}next.issues.push('Расписание не удалось загрузить полностью. Попробуйте ещё раз.');
-  }).finally(()=>{if(active&&view==='home')setData(old=>({...old,events:next.events,scheduleAllowed:next.scheduleAllowed,scheduleStatus:next.scheduleStatus,scheduleSavedAt:next.scheduleSavedAt,scheduleStored:next.scheduleStored}));}));
-  else if(!group){next.scheduleStatus='denied';next.scheduleAllowed=false;}
   if(group&&view==='home')operations.push((async()=>{try{for(let offset=0;offset<=100000;offset+=50){const p=await api.board(group,'announcement',null,null,offset);if(!p.canRead)return;next.notices.push(...p.items.filter(n=>boardNotice(n.body).important&&Date.parse(n.created_at)>Date.now()-7*86400000));if(p.items.length<50||next.notices.length>=5){next.notices=next.notices.slice(0,5);return;}}throw Error('Notice limit');}catch{next.notices=[];next.issues.push('Изменения расписания не удалось проверить.');}})());
   operations.push((async()=>{
    // Limit concurrent course requests; each catalog enforces access on the server.

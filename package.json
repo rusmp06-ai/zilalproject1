@@ -1,6 +1,6 @@
 {
   "name": "studyhub",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -34,7 +34,8 @@
     "test:pdf:optimize:browser": "node tests/pdf-optimize.browser.mjs",
     "test:material:intake:browser": "node tests/material-intake.browser.mjs",
     "test:ai:edge": "deno test --allow-env supabase/functions/material-analyze/handler.test.ts",
-    "test:submission:draft:browser": "node tests/submission-draft.browser.mjs"
+    "test:submission:draft:browser": "node tests/submission-draft.browser.mjs",
+    "test:schedule:sync:browser": "node tests/schedule-sync.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

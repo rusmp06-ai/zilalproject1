@@ -67,3 +67,47 @@ test('student schedule opens lesson materials, has no management and renders ful
  await act(async()=>button.click());await act(async()=>screen.getByRole('button',{name:'Материалы занятия'}).click());assert.deepEqual(opened,['g0c0',undefined,'materials']);
  await act(async()=>screen.getByRole('button',{name:'Неделя',exact:true}).click());await waitFor(()=>assert.equal(document.querySelectorAll('.schedule-day').length,7));
 });
+
+test('open home refreshes changed room, moved lesson and cancellation without reloading assignments',async()=>{
+ const {scheduleChanged}=await import('../src/useSchedule');resetDemo();selectDemo('student');const snapshot=await demoGateway.snapshot(),now=Date.now();let events=[event('Sync lesson',new Date(now-60000).toISOString(),new Date(now+3600000).toISOString())],taskReads=0;
+ const api={...demoGateway,board:async(_g:string,k:string)=>({items:k==='schedule'?events.map(e=>({...e})):[],canRead:true,writeScopes:[]}),assignments:async()=>{taskReads++;return {items:[],canSubmit:true,canGrade:false,userId:'student'};}};
+ render(<StudyHome api={api} snapshot={snapshot} onCourse={()=>{}} onNavigate={()=>{}} onRead={()=>{}}/>);
+ await screen.findByRole('heading',{name:'Sync lesson',exact:true});await waitFor(()=>assert.equal(screen.queryByText('Собираем ваше учебное пространство…'),null));const initialReads=taskReads;
+ events=[{...events[0],location:'Новая аудитория 508'}];await act(async()=>scheduleChanged());await screen.findByText('Новая аудитория 508',{selector:'.lesson-room'});assert.equal(taskReads,initialReads);
+ events=[{...events[0],starts_at:new Date(now+7200000).toISOString(),ends_at:new Date(now+10800000).toISOString()}];await act(async()=>scheduleChanged());await screen.findByText(/^БЛИЖАЙШАЯ ПАРА/);assert.equal(screen.queryByText('СЕЙЧАС'),null);
+ events=[];await act(async()=>scheduleChanged());await screen.findByRole('heading',{name:'Сегодня занятий нет'});assert.equal(screen.queryByRole('heading',{name:'Sync lesson',exact:true}),null);
+});
+
+test('loss of network immediately labels the copy and reconnect replaces it',async()=>{
+ const {scheduleChanged}=await import('../src/useSchedule');resetDemo();selectDemo('student');const snapshot=await demoGateway.snapshot(),now=Date.now();let room='Старая 204';const api={...demoGateway,board:async(_g:string,k:string)=>({items:k==='schedule'?[{...event('Network lesson',new Date(now-60000).toISOString(),new Date(now+3600000).toISOString()),location:room}]:[],canRead:true,writeScopes:[]})};
+ render(<StudyHome api={api} snapshot={snapshot} onCourse={()=>{}} onNavigate={()=>{}} onRead={()=>{}}/>);await screen.findByRole('heading',{name:'Network lesson',exact:true});
+ Object.defineProperty(navigator,'onLine',{configurable:true,value:false});try{await act(async()=>window.dispatchEvent(new window.Event('offline')));await screen.findByText('Сохранённое расписание · изменения не проверены');room='Новая 608';Object.defineProperty(navigator,'onLine',{configurable:true,value:true});await act(async()=>window.dispatchEvent(new window.Event('online')));await screen.findByText('Новая 608',{selector:'.lesson-room'});assert.equal(screen.queryByText('Сохранённое расписание · изменения не проверены'),null);}finally{Object.defineProperty(navigator,'onLine',{configurable:true,value:true});}
+});
+
+test('focus return detects a remote schedule change',async()=>{
+ resetDemo();selectDemo('student');const snapshot=await demoGateway.snapshot(),now=Date.now();let room='До возврата';const api={...demoGateway,board:async(_g:string,k:string)=>({items:k==='schedule'?[{...event('Focus lesson',new Date(now-60000).toISOString(),new Date(now+3600000).toISOString()),location:room}]:[],canRead:true,writeScopes:[]})};
+ render(<StudyHome api={api} snapshot={snapshot} onCourse={()=>{}} onNavigate={()=>{}} onRead={()=>{}}/>);await screen.findByText('До возврата',{selector:'.lesson-room'});room='После возврата';await act(async()=>window.dispatchEvent(new window.Event('focus')));await screen.findByText('После возврата',{selector:'.lesson-room'});
+});
+
+test('next lesson advances at exact start, end, midnight and after the final lesson',()=>{
+ const a=event('late','2026-10-15T17:30:00Z','2026-10-15T18:30:00Z'),b=event('tomorrow','2026-10-16T03:00:00Z','2026-10-16T04:20:00Z');
+ let d=lessonDay([b,a],Date.parse('2026-10-15T18:00:00Z'));assert.equal(d.current?.id,'late');assert.equal(d.next?.id,'tomorrow');assert.equal(d.today.length,2);
+ d=lessonDay([a,b],Date.parse(a.ends_at!));assert.equal(d.current,null);assert.equal(d.next?.id,'tomorrow');
+ d=lessonDay([a,b],Date.parse(b.starts_at!));assert.equal(d.current?.id,'tomorrow');assert.equal(d.next,null);
+ d=lessonDay([a,b],Date.parse(b.ends_at!));assert.equal(d.current,null);assert.equal(d.next,null);assert.equal(d.remaining.length,0);
+});
+
+test('a superseded schedule request cannot overwrite the new group or its cache',async()=>{
+ const {useSchedule}=await import('../src/useSchedule');const now=Date.now(),bounds=boardWindow(studyDate(now));let release!:(value:any)=>void;
+ const pending=new Promise<any>(r=>{release=r;});const old=event('Old response',new Date(now).toISOString(),new Date(now+3600000).toISOString()),fresh={...old,id:'new',group_id:'g1',title:'New group'};
+ const api={...demoGateway,board:async(group:string)=>group==='g0'?pending:{items:[fresh],canRead:true,writeScopes:[]}};
+ function Reader({group}:{group:string}){const s=useSchedule(api,'race-user',group,group,bounds.from,bounds.to,0);return <p>{s.events.map(e=>e.title).join(',')} · {s.scheduleStatus}</p>;}
+ const app=render(<Reader group="g0"/>);app.rerender(<Reader group="g1"/>);await screen.findByText('New group · fresh');await act(async()=>release({items:[old],canRead:true,writeScopes:[]}));assert.equal(screen.queryByText('Old response · fresh'),null);assert.equal(scheduleCopy('race-user','g0',bounds.from,bounds.to),null);assert.equal(scheduleCopy('race-user','g1',bounds.from,bounds.to)?.events[0].id,'new');
+});
+
+test('cross-tab edit signal refreshes a mounted reader and denial removes the saved copy',async()=>{
+ const {useSchedule}=await import('../src/useSchedule');const now=Date.now(),bounds=boardWindow(studyDate(now));let allowed=true;
+ const api={...demoGateway,board:async()=>({items:allowed?[event('Before denial',new Date(now).toISOString(),new Date(now+3600000).toISOString())]:[],canRead:allowed,writeScopes:[]})};
+ function Reader(){const s=useSchedule(api,'denial-user','g0','Group',bounds.from,bounds.to,0);return <p>{s.scheduleStatus}</p>;}
+ render(<Reader/>);await screen.findByText('fresh');assert.ok(scheduleCopy('denial-user','g0',bounds.from,bounds.to));allowed=false;await act(async()=>window.dispatchEvent(new window.StorageEvent('storage',{key:'studyhub-schedule-changed',newValue:'new-edit'})));await screen.findByText('denied');assert.deepEqual(savedSchedules('denial-user'),[]);
+});
