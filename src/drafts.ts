@@ -1,7 +1,9 @@
 import {useEffect,useState} from 'react';
 const dirty=new Set<string>();
+const submissionGuards=new Map<string,{flush:()=>boolean;sending:()=>boolean}>();
+export function registerSubmissionGuard(key:string,guard:{flush:()=>boolean;sending:()=>boolean}){submissionGuards.set(key,guard);return()=>{if(submissionGuards.get(key)===guard)submissionGuards.delete(key);};}
 const pendingFiles=new Map<string,boolean>();
-export function mayLeaveDrafts(){if([...pendingFiles.values()].some(Boolean)){window.alert('Публикация выполняется. Дождитесь её завершения.');return false;}if(pendingFiles.size&&!window.confirm('В помощнике есть неопубликованный документ. При переходе файл и поля нужно будет выбрать заново. Продолжить?'))return false;return !dirty.size||window.confirm('Есть несохранённый текст. Перейти в другой раздел? Черновик останется в этой вкладке.');}
+export function mayLeaveDrafts(){if([...submissionGuards.values()].some(g=>g.sending())){window.alert('Работа отправляется. Дождитесь подтверждения.');return false;}const saved=[...submissionGuards.values()].map(g=>g.flush()).every(Boolean);if(!saved&&!window.confirm('Черновик ответа не удалось сохранить. При закрытии вкладки текст может потеряться. Всё равно перейти?'))return false;if([...pendingFiles.values()].some(Boolean)){window.alert('Публикация выполняется. Дождитесь её завершения.');return false;}if(pendingFiles.size&&!window.confirm('В помощнике есть неопубликованный документ. При переходе файл и поля нужно будет выбрать заново. Продолжить?'))return false;return !dirty.size||window.confirm('Есть несохранённый текст. Перейти в другой раздел? Черновик останется в этой вкладке.');}
 export function usePendingFileGuard(key:string,active:boolean,publishing:boolean){useEffect(()=>{if(!active)return;pendingFiles.set(key,publishing);const guard=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',guard);return()=>{pendingFiles.delete(key);window.removeEventListener('beforeunload',guard);};},[key,active,publishing]);}
 export function useDraft<T>(key:string,initial:T){
  const empty=JSON.stringify(initial),storageKey='studyhub-draft-v1:'+key;

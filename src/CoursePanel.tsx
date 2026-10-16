@@ -39,7 +39,7 @@ export function CoursePanel({api,course,onClose,initialKind,initialAssignment=''
  const sourceIds=data?.materials.map(m=>m.id)||[];
  return <section className="course-workspace">
  <button onClick={()=>{if(mayLeaveDrafts())onClose();}}><StudyIcon name="back"/> {teacherCourse?'К кабинету преподавателя':'К дисциплинам'}</button>
- <header className="course-hero"><div><div className="eyebrow">ДИСЦИПЛИНА{groupName?' · '+groupName:''}</div><h2>{course.title}</h2><p>{teacherCourse?'Темы, материалы, задания и результаты вашей группы.':'Учебные темы, материалы и ближайшие дела в одном месте.'}</p></div><button disabled={busy} onClick={()=>setRevision(n=>n+1)}>Обновить дисциплину</button></header>
+ <header className="course-hero"><div><div className="eyebrow">ДИСЦИПЛИНА{groupName?' · '+groupName:''}</div><h2>{course.title}</h2><p>{teacherCourse?'Темы, материалы, задания и результаты вашей группы.':'Учебные темы, материалы и ближайшие дела в одном месте.'}</p></div><button disabled={busy} onClick={()=>{if(mayLeaveDrafts())setRevision(n=>n+1);}}>Обновить дисциплину</button></header>
  <nav className="course-tabs" aria-label="Разделы дисциплины">{Object.entries(tabs).map(([id,title])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>navigate(id as Tab)}>{title}</button>)}</nav>
  {error&&<p className="notice error" role="alert">{error}</p>}{message&&<p className="notice success" role="status">{message}</p>}{busy&&<p role="status">Обновляем дисциплину…</p>}
  {data?.issues.length? <details className="course-issues"><summary>Некоторые разделы не загрузились ({data.issues.length})</summary>{data.issues.map(issue=><p key={issue}>{issue}</p>)}{data.needsUpdate&&<p>Для сохранения тем требуется обновление базы v0.20.</p>}</details>:null}

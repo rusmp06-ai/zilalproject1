@@ -1,10 +1,10 @@
 {
   "name": "studyhub",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs && node --import tsx --test tests/day.test.tsx && node --import tsx --test tests/leader.test.tsx && node --import tsx --test tests/owner.test.tsx && node --import tsx --test tests/account.test.ts && node --import tsx --test tests/profile-security.test.tsx && node --import tsx --test tests/auth.test.tsx && node --import tsx --test tests/notifications.test.tsx && node --import tsx --test tests/teacher.test.tsx && node --import tsx --test tests/pdf-optimize.test.ts && node --import tsx --test tests/material-intake.test.ts && node --import tsx --test tests/ai-economy.test.tsx",
+    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs && node --import tsx --test tests/day.test.tsx && node --import tsx --test tests/leader.test.tsx && node --import tsx --test tests/owner.test.tsx && node --import tsx --test tests/account.test.ts && node --import tsx --test tests/profile-security.test.tsx && node --import tsx --test tests/auth.test.tsx && node --import tsx --test tests/notifications.test.tsx && node --import tsx --test tests/teacher.test.tsx && node --import tsx --test tests/pdf-optimize.test.ts && node --import tsx --test tests/material-intake.test.ts && node --import tsx --test tests/ai-economy.test.tsx && node --import tsx --test tests/submission-draft.test.tsx",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
@@ -33,7 +33,8 @@
     "test:teacher:browser": "node tests/teacher.browser.mjs",
     "test:pdf:optimize:browser": "node tests/pdf-optimize.browser.mjs",
     "test:material:intake:browser": "node tests/material-intake.browser.mjs",
-    "test:ai:edge": "deno test --allow-env supabase/functions/material-analyze/handler.test.ts"
+    "test:ai:edge": "deno test --allow-env supabase/functions/material-analyze/handler.test.ts",
+    "test:submission:draft:browser": "node tests/submission-draft.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
