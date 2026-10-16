@@ -15,7 +15,7 @@ export type LibraryItem={favorite?:boolean;page?:number;total_pages?:number;id:s
 export type LibraryPage={items:LibraryItem[];canRead:boolean;quota:{used_bytes:number;budget_bytes:number;file_limit_bytes:number}|null};
 export type MaterialKind='lecture'|'presentation'|'material';
 export type CourseMaterial={id:string;course_id:string;kind:MaterialKind;title:string;body:string;author_name:string;created_at:string;file_id:string|null;storage_path:string|null;original_name:string|null;mime_type:string|null;size_bytes:number|null;status:string;can_manage:boolean};
-export type Assignment={revision?:number;id:string;course_id:string;title:string;description:string;due_at:string|null;max_score:number;allow_late:boolean;created_at:string};
+export type Assignment={source_material_id?:string|null;revision?:number;id:string;course_id:string;title:string;description:string;due_at:string|null;max_score:number;allow_late:boolean;created_at:string};
 export type Work={current_member?:boolean;review_version?:number;id:string;student_id:string;student_name:string;text_answer:string;attempt_no:number;status:string;submitted_at:string|null;is_late:boolean;return_feedback:string|null;storage_path:string|null;original_name:string|null;mime_type:string|null;size_bytes:number|null;score:number|null;feedback:string|null;released_at:string|null};
 export type BoardKind='schedule'|'announcement';
 export type BoardItem={unread?:boolean;id:string;group_id:string;course_id:string|null;kind:BoardKind;title:string;body:string;location:string;starts_at:string|null;ends_at:string|null;author_name:string;created_at:string;can_manage:boolean};
@@ -28,6 +28,10 @@ export type CourseWorkspace={topics:CourseTopic[];links:CourseLink[];completed:s
 export type AssignmentProgress={assignment_id:string;status:string;attempt_no:number};
 export type GroupRequest={user_id:string;group_id:string;full_name:string;status:string;created_at:string};
 export interface Gateway {
+ materialIntakeContext():Promise<import('./material-intake-types').IntakeContext>;
+ analyzeMaterial(input:import('./material-intake-types').AnalysisInput,signal:AbortSignal):Promise<import('./material-intake-types').MaterialAnalysis>;
+ publishIntake(input:import('./material-intake-types').IntakePublication,file:File):Promise<string>;
+
  teacherCatalog():Promise<import('./teacher-types').TeacherCourse[]>;
  teacherQueue(course:string|null,assignment:string|null,status:import('./teacher-types').ReviewStatus,search:string,offset:number):Promise<{items:import('./teacher-types').ReviewRow[];total:number}>;
  teacherReviewHistory(work:string,offset:number):Promise<{items:import('./teacher-types').ReviewEvent[];total:number}>;
