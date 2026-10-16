@@ -17,6 +17,8 @@ const {StudySearch}=await import('../src/StudySearch');
 
 async function ownerAdmin(section:string){fireEvent.click(screen.getByRole('button',{name:'Открыть админ',exact:true}));fireEvent.click(within(screen.getByRole('navigation',{name:'Разделы владельца'})).getByRole('button',{name:section,exact:true}));}
 
+// Each test starts as a fresh visit; remounts inside a test retain their URL.
+test.beforeEach(()=>history.replaceState(null,'','/?demo=1'));
 test.afterEach(async()=>{cleanup();await new Promise(resolve=>setTimeout(resolve,0));sessionStorage.clear();});
 
 test('owner creates group, invites leader, new account accepts invitation and creates own group',async()=>{

@@ -12,6 +12,8 @@ const {groupContext}=await import('../src/group-context');
 const {leaderGroups}=await import('../src/leader-context');
 const {LeaderAdminPanel}=await import('../src/LeaderAdminPanel');
 const {demoGateway,resetDemo,selectDemo}=await import('../src/demo');
+// Each test starts as a fresh visit; remounts inside a test retain their URL.
+test.beforeEach(()=>history.replaceState(null,'','/?demo=1'));
 test.afterEach(async()=>{cleanup();await new Promise(r=>setTimeout(r,0));localStorage.clear();sessionStorage.clear();});
 test('leader study group and admin groups are separate, including multiple roles',async()=>{
  resetDemo();selectDemo('leader');const snap=await demoGateway.snapshot();const mixed={...snap,groups:[...snap.groups,{id:'other',name:'Other',blocked:false,created_by:'owner'}],memberships:[...snap.memberships,{user_id:snap.me.id,group_id:'other',role:'teacher' as const,active:true}]};

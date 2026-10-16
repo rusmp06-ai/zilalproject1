@@ -1,3 +1,4 @@
+import {registerNavigationGuard} from './drafts';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {ReaderPanel} from './ReaderPanel';
 import {courseReading} from './course-reading';
@@ -6,6 +7,7 @@ import type {Gateway,CourseMaterial,LibraryItem} from './types';
 // Course files and personal reading state use their own authorized APIs.
 export function CourseReader({api,material,onClose,initialPage}:{api:Gateway;material:CourseMaterial;onClose:()=>void;initialPage?:number}){
  const [user,setUser]=useState(''),[error,setError]=useState(''),[storageLimited,setStorageLimited]=useState(false),[local,setLocal]=useState(false);const dirty=useRef(false),dialog=useRef<HTMLElement>(null);
+ useEffect(()=>registerNavigationGuard(()=>!dirty.current||window.confirm('В читалке есть несохранённая заметка. Перейти?')),[]);
  const close=()=>{if(!dirty.current||window.confirm('В читалке есть несохранённая заметка. Закрыть документ?'))onClose();};
  useEffect(()=>{let alive=true;api.snapshot().then(s=>{if(alive)setUser(s.me.id);}).catch(()=>{if(alive)setError('Не удалось проверить аккаунт. Откройте документ заново.');});return()=>{alive=false;};},[api]);
  useEffect(()=>{const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;document.body.style.overflow='hidden';const key=(e:KeyboardEvent)=>{if(e.defaultPrevented)return;if(e.key==='Escape'&&!document.fullscreenElement){e.preventDefault();close();}if(e.key==='Tab'){const nodes=[...dialog.current?.querySelectorAll<HTMLElement>('button,input,select,textarea,summary,[tabindex]')||[]].filter(n=>n.getClientRects().length>0&&!n.hasAttribute('disabled')&&n.getAttribute('tabindex')!=='-1');if(e.shiftKey&&document.activeElement===nodes[0]){e.preventDefault();nodes.at(-1)?.focus();}else if(!e.shiftKey&&document.activeElement===nodes.at(-1)){e.preventDefault();nodes[0]?.focus();}}};document.addEventListener('keydown',key);return()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',key);previous?.focus();};},[]);

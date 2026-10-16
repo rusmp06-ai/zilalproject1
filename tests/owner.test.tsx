@@ -12,6 +12,8 @@ const {OwnerAdminPanel}=await import('../src/OwnerAdminPanel');
 const {ownerSummary}=await import('../src/OwnerOverview');
 const {catalogPages}=await import('../src/catalog-pages');
 const {demoGateway,resetDemo,selectDemo}=await import('../src/demo');
+// Each test starts as a fresh visit; remounts inside a test retain their URL.
+test.beforeEach(()=>history.replaceState(null,'','/?demo=1'));
 test.afterEach(async()=>{cleanup();await new Promise(r=>setTimeout(r,0));localStorage.clear();sessionStorage.clear();});
 async function openAdmin(section:string){fireEvent.click(screen.getByRole('button',{name:'Открыть админ',exact:true}));fireEvent.click(within(screen.getByRole('navigation',{name:'Разделы владельца'})).getByRole('button',{name:section,exact:true}));}
 test('owner summary counts unique people and includes leaders among students',async()=>{

@@ -15,6 +15,8 @@ const {loadEpub}=await import('../src/epub-reader');
 const {default:JSZip}=await import('jszip');
 const {StudySearch}=await import('../src/StudySearch');
 
+// Each test starts as a fresh visit; remounts inside a test retain their URL.
+test.beforeEach(()=>history.replaceState(null,'','/?demo=1'));
 test.afterEach(async()=>{cleanup();await new Promise(resolve=>setTimeout(resolve,0));sessionStorage.clear();});
 
 test('note draft survives navigation and remount; declined navigation keeps editor',async()=>{
