@@ -2,6 +2,7 @@ import type {ReactNode} from 'react';
 /** Consistent interface icons; the adjacent text supplies the accessible name. */
 export function StudyIcon({name,className=''}:{name:string;className?:string}){
  const paths:Record<string,ReactNode>={
+  close:<path d="m7 7 10 10M17 7 7 17"/>,
   search:<><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
   'bookmark-add':<><path d="M6 4h10v17l-5-4-5 4V4Z"/><path d="M19 3v6m-3-3h6"/></>,
   bookmark:<path d="M6 4h12v17l-6-4-6 4V4Z"/>,

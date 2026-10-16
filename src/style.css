@@ -134,3 +134,16 @@
 .intake-budget{margin:16px 0;padding:14px 16px;background:#f3f7fc;border:1px solid #d9e4f2;border-radius:12px}.intake-budget p{margin:8px 0}.intake-budget button{white-space:normal}
 .submission-draft-status{margin:12px 0;padding:10px 12px;border-radius:10px;background:#edf5ef;color:#345944;font-size:13px}.submission-draft-status.draft-warning{background:#fff4e4;color:#795518}.student-submission .filename{overflow-wrap:anywhere}.student-submission textarea{min-height:150px}
 .student-submission .notice{overflow-wrap:anywhere}
+
+/* Quiet close controls with a full touch target. */
+button.close-button{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;flex:0 0 44px;border:1px solid transparent;border-radius:12px;background:transparent;color:inherit;box-shadow:none}
+button.close-button:hover:not(:disabled){background:#eaf0f7;border-color:#d9e3ef;color:#244e7b}
+button.close-button:focus-visible{outline:2px solid #2866a5;outline-offset:3px}
+button.close-button:disabled{opacity:.4;cursor:not-allowed}
+.close-button .study-icon{width:22px;height:22px;stroke-width:1.8}
+.material-intake>.section-heading{align-items:flex-start;gap:16px;margin-bottom:8px}.material-intake>.section-heading h3{margin:8px 0}
+.intake-budget{margin:12px 0;color:#607086}.intake-budget-line{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}.intake-budget details{max-width:100%;font-size:13px}.intake-budget summary{cursor:pointer;color:#47617f}.intake-budget details p{font-size:13px;line-height:1.5;max-width:560px}.intake-budget small{line-height:1.6}
+.reader-local-copy{margin:0;padding:6px 16px;font-size:12px;flex-shrink:0}
+.preview-content>header h2,.schedule-detail .card-actions h2{min-width:0;overflow-wrap:anywhere}.schedule-detail>.card-actions:first-child{justify-content:space-between;flex-wrap:nowrap}
+
+.document-picker-field{position:relative;display:flex;align-items:center;gap:12px;min-height:48px;padding:10px 12px;border:1px solid #d4dfed;border-radius:12px;background:#fbfcfe;font-weight:400;color:#63738a;min-width:0}.document-picker-field input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;padding:0}.document-picker-action{flex-shrink:0;color:#285b95;font-weight:600}.document-picker-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.document-picker-field small{flex-shrink:0;font-size:11px}.document-picker-field:focus-within{outline:2px solid #2866a5;outline-offset:3px}.document-picker-field:hover:not(.disabled){background:#f0f5fb;border-color:#9db7d5}.document-picker-field.disabled{opacity:.5}.document-picker-field.disabled input{cursor:not-allowed}
