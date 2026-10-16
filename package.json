@@ -1,10 +1,10 @@
 {
   "name": "studyhub",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs && node --import tsx --test tests/day.test.tsx && node --import tsx --test tests/leader.test.tsx && node --import tsx --test tests/owner.test.tsx && node --import tsx --test tests/account.test.ts && node --import tsx --test tests/profile-security.test.tsx && node --import tsx --test tests/auth.test.tsx && node --import tsx --test tests/notifications.test.tsx && node --import tsx --test tests/teacher.test.tsx && node --import tsx --test tests/pdf-optimize.test.ts && node --import tsx --test tests/material-intake.test.ts",
+    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs && node --import tsx --test tests/day.test.tsx && node --import tsx --test tests/leader.test.tsx && node --import tsx --test tests/owner.test.tsx && node --import tsx --test tests/account.test.ts && node --import tsx --test tests/profile-security.test.tsx && node --import tsx --test tests/auth.test.tsx && node --import tsx --test tests/notifications.test.tsx && node --import tsx --test tests/teacher.test.tsx && node --import tsx --test tests/pdf-optimize.test.ts && node --import tsx --test tests/material-intake.test.ts && node --import tsx --test tests/ai-economy.test.tsx",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",

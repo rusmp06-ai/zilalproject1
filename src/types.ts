@@ -28,6 +28,7 @@ export type CourseWorkspace={topics:CourseTopic[];links:CourseLink[];completed:s
 export type AssignmentProgress={assignment_id:string;status:string;attempt_no:number};
 export type GroupRequest={user_id:string;group_id:string;full_name:string;status:string;created_at:string};
 export interface Gateway {
+ materialAiQuota():Promise<import('./material-intake-types').MaterialAiQuota>;
  materialIntakeContext():Promise<import('./material-intake-types').IntakeContext>;
  analyzeMaterial(input:import('./material-intake-types').AnalysisInput,signal:AbortSignal):Promise<import('./material-intake-types').MaterialAnalysis>;
  publishIntake(input:import('./material-intake-types').IntakePublication,file:File):Promise<string>;

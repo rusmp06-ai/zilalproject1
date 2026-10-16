@@ -17,9 +17,10 @@ async function rows<T>(table:string){const order=table==='group_memberships'?['g
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').upsert({id:data.user.id,full_name:name},{onConflict:'id',ignoreDuplicates:true});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
  demo:false,
+ async materialAiQuota(){try{return await rpc('material_ai_quota');}catch{throw Error('Счётчик ИИ недоступен. Примените SQL v0.31; ручная публикация остаётся доступной.');}},
  async materialIntakeContext(){try{return await rpc('material_intake_context');}catch(e){if((e as {code?:string}).code==='PGRST202')throw Error('Для помощника добавления материалов требуется SQL v0.30.');throw e;}},
  async analyzeMaterial(input,signal){
-  const {data,error}=await db().functions.invoke('material-analyze',{body:input,signal});if(error){let message='ИИ недоступен. Поля можно заполнить вручную.';try{const body=await (error as {context?:Response}).context?.json();if(typeof body?.error==='string')message=body.error;}catch{}throw Error(message);}return data;
+  const {data,error}=await db().functions.invoke('material-analyze',{body:input,signal});if(error){let quota:import('./material-intake-types').MaterialAiQuota|undefined;let message='ИИ недоступен. Поля можно заполнить вручную.';try{const body=await (error as {context?:Response}).context?.json();if(typeof body?.error==='string')message=body.error;if(body?.quota)quota=body.quota;}catch{}throw Object.assign(Error(message),{quota});}return data;
  },
  async publishIntake(i,file){
   const mime=validateFile(file);const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');
