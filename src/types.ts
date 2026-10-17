@@ -18,7 +18,7 @@ export type CourseMaterial={id:string;course_id:string;kind:MaterialKind;title:s
 export type Assignment={source_material_id?:string|null;revision?:number;id:string;course_id:string;title:string;description:string;due_at:string|null;max_score:number;allow_late:boolean;created_at:string};
 export type Work={current_member?:boolean;review_version?:number;id:string;student_id:string;student_name:string;text_answer:string;attempt_no:number;status:string;submitted_at:string|null;is_late:boolean;return_feedback:string|null;storage_path:string|null;original_name:string|null;mime_type:string|null;size_bytes:number|null;score:number|null;feedback:string|null;released_at:string|null};
 export type BoardKind='schedule'|'announcement';
-export type BoardItem={unread?:boolean;id:string;group_id:string;course_id:string|null;kind:BoardKind;title:string;body:string;location:string;starts_at:string|null;ends_at:string|null;author_name:string;created_at:string;can_manage:boolean};
+export type BoardItem={template_id?:string|null;occurrence_date?:string|null;cancelled?:boolean;version?:number;unread?:boolean;id:string;group_id:string;course_id:string|null;kind:BoardKind;title:string;body:string;location:string;starts_at:string|null;ends_at:string|null;author_name:string;created_at:string;can_manage:boolean};
 export type BoardInput={repeatWeeks?:number;group:string;course:string|null;kind:BoardKind;title:string;body:string;location:string;start:string|null;end:string|null;id:string|null};
 export type Note={id:string;title:string;body:string;version:number;created_at:string;updated_at:string};
 export type ReaderSource={kind:'library';item:LibraryItem}|{kind:'course';item:CourseMaterial};
@@ -80,6 +80,9 @@ export interface Gateway {
  notes(search:string,offset:number):Promise<Note[]>;
  saveNote(title:string,body:string,id:string|null,version:number|null):Promise<void>;
  deleteNote(id:string,version:number):Promise<void>;
+ weeklyDay(group:string,day:number):Promise<import('./weekly-schedule').WeeklyDay>;
+ saveWeeklyDay(group:string,day:number,items:import('./weekly-schedule').WeeklySlot[],version:number,request:string):Promise<void>;
+ saveScheduleException(input:import('./weekly-schedule').ScheduleException,reset?:boolean):Promise<void>;
  board(group:string,kind:BoardKind,from:string|null,to:string|null,offset:number):Promise<{items:BoardItem[];canRead:boolean;writeScopes:(string|null)[]}>;
  saveBoard(input:BoardInput):Promise<void>;
  deleteBoard(id:string):Promise<void>;

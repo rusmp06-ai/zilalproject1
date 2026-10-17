@@ -38,7 +38,7 @@ test('leader submits own assignment and cannot read or grade student work',async
 });
 test('missing roster RPC reports prerequisite while other admin sections still work',async()=>{
  resetDemo();selectDemo('leader');const snap=await demoGateway.snapshot(),api={...demoGateway,groupMembers:async()=>{throw Object.assign(Error('not found'),{code:'PGRST202'});}};
- render(<LeaderAdminPanel api={api} snapshot={snap} onChanged={async()=>{}} onStudy={()=>{}}/>);await screen.findByRole('alert');assert.match(screen.getByRole('alert').textContent||'',/v0.23/);fireEvent.click(screen.getByRole('button',{name:'Расписание',exact:true}));await screen.findByLabelText('Название занятия');
+ render(<LeaderAdminPanel api={api} snapshot={snap} onChanged={async()=>{}} onStudy={()=>{}}/>);await screen.findByRole('alert');assert.match(screen.getByRole('alert').textContent||'',/v0.23/);fireEvent.click(screen.getByRole('button',{name:'Расписание',exact:true}));await screen.findByRole('button',{name:'Добавить пару',exact:true});
 });
 
  test('dual-role study view finds personal attempts beyond other students and hides draft grades',async()=>{

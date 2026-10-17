@@ -1,0 +1,217 @@
+begin;
+do $$ begin
+ if to_regclass('public.courses') is null or to_regclass('public.material_intakes') is null or to_regclass('public.private_tasks') is null then
+  raise exception 'Existing StudyHub database v0.35 required. Check selected project; no changes applied.';
+ end if;
+end $$;
+-- Managers can list archived metadata for restoration, without opening its materials.
+drop policy if exists courses_read on public.courses;
+create policy courses_read on public.courses for select to authenticated using (
+ public.can_view_course(id) or (archived and public.is_group_leader(group_id))
+);
+create or replace function public.manage_course(p_course uuid,p_action text,p_title text,p_expected_title text,p_expected_archived boolean) returns void
+language plpgsql security definer set search_path=pg_catalog as $$
+declare c public.courses%rowtype; next_title text;
+begin
+ if not public.is_active_user() then raise exception 'Course management denied';end if;
+ select * into c from public.courses where id=p_course for update;
+ if not found or not(public.is_owner() or public.is_group_leader(c.group_id)) then raise exception 'Course management denied';end if;
+ if p_action not in ('rename','archive','restore','delete') or p_action is null then raise exception 'Invalid course action';end if;
+ next_title=trim(p_title);
+ if p_action='rename' and (next_title is null or length(next_title) not between 1 and 200) then raise exception 'Invalid course title';end if;
+ -- A retry of the same successful change is harmless.
+ if p_action='rename' and c.title=next_title or p_action='archive' and c.archived or p_action='restore' and not c.archived then return;end if;
+ if c.title is distinct from p_expected_title or c.archived is distinct from p_expected_archived then raise exception 'Course changed; refresh';end if;
+ if p_action='delete' then
+  if exists(select 1 from public.course_content where course_id=c.id)
+   or exists(select 1 from public.assignments where course_id=c.id)
+   or exists(select 1 from public.group_board where course_id=c.id)
+   or exists(select 1 from public.course_topics where course_id=c.id)
+   or exists(select 1 from public.course_topic_links where course_id=c.id)
+   or exists(select 1 from public.teaching_assignments where course_id=c.id)
+   or exists(select 1 from public.invitation_courses where course_id=c.id)
+   or exists(select 1 from public.access_denials where course_id=c.id)
+   or exists(select 1 from public.material_intakes where payload->>'course'=c.id::text)
+   or exists(select 1 from public.private_notes where body like '%'||c.id::text||'%')
+   or exists(select 1 from public.private_tasks where body like '%'||c.id::text||'%')
+  then raise exception 'Course is not empty; archive instead';end if;
+  delete from public.courses where id=c.id;
+ else
+  update public.courses set title=case when p_action='rename' then next_title else title end,
+   archived=case when p_action='archive' then true when p_action='restore' then false else archived end where id=c.id;
+ end if;
+ insert into public.audit_events(actor_id,action,entity_id,details) values(auth.uid(),case p_action when 'rename' then 'course.renamed' when 'archive' then 'course.archived' when 'restore' then 'course.restored' else 'course.deleted' end,c.id,jsonb_build_object('group_id',c.group_id,'title',c.title,'new_title',case when p_action='rename' then next_title else c.title end));
+end $$;
+revoke all on function public.manage_course(uuid,text,text,text,boolean) from public,anon;
+grant execute on function public.manage_course(uuid,text,text,text,boolean) to authenticated;
+commit;
+begin;
+do $$ begin
+ if to_regclass('public.private_tasks') is null or to_regclass('public.material_intakes') is null then
+  raise exception 'Existing StudyHub database v0.35 required. Check selected project; no changes applied.';
+ end if;
+end $$;
+-- Only visible note text is indexed, not the JSON metadata used to link notes.
+create or replace function public.study_search_text(body text) returns text
+language plpgsql immutable set search_path=pg_catalog as $$
+declare value jsonb;
+begin
+ begin value:=body::jsonb;exception when others then return coalesce(body,'');end;
+ if jsonb_typeof(value)='object' then
+  if value->>'studyhub_reader_note'='1' then return coalesce(value->>'text','')||' '||coalesce(value->>'quote','');end if;
+  if value->>'studyhub_course_note'='1' then return coalesce(value->>'text','');end if;
+  if value->>'studyhub_plan'='1' then return coalesce(value->>'details','');end if;
+ end if;
+ return coalesce(body,'');
+end $$;
+create or replace function public.study_search_vector(title text,body text) returns tsvector
+language sql immutable set search_path=pg_catalog as $$
+ select setweight(to_tsvector('pg_catalog.russian',coalesce(title,'')),'A')||setweight(to_tsvector('pg_catalog.russian',coalesce(body,'')),'B');
+$$;
+create index if not exists courses_search_gin on public.courses using gin(public.study_search_vector(title,''));
+create index if not exists content_search_gin on public.course_content using gin(public.study_search_vector(title,body));
+create index if not exists assignments_search_gin on public.assignments using gin(public.study_search_vector(title,description));
+create index if not exists library_search_gin on public.library_items using gin(public.study_search_vector(title,''));
+create index if not exists filenames_search_gin on public.files using gin(public.study_search_vector(original_name,''));
+create index if not exists notes_search_gin on public.private_notes using gin(public.study_search_vector(title,public.study_search_text(body)));
+create index if not exists tasks_search_gin on public.private_tasks using gin(public.study_search_vector(title,public.study_search_text(body)));
+create or replace function public.study_search(p_query text,p_kind text default 'all',p_offset integer default 0) returns jsonb
+language plpgsql stable security definer set search_path=pg_catalog as $$
+declare raw text; query tsquery; lexemes text; result jsonb;
+begin
+ if not public.is_active_user() then raise exception 'Search access denied';end if;
+ raw:=lower(trim(p_query));
+ if raw is null or length(raw)<2 or length(raw)>200 or p_kind is null or p_kind not in ('all','course','material','assignment','book','note') or p_offset is null or p_offset<0 or p_offset>100000 then raise exception 'Invalid search';end if;
+ -- Lexemes come from the text parser, not from user-supplied tsquery syntax.
+ select string_agg(quote_literal(word)||':*',' & ') into lexemes from unnest(tsvector_to_array(to_tsvector('pg_catalog.russian',raw))) word;
+ if lexemes is null then return jsonb_build_object('items','[]'::jsonb,'hasMore',false,'issues','[]'::jsonb);end if;
+ query:=to_tsquery('pg_catalog.russian',lexemes);
+ with docs as (
+  select 'course'::text kind,c.id,c.title,''::text body,c.id course_id,c.title course_title,false has_file,null::timestamptz due,null::text status,public.study_search_vector(c.title,'') vec
+  from public.courses c where p_kind in ('all','course') and not c.archived and public.can_view_course(c.id) and public.study_search_vector(c.title,'')@@query
+  union all
+  select 'material',i.id,i.title,coalesce(i.body,'')||' '||coalesce(f.original_name,''),c.id,c.title,i.file_id is not null,null,null,public.study_search_vector(i.title,i.body)||public.study_search_vector(f.original_name,'')
+  from public.course_content i join public.courses c on c.id=i.course_id left join public.files f on f.id=i.file_id
+  where p_kind in ('all','material') and not c.archived and i.kind in ('lecture','presentation','material') and i.published_at<=now() and (i.file_id is null or f.status='ready') and public.read_course_material(i.id)
+   and (public.study_search_vector(i.title,i.body)@@query or public.study_search_vector(f.original_name,'')@@query)
+  union all
+  select 'assignment',a.id,a.title,a.description,c.id,c.title,false,a.due_at,
+   case when public.can_submit_assignment(a.id) then coalesce((select w.status from public.submissions w where w.assignment_id=a.id and w.student_id=auth.uid() order by w.attempt_no desc limit 1),'not_submitted') end,
+   public.study_search_vector(a.title,a.description)
+  from public.assignments a join public.courses c on c.id=a.course_id where p_kind in ('all','assignment') and not c.archived and public.can_read_assignment(a.id) and public.study_search_vector(a.title,a.description)@@query
+  union all
+  select 'book',i.id,i.title,f.original_name,null,null,true,null,null,public.study_search_vector(i.title,'')||public.study_search_vector(f.original_name,'')
+  from public.library_items i join public.files f on f.id=i.file_id where p_kind in ('all','book') and i.status='published' and f.status='ready' and public.has_section_access('library') and public.read_library_file(f.storage_path)
+   and (public.study_search_vector(i.title,'')@@query or public.study_search_vector(f.original_name,'')@@query)
+  union all
+  select 'note',n.id,n.title,public.study_search_text(n.body),null,null,false,null,null,public.study_search_vector(n.title,public.study_search_text(n.body))
+  from public.private_notes n where p_kind in ('all','note') and n.user_id=auth.uid() and not public.is_plan_record(n.body) and public.study_search_vector(n.title,public.study_search_text(n.body))@@query
+  union all
+  select 'plan',n.id,n.title,public.study_search_text(n.body),null,null,false,
+   case when public.is_plan_record(n.body) then ((n.body::jsonb->>'due')||'T23:59:59+06:00')::timestamptz end,
+   case when public.is_plan_record(n.body) and n.body::jsonb->>'done'='true' then 'completed' else 'pending' end,
+   public.study_search_vector(n.title,public.study_search_text(n.body))
+  from public.private_tasks n where p_kind in ('all','assignment') and n.user_id=auth.uid() and public.is_plan_record(n.body) and public.study_search_vector(n.title,public.study_search_text(n.body))@@query
+ ), ranked as (
+  select *,case when lower(title)=raw then 100 when starts_with(lower(title),raw) then 70 when public.study_search_vector(title,'')@@query then 50 else 0 end+ts_rank_cd(vec,query) score from docs
+ ), page as (select * from ranked order by score desc,title,kind,id limit 26 offset p_offset), numbered as (select *,row_number() over(order by score desc,title,kind,id) n from page)
+ select jsonb_build_object('items',coalesce((select jsonb_agg(jsonb_build_object('kind',kind,'id',id,'title',title,
+  'highlightedTitle',ts_headline('pg_catalog.russian',title,query,'StartSel=⟦,StopSel=⟧,HighlightAll=true'),
+  'snippet',left(ts_headline('pg_catalog.russian',case when body='' then title else body end,query,'StartSel=⟦,StopSel=⟧,MaxWords=32,MinWords=12,MaxFragments=1'),500),
+  'courseId',course_id,'courseTitle',course_title,'hasFile',has_file,'due',due,'status',status) order by score desc,title,kind,id) from numbered where n<=25),'[]'::jsonb),
+  'hasMore',exists(select 1 from numbered where n=26),'issues','[]'::jsonb) into result;
+ return result;
+end $$;
+create or replace function public.study_search_note(p_id uuid) returns setof public.private_notes
+language sql stable security definer set search_path=pg_catalog as $$
+ select * from public.private_notes n where n.id=p_id and n.user_id=auth.uid() and public.is_active_user() and not public.is_plan_record(n.body);
+$$;
+revoke all on function public.study_search(text,text,integer),public.study_search_note(uuid) from public,anon;
+grant execute on function public.study_search(text,text,integer),public.study_search_note(uuid) to authenticated;
+commit;
+begin;
+do $$ begin if to_regclass('public.material_intakes') is null then raise exception 'Existing StudyHub v0.35 database required';end if;end $$;
+create table if not exists public.weekly_schedule_days(group_id uuid references public.study_groups(id),weekday integer check(weekday between 1 and 7),version integer not null default 0,request_id uuid,payload jsonb,primary key(group_id,weekday));
+create table if not exists public.weekly_schedule_slots(id uuid primary key,group_id uuid not null references public.study_groups(id),weekday integer not null check(weekday between 1 and 7),course_id uuid not null references public.courses(id),start_time time not null,end_time time not null,location text not null default '' check(length(location)<=200),starts_on date not null,author_id uuid not null references public.profiles(id),created_at timestamptz not null default now(),check(end_time>start_time));
+create index if not exists weekly_slots_by_group on public.weekly_schedule_slots(group_id,weekday);
+create table if not exists public.schedule_exceptions(slot_id uuid references public.weekly_schedule_slots(id) on delete cascade,day date not null,cancelled boolean not null,course_id uuid not null references public.courses(id),start_time time not null,end_time time not null,location text not null default '' check(length(location)<=200),version integer not null default 1,primary key(slot_id,day),check(end_time>start_time));
+alter table public.weekly_schedule_days enable row level security;alter table public.weekly_schedule_slots enable row level security;alter table public.schedule_exceptions enable row level security;
+revoke all on public.weekly_schedule_days,public.weekly_schedule_slots,public.schedule_exceptions from anon,authenticated;
+create or replace function public.weekly_schedule_day(p_group uuid,p_day integer) returns jsonb language plpgsql stable security definer set search_path=pg_catalog as $$
+begin
+ if not public.write_group_board(p_group,null,'schedule') then raise exception 'Schedule management denied';end if;
+ if exists(select 1 from public.weekly_schedule_slots where group_id=p_group and weekday=p_day and not public.write_group_board(p_group,course_id,'schedule')) then raise exception 'Schedule management denied';end if;
+ return jsonb_build_object('version',coalesce((select version from public.weekly_schedule_days where group_id=p_group and weekday=p_day),0),'items',coalesce((select jsonb_agg(jsonb_build_object('id',id,'course_id',course_id,'start_time',to_char(start_time,'HH24:MI'),'end_time',to_char(end_time,'HH24:MI'),'location',location) order by start_time,id) from public.weekly_schedule_slots where group_id=p_group and weekday=p_day),'[]'::jsonb));
+end $$;
+create or replace function public.save_weekly_schedule(p_group uuid,p_day integer,p_items jsonb,p_version integer,p_request uuid) returns void language plpgsql security definer set search_path=pg_catalog as $$
+declare state public.weekly_schedule_days; r jsonb; slot_id uuid; course uuid; start_at time; end_at time; seen uuid[]:='{}';last_end time;check_day date;
+begin
+ if not public.write_group_board(p_group,null,'schedule') then raise exception 'Schedule management denied';end if;
+ if p_day is null or p_day not between 1 and 7 or p_request is null or p_version is null or jsonb_typeof(p_items) is distinct from 'array' or jsonb_array_length(p_items)>24 then raise exception 'Invalid weekly schedule';end if;
+ insert into public.weekly_schedule_days(group_id,weekday) values(p_group,p_day) on conflict do nothing;
+ select * into state from public.weekly_schedule_days where group_id=p_group and weekday=p_day for update;
+ if state.request_id=p_request then if state.payload=p_items then return;else raise exception 'Request changed';end if;end if;
+ if exists(select 1 from public.weekly_schedule_slots where group_id=p_group and weekday=p_day and not public.write_group_board(p_group,course_id,'schedule')) then raise exception 'Schedule management denied';end if;
+ if state.version<>p_version then raise exception 'Schedule changed. Refresh before saving';end if;
+ for r in select value from jsonb_array_elements(p_items) order by value->>'start_time' loop
+  slot_id:=(r->>'id')::uuid;course:=(r->>'course_id')::uuid;
+  if slot_id is null or course is null or slot_id=any(seen) or coalesce(r->>'start_time','')!~'^([01][0-9]|2[0-3]):[0-5][0-9]$' or coalesce(r->>'end_time','')!~'^([01][0-9]|2[0-3]):[0-5][0-9]$' or length(coalesce(r->>'location',''))>200 then raise exception 'Invalid lesson';end if;
+  if not public.write_group_board(p_group,course,'schedule') or not exists(select 1 from public.courses where id=course and group_id=p_group and not archived) then raise exception 'Course unavailable in group';end if;
+  if exists(select 1 from public.weekly_schedule_slots where id=slot_id and (group_id<>p_group or weekday<>p_day)) then raise exception 'Foreign lesson';end if;
+  start_at:=(r->>'start_time')::time;end_at:=(r->>'end_time')::time;
+  if end_at<=start_at or (last_end is not null and start_at<last_end) then raise exception 'Lessons overlap or invalid time';end if;
+  last_end:=end_at;seen:=array_append(seen,slot_id);
+  insert into public.weekly_schedule_slots(id,group_id,weekday,course_id,start_time,end_time,location,starts_on,author_id) values(slot_id,p_group,p_day,course,start_at,end_at,coalesce(r->>'location',''),date_trunc('week',now() at time zone 'Asia/Bishkek')::date,auth.uid()) on conflict(id) do update set course_id=excluded.course_id,start_time=excluded.start_time,end_time=excluded.end_time,location=excluded.location where weekly_schedule_slots.group_id=p_group and weekly_schedule_slots.weekday=p_day;
+  if not found then raise exception 'Foreign lesson';end if;
+ end loop;
+ delete from public.weekly_schedule_slots where group_id=p_group and weekday=p_day and not(id=any(seen));
+ -- A changed weekly pattern must remain compatible with dated exceptions.
+ for check_day in select distinct e.day from public.schedule_exceptions e join public.weekly_schedule_slots t on t.id=e.slot_id where t.group_id=p_group and extract(isodow from e.day)=p_day and e.day>=(now() at time zone 'Asia/Bishkek')::date loop
+  if exists(with entries as(select * from public.schedule_rows(p_group,check_day::timestamp at time zone 'Asia/Bishkek',(check_day+1)::timestamp at time zone 'Asia/Bishkek')) select 1 from entries a join entries b on a.id<b.id and a.starts_at<b.ends_at and a.ends_at>b.starts_at where not a.cancelled and not b.cancelled and a.template_id is not null and b.template_id is not null) then raise exception 'Lessons overlap or invalid time';end if;
+ end loop;
+ update public.weekly_schedule_days set version=version+1,request_id=p_request,payload=p_items where group_id=p_group and weekday=p_day;
+ insert into public.audit_events(actor_id,action,entity_id,details) values(auth.uid(),'schedule.weekly.saved',p_group,jsonb_build_object('weekday',p_day,'lessons',jsonb_array_length(p_items)));
+end $$;
+-- A common expansion feeds the day, home screen, calendar and subject pages.
+create or replace function public.schedule_rows(p_group uuid,p_from timestamptz,p_to timestamptz)
+returns table(id uuid,group_id uuid,course_id uuid,kind text,title text,body text,location text,starts_at timestamptz,ends_at timestamptz,author_name text,created_at timestamptz,can_manage boolean,template_id uuid,occurrence_date date,cancelled boolean,version integer)
+language sql stable security definer set search_path=pg_catalog as $$
+ with dates as(select d::date as occurrence_day from generate_series((p_from at time zone 'Asia/Bishkek')::date::timestamp-interval '1 day',(p_to at time zone 'Asia/Bishkek')::date::timestamp,interval '1 day')d),occurrences as (
+ select s.*,d.occurrence_day,e.cancelled,coalesce(e.course_id,s.course_id) effective_course,coalesce(e.start_time,s.start_time) effective_start,coalesce(e.end_time,s.end_time) effective_end,coalesce(e.location,s.location) effective_location,coalesce(e.version,0) exception_version
+ from public.weekly_schedule_slots s join dates d on extract(isodow from d.occurrence_day)=s.weekday and d.occurrence_day>=s.starts_on left join public.schedule_exceptions e on e.slot_id=s.id and e.day=d.occurrence_day where s.group_id=p_group
+ ), entries as (
+ select b.id,b.group_id,b.course_id,b.kind,b.title,b.body,b.location,b.starts_at,b.ends_at,p.full_name author_name,b.created_at,public.write_group_board(b.group_id,b.course_id,b.kind,b.author_id) can_manage,null::uuid template_id,null::date occurrence_date,false cancelled,0 version
+ from public.group_board b join public.profiles p on p.id=b.author_id where b.group_id=p_group and b.kind='schedule' and public.read_group_board(b.group_id,b.course_id,'schedule')
+ union all
+ select md5(o.id::text||o.occurrence_day::text)::uuid,o.group_id,o.effective_course,'schedule',c.title,case when coalesce(o.cancelled,false) then 'Занятие отменено' else '' end,o.effective_location,(o.occurrence_day+o.effective_start) at time zone 'Asia/Bishkek',(o.occurrence_day+o.effective_end) at time zone 'Asia/Bishkek',p.full_name,o.created_at,public.write_group_board(o.group_id,o.course_id,'schedule'),o.id,o.occurrence_day,coalesce(o.cancelled,false),o.exception_version
+ from occurrences o join public.courses c on c.id=o.effective_course and not c.archived join public.courses original on original.id=o.course_id and not original.archived join public.profiles p on p.id=o.author_id where public.read_group_board(o.group_id,o.course_id,'schedule') and public.read_group_board(o.group_id,o.effective_course,'schedule')
+ )select * from entries where ends_at>p_from and starts_at<p_to;
+$$;
+create or replace function public.schedule_catalog(p_group uuid,p_from timestamptz,p_to timestamptz,p_offset integer default 0)
+returns table(id uuid,group_id uuid,course_id uuid,kind text,title text,body text,location text,starts_at timestamptz,ends_at timestamptz,author_name text,created_at timestamptz,can_manage boolean,template_id uuid,occurrence_date date,cancelled boolean,version integer) language plpgsql stable security definer set search_path=pg_catalog as $$
+begin
+ if p_from is null or p_to is null or p_to<=p_from or p_to-p_from>interval '370 days' then raise exception 'Invalid schedule window';end if;
+ return query select r.* from public.schedule_rows(p_group,p_from,p_to) r order by r.starts_at,r.created_at desc,r.id limit 50 offset greatest(0,least(coalesce(p_offset,0),100000));
+end $$;
+create or replace function public.save_schedule_exception(p_slot uuid,p_date date,p_cancelled boolean,p_course uuid,p_start time,p_end time,p_location text,p_version integer,p_reset boolean default false) returns void
+language plpgsql security definer set search_path=pg_catalog as $$
+declare slot public.weekly_schedule_slots;current_version integer;from_at timestamptz;to_at timestamptz;
+begin
+ select * into slot from public.weekly_schedule_slots where id=p_slot;
+ if not found or not public.write_group_board(slot.group_id,slot.course_id,'schedule') then raise exception 'Schedule management denied';end if;
+ perform 1 from public.weekly_schedule_days where group_id=slot.group_id and weekday=slot.weekday for update;
+ if p_date is null or extract(isodow from p_date)<>slot.weekday or p_date<slot.starts_on then raise exception 'Invalid occurrence date';end if;
+ select coalesce((select version from public.schedule_exceptions where slot_id=p_slot and day=p_date),0) into current_version;
+ if p_version is distinct from current_version then raise exception 'Schedule changed. Refresh before saving';end if;
+ if p_reset then delete from public.schedule_exceptions where slot_id=p_slot and day=p_date;else
+  if p_cancelled is null or p_start is null or p_end is null or p_end<=p_start or p_location is null or length(p_location)>200 or not exists(select 1 from public.courses where id=p_course and group_id=slot.group_id and not archived) then raise exception 'Invalid lesson';end if;
+  from_at:=(p_date+p_start) at time zone 'Asia/Bishkek';to_at:=(p_date+p_end) at time zone 'Asia/Bishkek';
+  if not p_cancelled and exists(select 1 from public.schedule_rows(slot.group_id,(p_date::timestamp at time zone 'Asia/Bishkek'),((p_date+1)::timestamp at time zone 'Asia/Bishkek')) where template_id is distinct from p_slot and not cancelled and starts_at<to_at and ends_at>from_at) then raise exception 'Lessons overlap or invalid time';end if;
+  insert into public.schedule_exceptions(slot_id,day,cancelled,course_id,start_time,end_time,location,version) values(p_slot,p_date,p_cancelled,p_course,p_start,p_end,p_location,current_version+1) on conflict(slot_id,day) do update set cancelled=excluded.cancelled,course_id=excluded.course_id,start_time=excluded.start_time,end_time=excluded.end_time,location=excluded.location,version=excluded.version;
+ end if;
+ if p_reset and exists(with entries as(select * from public.schedule_rows(slot.group_id,p_date::timestamp at time zone 'Asia/Bishkek',(p_date+1)::timestamp at time zone 'Asia/Bishkek')) select 1 from entries a join entries b on a.starts_at<b.ends_at and a.ends_at>b.starts_at where a.template_id=p_slot and b.template_id is distinct from p_slot and not a.cancelled and not b.cancelled) then raise exception 'Lessons overlap or invalid time';end if;
+ insert into public.audit_events(actor_id,action,entity_id,details) values(auth.uid(),'schedule.exception.saved',p_slot,jsonb_build_object('date',p_date,'reset',p_reset));
+end $$;
+revoke all on function public.weekly_schedule_day(uuid,integer),public.save_weekly_schedule(uuid,integer,jsonb,integer,uuid),public.schedule_rows(uuid,timestamptz,timestamptz),public.schedule_catalog(uuid,timestamptz,timestamptz,integer),public.save_schedule_exception(uuid,date,boolean,uuid,time,time,text,integer,boolean) from public,anon,authenticated;
+grant execute on function public.weekly_schedule_day(uuid,integer),public.save_weekly_schedule(uuid,integer,jsonb,integer,uuid),public.schedule_catalog(uuid,timestamptz,timestamptz,integer),public.save_schedule_exception(uuid,date,boolean,uuid,time,time,text,integer,boolean) to authenticated;
+commit;
