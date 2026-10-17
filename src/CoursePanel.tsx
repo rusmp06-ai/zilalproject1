@@ -3,7 +3,6 @@ import { useViewState, shortText } from './view-state';
 import type { CourseSection } from './navigation';
 import { TeacherAssignments } from './TeacherAssignments';
 import type { TeacherCourse } from './teacher-types';
-import { boardNotice } from './board-notice';
 import { useEffect, useRef, useState } from 'react';
 import { CourseMaterialsPanel } from './CourseMaterialsPanel';
 import { AssignmentsPanel } from './AssignmentsPanel';
@@ -73,7 +72,11 @@ export function CoursePanel({
   const [tab, setTab] = useState<Tab>(
       initialKind === 'assignment'
         ? 'assignment'
-        : initialTab || (initialKind ? 'materials' : 'overview'),
+        : !teacherCourse && (!initialTab || initialTab === 'overview')
+          ? initialKind
+            ? 'materials'
+            : 'lectures'
+          : initialTab || (initialKind ? 'materials' : 'overview'),
     ),
     [data, setData] = useState<CourseData | null>(null),
     [busy, setBusy] = useState(true),
@@ -220,13 +223,6 @@ export function CoursePanel({
       (!selectedTopic || topicFor(m.id, 'material') === selectedTopic),
   );
   const visibleTopics = topics.filter((t) => !selectedTopic || t.id === selectedTopic);
-  const pending = (data?.assignments || [])
-    .filter((a) => !['submitted', 'graded'].includes(data ? assignmentStatus(data, a.id) : ''))
-    .sort((a, b) => (a.due_at || '9999').localeCompare(b.due_at || '9999'));
-  const resume = data?.materials.find(
-      (m) => m.id === data.workspace?.resume?.item_id && m.status === 'published',
-    ),
-    nextEvent = data?.events[0];
   async function download(m: CourseMaterial) {
     await action(async () => {
       const blob = await api.downloadMaterial(m),
@@ -356,15 +352,17 @@ export function CoursePanel({
         }}
       />
       <nav ref={tabsRef} className="course-tabs" aria-label="Разделы дисциплины">
-        {Object.entries(tabs).map(([id, title]) => (
-          <button
-            key={id}
-            aria-current={tab === id ? 'page' : undefined}
-            onClick={() => navigate(id as Tab)}
-          >
-            {title}
-          </button>
-        ))}
+        {Object.entries(tabs)
+          .filter(([id]) => teacherCourse || id !== 'overview')
+          .map(([id, title]) => (
+            <button
+              key={id}
+              aria-current={tab === id ? 'page' : undefined}
+              onClick={() => navigate(id as Tab)}
+            >
+              {title}
+            </button>
+          ))}
       </nav>
       {error && (
         <p className="notice error" role="alert">
@@ -406,143 +404,6 @@ export function CoursePanel({
             <button onClick={() => navigate('announcements')}>Объявление студентам</button>
           </div>
         </section>
-      )}
-      {tab === 'overview' && data && !teacherCourse && (
-        <>
-          <div className="course-overview-grid">
-            <section className="card course-next">
-              <div className="eyebrow">ПРОДОЛЖИТЬ УЧЁБУ</div>
-              <h3>
-                {resume
-                  ? resume.title
-                  : topics.find((t) => !completed.includes(t.id))?.title || 'Материалы дисциплины'}
-              </h3>
-              <p>
-                {resume
-                  ? 'Вернитесь к материалу и продолжайте изучение.'
-                  : topics.length
-                    ? 'Начните с темы или выберите нужный материал.'
-                    : 'Откройте лекции и материалы преподавателя.'}
-              </p>
-              <button
-                className="primary"
-                onClick={() =>
-                  resume ? openMaterial(resume) : navigate(topics.length ? 'topics' : 'materials')
-                }
-              >
-                {resume ? 'Продолжить чтение' : 'Открыть ' + (topics.length ? 'темы' : 'материалы')}
-              </button>
-            </section>
-            {nextEvent && (
-              <section className="card">
-                <div className="eyebrow">БЛИЖАЙШАЯ ПАРА</div>
-                <h3>{nextEvent?.title || 'Пока нет занятий'}</h3>
-                <p>
-                  {nextEvent?.starts_at
-                    ? when(nextEvent.starts_at) +
-                      ' · ' +
-                      (nextEvent.location || 'Аудитория не указана')
-                    : 'Показываем занятия этой дисциплины на ближайшие 30 дней.'}
-                </p>
-                {nextEvent?.body && <p>{nextEvent.body}</p>}
-              </section>
-            )}
-          </div>
-          <div className="course-doorways" aria-label="Учебные разделы">
-            {(
-              [
-                [
-                  'lectures',
-                  'Лекции',
-                  'book',
-                  'Теория и конспекты',
-                  data.materials.filter((m) => m.kind === 'lecture').length,
-                  'Лекции',
-                ],
-                [
-                  'assignment',
-                  'Задания',
-                  'note',
-                  'Практика и сдача работ',
-                  data.assignments.length,
-                  'Задания',
-                ],
-                [
-                  'resources',
-                  'Дополнительные материалы',
-                  'course',
-                  'Презентации и полезные файлы',
-                  data.materials.filter((m) => m.kind !== 'lecture').length,
-                  'resources',
-                ],
-                ['notes', 'Мои заметки', 'note', 'Ваши мысли и вопросы', null, ''],
-              ] as const
-            ).map(([section, title, icon, description, count, issue]) => (
-              <button
-                key={section}
-                className={'course-doorway doorway-' + section}
-                onClick={() => navigate(section)}
-              >
-                <span className="course-doorway-icon">
-                  <StudyIcon name={icon} />
-                </span>
-                <span>
-                  <strong>{title}</strong>
-                  <small>{description}</small>
-                </span>
-                {count !== null && (
-                  <span className="course-doorway-count">
-                    {data.issues.some((i) =>
-                      issue === 'resources'
-                        ? /^(Презентации|Дополнительные материалы) недоступны/.test(i)
-                        : i.startsWith(issue + ' недоступны'),
-                    )
-                      ? '—'
-                      : count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          {topics.length > 0 && (
-            <div className="course-progress">
-              <span>
-                Изучено тем:{' '}
-                <b>
-                  {completed.length} из {topics.length}
-                </b>
-              </span>
-              <progress
-                aria-label="Личный прогресс по темам"
-                max={Math.max(1, topics.length)}
-                value={completed.length}
-              />
-              <small>Ваши отметки, без автоматической оценки знаний.</small>
-            </div>
-          )}
-          <div className="section-heading">
-            <h3>{data.canSubmit ? 'Ближайшие задания' : 'Задания дисциплины'}</h3>
-            <button onClick={() => navigate('assignment')}>Все задания</button>
-          </div>
-          {pending.length ? (
-            <div className="course-task-list">{pending.slice(0, 3).map(taskRow)}</div>
-          ) : (
-            <p className="card empty">
-              {data.assignments.length
-                ? 'Все работы отправлены или проверены.'
-                : 'Заданий пока нет.'}
-            </p>
-          )}
-          {data.announcements.length > 0 && (
-            <section className="card course-announcement">
-              <span className="eyebrow">ОБЪЯВЛЕНИЕ ПРЕПОДАВАТЕЛЯ</span>
-              <h3>{data.announcements[0].title}</h3>
-              <p>{boardNotice(data.announcements[0].body).text}</p>
-              <small>{data.announcements[0].author_name}</small>
-              <button onClick={() => navigate('announcements')}>Все объявления</button>
-            </section>
-          )}
-        </>
       )}
       {['topics', 'materials', 'lectures', 'resources'].includes(tab) && data && (
         <>

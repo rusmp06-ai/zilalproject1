@@ -105,8 +105,10 @@ try {
     if (w.links.length !== 3) throw Error('Missing topic links');
   });
   await open('Студент');
-  await page.getByRole('heading', { name: 'Лекция в аудитории', exact: true }).waitFor();
-  await page.getByRole('heading', { name: 'Семинар 1', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Первая лекция', exact: true }).waitFor();
+  await tab('Задания').click();
+  await page.getByRole('heading', { name: 'Семинар 1', exact: true }).first().waitFor();
+  await tab('Объявления').click();
   await page.getByRole('heading', { name: 'Подготовка к семинару', exact: true }).waitFor();
   assert.equal(
     await page.getByRole('button', { name: 'Управлять темами', exact: true }).count(),
@@ -131,13 +133,12 @@ try {
   await dialog.getByRole('button', { name: 'Следующая страница', exact: true }).click();
   await dialog.getByText('Страница 2 из 3 · Прогресс: 67%', { exact: true }).waitFor();
   await dialog.getByRole('button', { name: 'Закрыть просмотр', exact: true }).click();
-  await tab('Обзор').click();
-  await page.getByText('Вернитесь к материалу и продолжайте изучение.', { exact: true }).waitFor();
-  assert.equal(
-    await page.getByText('Вы остановились на странице 2 из 3', { exact: true }).count(),
-    0,
-  );
-  await page.getByRole('button', { name: 'Продолжить чтение', exact: true }).click();
+  await tab('Материалы').click();
+  await page
+    .locator('.course-book')
+    .filter({ has: page.getByRole('heading', { name: 'Учебник по финансам', exact: true }) })
+    .getByRole('button', { name: 'Открыть файл', exact: true })
+    .click();
   await dialog.getByText('Страница 2 из 3 · Прогресс: 67%', { exact: true }).waitFor();
   await dialog.getByRole('button', { name: 'Закрыть просмотр', exact: true }).click();
   await tab('Мои заметки').click();

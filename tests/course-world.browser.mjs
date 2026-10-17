@@ -41,10 +41,22 @@ try {
   url.searchParams.set('view', 'groups');
   url.searchParams.set('course', 'g0c0');
   await page.goto(url.href);
-  await page.locator('.course-doorways').waitFor();
+  await page.locator('.course-tabs').waitFor();
   assert.equal(await page.getByText(/Вы остановились на странице/).count(), 0);
+  assert.equal(
+    await page.locator('.course-next,.course-doorways,.course-overview-grid').count(),
+    0,
+  );
+  assert.equal(
+    await page.locator('.course-tabs').getByRole('button', { name: 'Обзор', exact: true }).count(),
+    0,
+  );
+  assert.equal(
+    await page.getByRole('heading', { name: 'Ближайшие задания', exact: true }).count(),
+    0,
+  );
   await page
-    .locator('.course-doorways')
+    .locator('.course-tabs')
     .getByRole('button', { name: /Лекции/ })
     .click();
   await page.getByRole('heading', { name: 'Лекция: основы финансов', exact: true }).waitFor();
@@ -70,7 +82,7 @@ try {
   await page.goBack();
   await page.goto(url.href);
   await page
-    .locator('.course-doorways')
+    .locator('.course-tabs')
     .getByRole('button', { name: /Дополнительные материалы/ })
     .click();
   await page.getByRole('heading', { name: 'Слайды к семинару', exact: true }).waitFor();
@@ -85,22 +97,20 @@ try {
   );
   await page.goto(url.href);
   await page
-    .locator('.course-doorways')
+    .locator('.course-tabs')
     .getByRole('button', { name: /Задания/ })
     .click();
   await page.getByRole('heading', { name: 'Практическая работа', exact: true }).first().waitFor();
   for (const width of [1440, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(url.href);
-    await page.locator('.course-doorways').waitFor();
+    await page.locator('.course-tabs').waitFor();
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
       `overflow at ${width}`,
     );
-    for (const button of await page
-      .locator('.course-doorway,.course-refresh,.course-tabs button')
-      .all())
+    for (const button of await page.locator('.course-refresh,.course-tabs button').all())
       assert.ok((await button.boundingBox()).height >= 44);
     await page.screenshot({ path: `/tmp/studyhub-course-v44-${width}.png`, fullPage: true });
   }

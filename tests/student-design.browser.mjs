@@ -46,12 +46,12 @@ try {
     url.searchParams.set('view', 'groups');
     url.searchParams.set('course', 'g0c0');
     await page.goto(url.href);
-    await page.locator('.course-next .primary').waitFor();
+    await page.locator('.course-tabs button[aria-current=page]').waitFor();
     assert.ok(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       `Course overview overflow at ${width}`,
     );
-    for (const selector of ['.course-refresh', '.course-next .primary', '.course-tabs button'])
+    for (const selector of ['.course-refresh', '.course-tabs button'])
       for (const button of await page.locator(selector).all()) {
         const box = await button.boundingBox();
         assert.ok(box.height >= 44, `Small tap target: ${selector} at ${width}`);
