@@ -1,168 +1,2262 @@
-import {validateSlots,type WeeklySlot,type ScheduleException} from './weekly-schedule';
-import {boardInstant,bishkekInput} from './board-time';
-import {catalogSearch} from './study-search';
-import type {TeacherCourse,TeacherDetail,ReviewRow} from './teacher-types';
-import {notifyChanged,isOverdue} from './notifications';
-import {accountInput,profileName,type AccountInput} from './account';
-import {forgetSchedule} from './schedule-cache';
-import {decodePlan} from './personal-plan';
-import {emptyReading,validateReading} from './reader-state';
-import {validateFile} from './files';
-import {saveDemoBlob,readDemoBlob,deleteDemoBlob} from './blob-store';
-import type {CourseTopic,CourseLink,ReadingState,Note,BoardKind,BoardItem,Assignment,Work,CourseMaterial,MaterialKind,LibraryItem,Gateway,Snapshot,Profile,Group,Course,Membership,Denial,Invitation,Role} from './types';
-type Store={weekly?:Record<string,{items:WeeklySlot[];version:number;request?:string;payload?:string;startsOn:string}>;scheduleExceptions?:Record<string,ScheduleException&{version:number}>;intakes?:Record<string,{user:string;payload:string;result:string}>;reviewHistory?: (import('./teacher-types').ReviewEvent&{work:string;actor:string;previous_published:boolean})[];announcementReads?:{user:string;id:string}[];requests?:import('./types').GroupRequest[];accountDetails?:Record<string,AccountInput>;audit:import('./types').AuditEvent[];topics:CourseTopic[];topicLinks:CourseLink[];topicProgress:{user_id:string;topic_id:string}[];planTasks:(Note&{user_id:string})[];courseReading:(ReadingState&{user_id:string})[];reading:(ReadingState&{user_id:string})[];notes:(Note&{user_id:string})[];board:(BoardItem&{author_id:string})[];assignments:Assignment[];works:(Work&{assignment:string;assignment_snapshot?:Assignment})[];materials:CourseMaterial[];library:LibraryItem[];profiles:Profile[];groups:Group[];courses:Course[];memberships:Membership[];denials:Denial[];invitations:Invitation[];entitlements:Record<string,number>;session:string|null;assignmentsTeaching:{teacher:string;course:string}[]};
-const key='studyhub-demo-v08';
-function seed():Store {
- const profiles=[{id:'owner',full_name:'Владелец платформы',blocked:false},{id:'leader',full_name:'Айдана · староста',blocked:false},{id:'teacher',full_name:'Преподаватель',blocked:false},{id:'student',full_name:'Студент',blocked:false}];
- const groups=['ИФ-1-24','ИФ-2-24','ФК-1-24','ФК-2-24'].map((name,i)=>({id:`g${i}`,name,blocked:false,created_by:i===0?'leader':'owner'}));
- const courses=groups.flatMap(g=>['Корпоративные финансы','Экономическая теория'].map((title,i)=>({id:g.id+'c'+i,group_id:g.id,title,archived:false})));
- return {audit:[],topics:[],topicLinks:[],topicProgress:[],planTasks:[],courseReading:[],reading:[],notes:[],board:[],assignments:[],works:[],materials:[],library:[{id:'sample-note',title:'Как пользоваться общей библиотекой',author_id:'owner',author_name:'Владелец платформы',source_group_id:'g0',group_name:groups[0].name,created_at:new Date().toISOString(),status:'published',storage_path:'sample-note',original_name:'Библиотека.txt',mime_type:'text/plain',size_bytes:512,can_manage:false}],profiles,groups,courses,memberships:[{user_id:'leader',group_id:'g0',role:'leader',active:true},{user_id:'student',group_id:'g0',role:'student',active:true},{user_id:'teacher',group_id:'g0',role:'teacher',active:true},{user_id:'teacher',group_id:'g1',role:'teacher',active:true}],denials:[],invitations:[],entitlements:{},session:null,assignmentsTeaching:[{teacher:'teacher',course:'g0c0'},{teacher:'teacher',course:'g1c0'}]};
+import { validateSlots, type WeeklySlot, type ScheduleException } from './weekly-schedule';
+import { boardInstant, bishkekInput } from './board-time';
+import { catalogSearch } from './study-search';
+import type { TeacherCourse, TeacherDetail, ReviewRow } from './teacher-types';
+import { notifyChanged, isOverdue } from './notifications';
+import { accountInput, profileName, type AccountInput } from './account';
+import { forgetSchedule } from './schedule-cache';
+import { decodePlan } from './personal-plan';
+import { emptyReading, validateReading } from './reader-state';
+import { validateFile } from './files';
+import { saveDemoBlob, readDemoBlob, deleteDemoBlob } from './blob-store';
+import type {
+  CourseTopic,
+  CourseLink,
+  ReadingState,
+  Note,
+  BoardKind,
+  BoardItem,
+  Assignment,
+  Work,
+  CourseMaterial,
+  MaterialKind,
+  LibraryItem,
+  Gateway,
+  Snapshot,
+  Profile,
+  Group,
+  Course,
+  Membership,
+  Denial,
+  Invitation,
+  Role,
+} from './types';
+type Store = {
+  weekly?: Record<
+    string,
+    { items: WeeklySlot[]; version: number; request?: string; payload?: string; startsOn: string }
+  >;
+  scheduleExceptions?: Record<string, ScheduleException & { version: number }>;
+  intakes?: Record<string, { user: string; payload: string; result: string }>;
+  reviewHistory?: (import('./teacher-types').ReviewEvent & {
+    work: string;
+    actor: string;
+    previous_published: boolean;
+  })[];
+  announcementReads?: { user: string; id: string }[];
+  requests?: import('./types').GroupRequest[];
+  accountDetails?: Record<string, AccountInput>;
+  audit: import('./types').AuditEvent[];
+  topics: CourseTopic[];
+  topicLinks: CourseLink[];
+  topicProgress: { user_id: string; topic_id: string }[];
+  planTasks: (Note & { user_id: string })[];
+  courseReading: (ReadingState & { user_id: string })[];
+  reading: (ReadingState & { user_id: string })[];
+  notes: (Note & { user_id: string })[];
+  board: (BoardItem & { author_id: string })[];
+  assignments: Assignment[];
+  works: (Work & { assignment: string; assignment_snapshot?: Assignment })[];
+  materials: CourseMaterial[];
+  library: LibraryItem[];
+  profiles: Profile[];
+  groups: Group[];
+  courses: Course[];
+  memberships: Membership[];
+  denials: Denial[];
+  invitations: Invitation[];
+  entitlements: Record<string, number>;
+  session: string | null;
+  assignmentsTeaching: { teacher: string; course: string }[];
+};
+const key = 'studyhub-demo-v08';
+function seed(): Store {
+  const profiles = [
+    { id: 'owner', full_name: 'Владелец платформы', blocked: false },
+    { id: 'leader', full_name: 'Айдана · староста', blocked: false },
+    { id: 'teacher', full_name: 'Преподаватель', blocked: false },
+    { id: 'student', full_name: 'Студент', blocked: false },
+  ];
+  const groups = ['ИФ-1-24', 'ИФ-2-24', 'ФК-1-24', 'ФК-2-24'].map((name, i) => ({
+    id: `g${i}`,
+    name,
+    blocked: false,
+    created_by: i === 0 ? 'leader' : 'owner',
+  }));
+  const courses = groups.flatMap((g) =>
+    ['Корпоративные финансы', 'Экономическая теория'].map((title, i) => ({
+      id: g.id + 'c' + i,
+      group_id: g.id,
+      title,
+      archived: false,
+    })),
+  );
+  return {
+    audit: [],
+    topics: [],
+    topicLinks: [],
+    topicProgress: [],
+    planTasks: [],
+    courseReading: [],
+    reading: [],
+    notes: [],
+    board: [],
+    assignments: [],
+    works: [],
+    materials: [],
+    library: [
+      {
+        id: 'sample-note',
+        title: 'Как пользоваться общей библиотекой',
+        author_id: 'owner',
+        author_name: 'Владелец платформы',
+        source_group_id: 'g0',
+        group_name: groups[0].name,
+        created_at: new Date().toISOString(),
+        status: 'published',
+        storage_path: 'sample-note',
+        original_name: 'Библиотека.txt',
+        mime_type: 'text/plain',
+        size_bytes: 512,
+        can_manage: false,
+      },
+    ],
+    profiles,
+    groups,
+    courses,
+    memberships: [
+      { user_id: 'leader', group_id: 'g0', role: 'leader', active: true },
+      { user_id: 'student', group_id: 'g0', role: 'student', active: true },
+      { user_id: 'teacher', group_id: 'g0', role: 'teacher', active: true },
+      { user_id: 'teacher', group_id: 'g1', role: 'teacher', active: true },
+    ],
+    denials: [],
+    invitations: [],
+    entitlements: {},
+    session: null,
+    assignmentsTeaching: [
+      { teacher: 'teacher', course: 'g0c0' },
+      { teacher: 'teacher', course: 'g1c0' },
+    ],
+  };
 }
-let state:Store; try {state=JSON.parse(localStorage.getItem(key)||'null')||seed();}catch{state=seed();}
+let state: Store;
+try {
+  state = JSON.parse(localStorage.getItem(key) || 'null') || seed();
+} catch {
+  state = seed();
+}
 state.audit ||= [];
-state.topics ||= [];state.topicLinks ||= [];state.topicProgress ||= [];
+state.topics ||= [];
+state.topicLinks ||= [];
+state.topicProgress ||= [];
 state.planTasks ||= [];
 state.reading ||= [];
 state.courseReading ||= [];
-for(const i of state.invitations)i.id ||= crypto.randomUUID();
-function save(){notifyChanged();try{localStorage.setItem(key,JSON.stringify(state));}catch{/* Private file previews may forbid persistent storage; keep the demo in memory. */}}
-function me(){const p=state.profiles.find(p=>p.id===state.session);if(!p||p.blocked)throw Error('Доступ к аккаунту закрыт. Обратитесь к владельцу.');return p;}
-function owner(){return me().id==='owner';}
-function leader(g:string){return owner()||state.memberships.some(m=>m.user_id===me().id&&m.group_id===g&&m.role==='leader'&&m.active)&&!state.groups.find(x=>x.id===g)?.blocked;}
-export function selectDemo(id:string){state.session=id;save();}
-export function resetDemo(){for(const profile of state.profiles)forgetSchedule('demo:'+profile.id);for(const item of [...state.library,...state.materials,...state.works])void deleteDemoBlob(item.id);state=seed();save();}
-function libraryAccess(){const p=me();if(owner())return true;const memberships=state.memberships.filter(m=>m.user_id===p.id&&m.active);return (!state.memberships.some(m=>m.user_id===p.id)||memberships.some(m=>!state.groups.find(g=>g.id===m.group_id)?.blocked))&&!state.denials.some(d=>d.section==='library'&&(d.user_id===p.id||memberships.some(m=>m.group_id===d.group_id)));}
-function publishBooks(group:string){return libraryAccess()&&!state.groups.find(g=>g.id===group)?.blocked&&(leader(group)||state.courses.some(c=>c.group_id===group&&activeTeaching(c.id)));}
-function manage(item:LibraryItem){return owner()||(item.author_id===me().id&&publishBooks(item.source_group_id));}
-function courseAccess(course:string,kind:MaterialKind|'assignment'){const p=me(),c=state.courses.find(c=>c.id===course);if(!c)throw Error('Дисциплина недоступна.');if(owner())return c;const group=state.groups.find(g=>g.id===c.group_id),members=state.memberships.filter(m=>m.user_id===p.id&&m.active&&m.group_id===c.group_id),section={lecture:'lectures',presentation:'presentations',material:'materials',assignment:'assignments'}[kind];if(c.archived||group?.blocked||!members.length||(!members.some(m=>m.role!=='teacher')&&!state.assignmentsTeaching.some(a=>a.teacher===p.id&&a.course===course))||state.denials.some(d=>(d.user_id===p.id||d.group_id===c.group_id)&&(d.section===section||d.section==='course'&&d.course_id===course)))throw Error('Доступ к разделу закрыт.');return c;}
-function courseManager(course:string,kind:MaterialKind){const c=courseAccess(course,kind);return owner()||leader(c.group_id)||activeTeaching(course);}
-function gradeCourse(course:string){courseAccess(course,'assignment');return owner()||activeTeaching(course);}
-function task(id:string){const a=state.assignments.find(a=>a.id===id);if(!a)throw Error('Задание недоступно.');courseAccess(a.course_id,'assignment');return a;}
-function submitAllowed(course:string){const c=courseAccess(course,'assignment');return state.memberships.some(m=>m.user_id===me().id&&m.group_id===c.group_id&&m.active&&m.role!=='teacher');}
-function boardRead(g:string,c:string|null,k:BoardKind){const p=me();if(owner())return true;if(!state.groups.some(x=>x.id===g&&!x.blocked)||!state.memberships.some(m=>m.user_id===p.id&&m.group_id===g&&m.active)||state.denials.some(d=>(d.user_id===p.id||d.group_id===g)&&(d.section===(k==='schedule'?'schedule':'announcements')||c&&d.section==='course'&&d.course_id===c)))return false;return !c||state.courses.some(x=>x.id===c&&x.group_id===g&&!x.archived&&(leader(g)||state.memberships.some(m=>m.user_id===p.id&&m.group_id===g&&m.active&&m.role==='student')||state.assignmentsTeaching.some(t=>t.teacher===p.id&&t.course===c)));}
-function boardWrite(g:string,c:string|null,k:BoardKind,a?:string){return boardRead(g,c,k)&&(owner()||leader(g)||k==='announcement'&&!!c&&(!a||a===me().id)&&activeTeaching(c));}
-function recordAudit(action:string,entity:string|null,details:Record<string,unknown>={}){state.audit.unshift({id:crypto.randomUUID(),actor_id:me().id,action,entity_id:entity,details,created_at:new Date().toISOString()});}
-
-function activeTeaching(course:string){const c=state.courses.find(c=>c.id===course&&!c.archived);return !!c&&state.groups.some(g=>g.id===c.group_id&&!g.blocked)&&state.assignmentsTeaching.some(a=>a.teacher===me().id&&a.course===course)&&state.memberships.some(m=>m.user_id===me().id&&m.group_id===c.group_id&&m.role==='teacher'&&m.active);}
-function latestWorks(){const latest=new Map<string,typeof state.works[number]>();for(const w of state.works){const key=w.assignment+':'+w.student_id;if((latest.get(key)?.attempt_no||0)<w.attempt_no)latest.set(key,w);}return [...latest.values()];}
-function reviewRows(course:string|null,assignment:string|null){return latestWorks().flatMap(w=>{const a=state.assignments.find(a=>a.id===w.assignment);if(!a||w.student_id===me().id||course&&a.course_id!==course||assignment&&a.id!==assignment)return [];try{if(!gradeCourse(a.course_id))return [];}catch{return [];}const c=state.courses.find(c=>c.id===a.course_id)!;return [{current_member:state.profiles.some(p=>p.id===w.student_id&&!p.blocked)&&state.memberships.some(m=>m.user_id===w.student_id&&m.group_id===c.group_id&&m.active&&m.role!=='teacher'),id:w.id,assignment_id:a.id,student_id:w.student_id,student_name:state.profiles.find(p=>p.id===w.student_id)?.full_name||w.student_name,status:w.status,attempt_no:w.attempt_no,submitted_at:w.submitted_at,is_late:w.is_late,review_version:w.review_version||1,score:w.score,released_at:w.released_at,assignment_title:a.title,max_score:a.max_score,course_id:c.id,course_title:c.title,group_name:state.groups.find(g=>g.id===c.group_id)?.name||''} satisfies ReviewRow];});}
-
-function entryWeekday(date:string){return ((new Date(date+'T12:00:00Z').getUTCDay()+6)%7)+1;}
-function weeklyOccurrences(group:string,from:string|null,to:string|null):(BoardItem&{author_id:string})[]{
- const start=from||new Date(Date.now()-86400000).toISOString(),end=to||new Date(Date.now()+30*86400000).toISOString();if(Date.parse(end)-Date.parse(start)>370*86400000)throw Error('Слишком большой период.');const out:(BoardItem&{author_id:string})[]=[];
- for(let t=Date.parse(boardInstant(bishkekInput(start).slice(0,10)+'T00:00'))-86400000;t<Date.parse(end);t+=86400000){const day=bishkekInput(new Date(t).toISOString()).slice(0,10),weekday=((new Date(t+6*3600000).getUTCDay()+6)%7)+1,d=state.weekly?.[group+':'+weekday];if(!d||day<d.startsOn)continue;for(const s of d.items){const e=state.scheduleExceptions?.[s.id+':'+day],course=state.courses.find(c=>c.id===(e?.course||s.course_id)&&!c.archived);if(!course||!state.courses.some(c=>c.id===s.course_id&&!c.archived)||!boardRead(group,s.course_id,'schedule'))continue;const a=boardInstant(day+'T'+(e?.start||s.start_time)),b=boardInstant(day+'T'+(e?.end||s.end_time));if(a>=end||b<=start)continue;out.push({id:s.id+'-'+day,group_id:group,course_id:course.id,kind:'schedule',title:course.title,body:e?.cancelled?'Занятие отменено':'',location:e?.location??s.location,starts_at:a,ends_at:b,author_id:me().id,author_name:'',created_at:new Date(t).toISOString(),can_manage:boardWrite(group,s.course_id,'schedule'),template_id:s.id,occurrence_date:day,cancelled:e?.cancelled||false,version:e?.version||0});}}
- return out;
-}
-export const demoGateway:Gateway={
- demo:true,
- async studySearch(query,filter,offset,signal){return catalogSearch(this,await this.snapshot(),query,filter,offset,signal);},
- async searchNote(id){const note=state.notes.find(n=>n.id===id&&n.user_id===me().id&&!decodePlan(n.body));if(!note)throw Error('Заметка удалена или недоступна.');return structuredClone(note);},
- async materialAiQuota(){await this.materialIntakeContext();return {user_daily:5,project_daily:20,rpm:2,tpm:12000,max_input:8000,max_output:2048,user_remaining:5,project_remaining:20,minute_remaining:2,tokens_remaining:12000,retry_after_seconds:0,resets_at:new Date(Date.now()+86400000).toISOString()};},
- async materialIntakeContext(){
-  const courses=state.courses.filter(c=>!c.archived&&!state.groups.find(g=>g.id===c.group_id)?.blocked).map(c=>{const kinds:import('./material-intake-types').IntakeKind[]=[];for(const k of ['lecture','presentation','material'] as const)try{if(courseManager(c.id,k))kinds.push(k);}catch{}if(kinds.includes('material')&&gradeCourse(c.id))kinds.push('assignment');return {...c,group_name:state.groups.find(g=>g.id===c.group_id)!.name,kinds};}).filter(c=>c.kinds.length);
-  const groups=state.groups.filter(g=>publishBooks(g.id)).map(g=>({id:g.id,name:g.name}));if(!courses.length&&!groups.length)throw Error('Добавление доступно старосте, преподавателю и владельцу.');return {courses,groups};
- },
- async analyzeMaterial(input,signal){
-  signal.throwIfAborted();const context=await this.materialIntakeContext();const text=(input.text||input.name).toLowerCase();const kind:import('./material-intake-types').IntakeKind|'unknown'=/задани|практическ|assignment/.test(text)?'assignment':/учебник|книга|book/.test(text)?'book':/лекци|lecture/.test(text)?'lecture':/слайд|презентац|pptx/.test(text)?'presentation':'material';
-  const matched=context.courses.filter(c=>(!input.scopeGroup||c.group_id===input.scopeGroup)&&text.includes(c.title.toLowerCase()));const selected=matched.length===1?matched[0].id:null;
-  return {kind,title:(input.text?.trim().split(/\r?\n/)[0]||input.name.replace(/\.[^.]+$/,'')).slice(0,200),course_id:selected,topic:'',description:kind==='assignment'?'Условия находятся в приложенном исходном документе. Проверьте их перед публикацией.':(input.text||'').slice(0,1000),confidence:selected?'medium':'low',reason:'Демонстрационное локальное правило, не анализ Gemini. Для настоящего распознавания подключите серверную функцию.',evidence:input.text?[input.text.slice(0,200)]:[],excerpted:input.excerpted,demo:true};
- },
- async intakeStatus(request){const job=state.intakes?.[request];if(!job)return {status:'none'};if(job.user!==me().id)throw Error('Публикация недоступна.');return {status:job.result==='cancelled'?'cancelled':'published',result_id:job.result};},
- async cancelIntake(request){await this.materialIntakeContext();const status=await this.intakeStatus(request);if(status.status==='published')return status;(state.intakes||={})[request]={user:me().id,payload:'cancelled',result:'cancelled'};save();return {status:'cancelled'};},
- async publishIntake(i,file){
-  const user=me().id;const context=await this.materialIntakeContext();validateFile(file);if(state.library.reduce((s,i)=>s+i.size_bytes,0)+state.materials.reduce((s,i)=>s+(i.size_bytes||0),0)+state.works.reduce((s,i)=>s+(i.size_bytes||0),0)+file.size>838860800)throw Error('Лимит хранилища достигнут.');const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].join(',');const payload=JSON.stringify(i)+hash;const old=state.intakes?.[i.request];if(old){if(old.user!==user||old.payload!==payload)throw Error('Публикация изменилась.');return old.result;}
-  if(!i.title.trim()||i.title.length>200||i.description.length>50000)throw Error('Проверьте название и описание.');
-  if(i.kind==='book'){
-   if(!context.groups.some(g=>g.id===i.group))throw Error('Нет прав на библиотеку.');const id=crypto.randomUUID();await saveDemoBlob(id,file);if(me().id!==user)throw Error('Аккаунт изменился.');state.library.unshift({id,title:i.title,author_id:user,author_name:me().full_name,source_group_id:i.group!,group_name:context.groups.find(g=>g.id===i.group)!.name,created_at:new Date().toISOString(),status:'published',storage_path:id,original_name:file.name,mime_type:validateFile(file),size_bytes:file.size,can_manage:true});(state.intakes||={})[i.request]={user,payload,result:id};save();return id;
+for (const i of state.invitations) i.id ||= crypto.randomUUID();
+function save() {
+  notifyChanged();
+  try {
+    localStorage.setItem(key, JSON.stringify(state));
+  } catch {
+    /* Private file previews may forbid persistent storage; keep the demo in memory. */
   }
-  if(!context.courses.some(c=>c.id===i.course&&c.kinds.includes(i.kind)))throw Error('Нет прав на публикацию этого типа.');
-  if(i.kind==='assignment'&&(!Number.isInteger(i.max)||i.max<1||i.max>1000||!i.description.trim()))throw Error('Проверьте условия задания.');
-  const id=crypto.randomUUID(),mime=validateFile(file);await saveDemoBlob(id,file);if(me().id!==user)throw Error('Аккаунт изменился.');const material:CourseMaterial={id,course_id:i.course!,kind:i.kind==='assignment'?'material':i.kind,title:i.title,body:i.description,author_name:me().full_name,created_at:new Date().toISOString(),file_id:id,storage_path:id,original_name:file.name,mime_type:mime,size_bytes:file.size,status:'published',can_manage:true};state.materials.unshift(material);
-  let result=id;if(i.kind==='assignment'){result=crypto.randomUUID();state.assignments.unshift({id:result,course_id:i.course!,title:i.title,description:i.description,due_at:i.due,max_score:i.max,allow_late:i.late,created_at:new Date().toISOString(),source_material_id:id});}
-  (state.intakes||={})[i.request]={user,payload,result};recordAudit('material.intake_published',result,{kind:i.kind});save();return result;
- },
+}
+function me() {
+  const p = state.profiles.find((p) => p.id === state.session);
+  if (!p || p.blocked) throw Error('Доступ к аккаунту закрыт. Обратитесь к владельцу.');
+  return p;
+}
+function owner() {
+  return me().id === 'owner';
+}
+function leader(g: string) {
+  return (
+    owner() ||
+    (state.memberships.some(
+      (m) => m.user_id === me().id && m.group_id === g && m.role === 'leader' && m.active,
+    ) &&
+      !state.groups.find((x) => x.id === g)?.blocked)
+  );
+}
+export function selectDemo(id: string) {
+  state.session = id;
+  save();
+}
+export function resetDemo() {
+  for (const profile of state.profiles) forgetSchedule('demo:' + profile.id);
+  for (const item of [...state.library, ...state.materials, ...state.works])
+    void deleteDemoBlob(item.id);
+  state = seed();
+  save();
+}
+function libraryAccess() {
+  const p = me();
+  if (owner()) return true;
+  const memberships = state.memberships.filter((m) => m.user_id === p.id && m.active);
+  return (
+    (!state.memberships.some((m) => m.user_id === p.id) ||
+      memberships.some((m) => !state.groups.find((g) => g.id === m.group_id)?.blocked)) &&
+    !state.denials.some(
+      (d) =>
+        d.section === 'library' &&
+        (d.user_id === p.id || memberships.some((m) => m.group_id === d.group_id)),
+    )
+  );
+}
+function publishBooks(group: string) {
+  return (
+    libraryAccess() &&
+    !state.groups.find((g) => g.id === group)?.blocked &&
+    (leader(group) || state.courses.some((c) => c.group_id === group && activeTeaching(c.id)))
+  );
+}
+function manage(item: LibraryItem) {
+  return owner() || (item.author_id === me().id && publishBooks(item.source_group_id));
+}
+function courseAccess(course: string, kind: MaterialKind | 'assignment') {
+  const p = me(),
+    c = state.courses.find((c) => c.id === course);
+  if (!c) throw Error('Дисциплина недоступна.');
+  if (owner()) return c;
+  const group = state.groups.find((g) => g.id === c.group_id),
+    members = state.memberships.filter(
+      (m) => m.user_id === p.id && m.active && m.group_id === c.group_id,
+    ),
+    section = {
+      lecture: 'lectures',
+      presentation: 'presentations',
+      material: 'materials',
+      assignment: 'assignments',
+    }[kind];
+  if (
+    c.archived ||
+    group?.blocked ||
+    !members.length ||
+    (!members.some((m) => m.role !== 'teacher') &&
+      !state.assignmentsTeaching.some((a) => a.teacher === p.id && a.course === course)) ||
+    state.denials.some(
+      (d) =>
+        (d.user_id === p.id || d.group_id === c.group_id) &&
+        (d.section === section || (d.section === 'course' && d.course_id === course)),
+    )
+  )
+    throw Error('Доступ к разделу закрыт.');
+  return c;
+}
+function courseManager(course: string, kind: MaterialKind) {
+  const c = courseAccess(course, kind);
+  return owner() || leader(c.group_id) || activeTeaching(course);
+}
+function gradeCourse(course: string) {
+  courseAccess(course, 'assignment');
+  return owner() || activeTeaching(course);
+}
+function task(id: string) {
+  const a = state.assignments.find((a) => a.id === id);
+  if (!a) throw Error('Задание недоступно.');
+  courseAccess(a.course_id, 'assignment');
+  return a;
+}
+function submitAllowed(course: string) {
+  const c = courseAccess(course, 'assignment');
+  return state.memberships.some(
+    (m) => m.user_id === me().id && m.group_id === c.group_id && m.active && m.role !== 'teacher',
+  );
+}
+function boardRead(g: string, c: string | null, k: BoardKind) {
+  const p = me();
+  if (owner()) return true;
+  if (
+    !state.groups.some((x) => x.id === g && !x.blocked) ||
+    !state.memberships.some((m) => m.user_id === p.id && m.group_id === g && m.active) ||
+    state.denials.some(
+      (d) =>
+        (d.user_id === p.id || d.group_id === g) &&
+        (d.section === (k === 'schedule' ? 'schedule' : 'announcements') ||
+          (c && d.section === 'course' && d.course_id === c)),
+    )
+  )
+    return false;
+  return (
+    !c ||
+    state.courses.some(
+      (x) =>
+        x.id === c &&
+        x.group_id === g &&
+        !x.archived &&
+        (leader(g) ||
+          state.memberships.some(
+            (m) => m.user_id === p.id && m.group_id === g && m.active && m.role === 'student',
+          ) ||
+          state.assignmentsTeaching.some((t) => t.teacher === p.id && t.course === c)),
+    )
+  );
+}
+function boardWrite(g: string, c: string | null, k: BoardKind, a?: string) {
+  return (
+    boardRead(g, c, k) &&
+    (owner() ||
+      leader(g) ||
+      (k === 'announcement' && !!c && (!a || a === me().id) && activeTeaching(c)))
+  );
+}
+function recordAudit(action: string, entity: string | null, details: Record<string, unknown> = {}) {
+  state.audit.unshift({
+    id: crypto.randomUUID(),
+    actor_id: me().id,
+    action,
+    entity_id: entity,
+    details,
+    created_at: new Date().toISOString(),
+  });
+}
 
- async teacherCatalog(){me();return state.courses.filter(c=>activeTeaching(c.id)).flatMap(c=>{if(state.denials.some(d=>(d.user_id===me().id||d.group_id===c.group_id)&&d.section==='course'&&d.course_id===c.id))return [];let canGrade=false;try{canGrade=gradeCourse(c.id);}catch{/* Assignment access may be denied separately. */}const reviews=canGrade?reviewRows(c.id,null):[];return [{...c,group_name:state.groups.find(g=>g.id===c.group_id)?.name||'',can_grade:canGrade,assignment_count:canGrade?state.assignments.filter(a=>a.course_id===c.id).length:null,pending:canGrade?reviews.filter(r=>r.status==='submitted').length:null,drafts:canGrade?reviews.filter(r=>r.status==='submitted'&&r.score!==null&&!r.released_at).length:null,students:canGrade?new Set(state.memberships.filter(m=>m.group_id===c.group_id&&m.active&&m.role!=='teacher'&&state.profiles.some(p=>p.id===m.user_id&&!p.blocked)).map(m=>m.user_id)).size:null} satisfies TeacherCourse];});},
- async teacherQueue(course,assignment,status,search,offset){me();if(course&&!gradeCourse(course))throw Error('Нет прав преподавателя.');if(assignment&&!gradeCourse(task(assignment).course_id))throw Error('Задание недоступно.');const match=(s:string)=>s.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());const rows=reviewRows(course,assignment).filter(r=>['submitted','graded','returned'].includes(r.status)&&(status==='all'||status==='pending'&&r.status==='submitted'||status==='draft'&&r.status==='submitted'&&r.score!==null&&!r.released_at||status==='graded'&&r.status==='graded'||status==='returned'&&r.status==='returned')&&match(r.student_name+' '+r.assignment_title+' '+r.course_title+' '+r.group_name)).sort((a,b)=>(a.submitted_at||'9999').localeCompare(b.submitted_at||'9999')||a.id.localeCompare(b.id));return structuredClone({items:rows.slice(offset,offset+30),total:rows.length});},
- async teacherReviewHistory(id,offset){const d=await this.teacherDetail(id);const own=d.work.student_id===me().id&&!owner();const rows=(state.reviewHistory||[]).filter(e=>e.work===id&&(!own||e.action!=='draft')).reverse().map(e=>({...e,previous_score:own&&!e.previous_published?null:e.previous_score}));return structuredClone({items:rows.slice(offset,offset+20),total:rows.length});},
- async teacherHistory(id,offset){await this.teacherDetail(id);const w=state.works.find(w=>w.id===id)!;const items=state.works.filter(x=>x.assignment===w.assignment&&x.student_id===w.student_id).sort((a,b)=>b.attempt_no-a.attempt_no).map(w=>({id:w.id,attempt_no:w.attempt_no,status:w.status,submitted_at:w.submitted_at}));return structuredClone({items:items.slice(offset,offset+20),total:items.length});},
- async teacherDetail(id){me();const w=state.works.find(w=>w.id===id);if(!w)throw Error('Работа недоступна.');const a=task(w.assignment);if(!gradeCourse(a.course_id)||!['submitted','graded','returned'].includes(w.status)&&w.student_id!==me().id)throw Error('Работа ещё не отправлена или недоступна.');const history=state.works.filter(x=>x.assignment===a.id&&x.student_id===w.student_id).sort((a,b)=>b.attempt_no-a.attempt_no);return structuredClone({work:{...w,student_name:state.profiles.find(p=>p.id===w.student_id)?.full_name||w.student_name,score:w.student_id===me().id&&!owner()&&!w.released_at?null:w.score,feedback:w.student_id===me().id&&!owner()&&!w.released_at?null:w.feedback,current_member:state.profiles.some(p=>p.id===w.student_id&&!p.blocked)&&state.memberships.some(m=>m.user_id===w.student_id&&m.group_id===state.courses.find(c=>c.id===a.course_id)?.group_id&&m.active&&m.role!=='teacher'),review_version:w.review_version||1},assignment:w.assignment_snapshot||a,assignment_snapshot:!!w.assignment_snapshot,latest_id:history[0].id,can_review:w.id===history[0].id&&w.student_id!==me().id&&['submitted','graded'].includes(w.status),history:history.slice(0,20).map(w=>({id:w.id,attempt_no:w.attempt_no,status:w.status,submitted_at:w.submitted_at})),group_name:state.groups.find(g=>g.id===state.courses.find(c=>c.id===a.course_id)?.group_id)?.name||'',course_title:state.courses.find(c=>c.id===a.course_id)!.title} satisfies TeacherDetail);},
- async teacherRoster(assignment,search,status,offset){const a=task(assignment),c=state.courses.find(c=>c.id===a.course_id)!;if(!gradeCourse(c.id))throw Error('Нет прав преподавателя.');const ids=[...new Set(state.memberships.filter(m=>m.group_id===c.group_id&&m.active&&m.role!=='teacher').map(m=>m.user_id))];const rows=ids.flatMap(id=>{const p=state.profiles.find(p=>p.id===id&&!p.blocked);if(!p)return [];const w=latestWorks().find(w=>w.assignment===assignment&&w.student_id===id);return [{student_id:id,student_name:p.full_name,work_id:w&&(['submitted','graded','returned'].includes(w.status)||w.student_id===me().id)?w.id:null,status:w?.status||'not_submitted',attempt_no:w?.attempt_no||null,submitted_at:w?.submitted_at||null,is_late:w?.is_late??null,score:w?.student_id===me().id&&!owner()&&!w.released_at?null:w?.score??null,released_at:w?.released_at||null}];}).filter(r=>r.student_name.toLowerCase().includes(search.toLowerCase())&&(status==='all'||r.status===status)).sort((a,b)=>a.student_name.localeCompare(b.student_name)||a.student_id.localeCompare(b.student_id));return structuredClone({items:rows.slice(offset,offset+30),total:rows.length});},
- async teacherSaveAssignment(i){if(!gradeCourse(i.course))throw Error('Нет прав преподавателя.');if(!i.id){await this.createAssignment(i.course,i.title,i.description,i.due,i.max,i.late);return state.assignments[0]!.id;}const a=state.assignments.find(a=>a.id===i.id&&a.course_id===i.course);if(!a||!i.revision||(a.revision||1)!==i.revision)throw Error('Задание изменилось. Обновите перед сохранением.');if(i.max!==a.max_score&&state.works.some(w=>w.assignment===a.id))throw Error('После начала сдачи нельзя менять максимальный балл.');if(!i.title.trim()||i.title.length>200||i.description.length>50000||!Number.isInteger(i.max)||i.max<1||i.max>1000)throw Error('Проверьте поля задания.');Object.assign(a,{title:i.title.trim(),description:i.description,due_at:i.due,max_score:i.max,allow_late:i.late,revision:(a.revision||1)+1});recordAudit('assignment.updated',a.id);save();return a.id;},
- async teacherReview(id,version,action,score,feedback){const actor=me();const d=await this.teacherDetail(id),current=state.works.find(w=>w.id===id);if(me().id!==actor.id)throw Error('Аккаунт изменился. Откройте работу заново.');if(!d.can_review||!current||(current.review_version||1)!==version||d.work.review_version!==version)throw Error('Работа изменилась. Обновите её перед сохранением; ваш текст остаётся в черновике.');if(action==='return')await this.returnWork(id,feedback);else{if(d.work.status==='graded'&&action==='draft')throw Error('Опубликованную оценку нельзя скрыть в черновик.');if(score===null)throw Error('Укажите балл.');await this.grade(id,score,feedback,action==='publish');}state.reviewHistory ||= [];state.reviewHistory.push({id:crypto.randomUUID(),work:id,actor:actor.id,actor_name:actor.full_name,action,score:action==='return'?null:score,previous_score:d.work.score,previous_published:!!d.work.released_at,created_at:new Date().toISOString()});save();},
+function activeTeaching(course: string) {
+  const c = state.courses.find((c) => c.id === course && !c.archived);
+  return (
+    !!c &&
+    state.groups.some((g) => g.id === c.group_id && !g.blocked) &&
+    state.assignmentsTeaching.some((a) => a.teacher === me().id && a.course === course) &&
+    state.memberships.some(
+      (m) => m.user_id === me().id && m.group_id === c.group_id && m.role === 'teacher' && m.active,
+    )
+  );
+}
+function latestWorks() {
+  const latest = new Map<string, (typeof state.works)[number]>();
+  for (const w of state.works) {
+    const key = w.assignment + ':' + w.student_id;
+    if ((latest.get(key)?.attempt_no || 0) < w.attempt_no) latest.set(key, w);
+  }
+  return [...latest.values()];
+}
+function reviewRows(course: string | null, assignment: string | null) {
+  return latestWorks().flatMap((w) => {
+    const a = state.assignments.find((a) => a.id === w.assignment);
+    if (
+      !a ||
+      w.student_id === me().id ||
+      (course && a.course_id !== course) ||
+      (assignment && a.id !== assignment)
+    )
+      return [];
+    try {
+      if (!gradeCourse(a.course_id)) return [];
+    } catch {
+      return [];
+    }
+    const c = state.courses.find((c) => c.id === a.course_id)!;
+    return [
+      {
+        current_member:
+          state.profiles.some((p) => p.id === w.student_id && !p.blocked) &&
+          state.memberships.some(
+            (m) =>
+              m.user_id === w.student_id &&
+              m.group_id === c.group_id &&
+              m.active &&
+              m.role !== 'teacher',
+          ),
+        id: w.id,
+        assignment_id: a.id,
+        student_id: w.student_id,
+        student_name:
+          state.profiles.find((p) => p.id === w.student_id)?.full_name || w.student_name,
+        status: w.status,
+        attempt_no: w.attempt_no,
+        submitted_at: w.submitted_at,
+        is_late: w.is_late,
+        review_version: w.review_version || 1,
+        score: w.score,
+        released_at: w.released_at,
+        assignment_title: a.title,
+        max_score: a.max_score,
+        course_id: c.id,
+        course_title: c.title,
+        group_name: state.groups.find((g) => g.id === c.group_id)?.name || '',
+      } satisfies ReviewRow,
+    ];
+  });
+}
 
- async notificationCounts(){const p=me();if(owner())return {user_id:p.id,announcements:0,overdue:0};const announcements=state.board.filter(b=>b.kind==='announcement'&&b.author_id!==p.id&&boardRead(b.group_id,b.course_id,b.kind)&&!state.announcementReads?.some(r=>r.user===p.id&&r.id===b.id)).length;const overdue=state.assignments.filter(a=>{try{if(state.courses.find(c=>c.id===a.course_id)?.archived||!submitAllowed(a.course_id))return false;const latest=state.works.filter(w=>w.assignment===a.id&&w.student_id===p.id).sort((a,b)=>b.attempt_no-a.attempt_no)[0];return isOverdue(a.due_at,latest?.status||'not_submitted',Date.now());}catch{return false;}}).length;return {user_id:p.id,announcements,overdue};},
- async markAnnouncementRead(id){const p=me(),b=state.board.find(b=>b.id===id&&b.kind==='announcement');if(!b||!boardRead(b.group_id,b.course_id,b.kind))throw Error('Объявление недоступно.');state.announcementReads ||= [];if(!state.announcementReads.some(r=>r.user===p.id&&r.id===id))state.announcementReads.push({user:p.id,id});save();},
- async finishPasswordReset(){throw Error('В демонстрации нет настоящих паролей.');},
- async resetPassword(){throw Error('В демонстрации нет настоящих паролей.');},
- async cancelGroupRequest(){const p=me();for(const r of state.requests||[])if(r.user_id===p.id&&r.status==='pending')r.status='cancelled';save();},
- async groupRequests(group,offset){const p=me();if(group&&!leader(group))throw Error('Нет прав.');return structuredClone((state.requests||[]).filter(r=>group?r.group_id===group&&r.status==='pending':r.user_id===p.id).slice(offset,offset+50).map(r=>({...r,full_name:state.profiles.find(p=>p.id===r.user_id)?.full_name||r.full_name})));},
- async resolveGroupRequest(user,group,approve){if(!leader(group))throw Error('Нет прав.');const r=state.requests?.find(r=>r.user_id===user&&r.group_id===group&&r.status==='pending');const p=state.profiles.find(p=>p.id===user&&!p.blocked);if(!r||!p)throw Error('Заявка недоступна.');if(approve){if(state.memberships.some(m=>m.user_id===user&&m.active&&m.role!=='teacher'))throw Error('Участник уже состоит в группе.');if(state.memberships.some(m=>m.user_id===user&&m.group_id===group&&m.role==='student'&&!m.active))throw Error('Членство отключено.');state.memberships.push({user_id:user,group_id:group,role:'student',active:true});}r.status=approve?'approved':'rejected';recordAudit('student.request_resolved',user,{group_id:group,approved:approve});save();},
- async account(){const p=me();return {...accountInput(state.accountDetails?.[p.id]||{}),email:'',confirmed:false};},
- async saveAccount(name,details){const checked=accountInput(details),checkedName=profileName(name),p=me();p.full_name=checkedName;state.accountDetails ||= {};state.accountDetails[p.id]=checked;save();},
- async changePassword(){throw Error('Смена пароля доступна только в настоящем аккаунте.');},
- async auditEvents(offset){if(!owner())throw Error('Требуются права владельца.');if(!Number.isInteger(offset)||offset<0)throw Error('Некорректная страница.');return structuredClone(state.audit.slice(offset,offset+50));},
- async groupMembers(group,offset){me();if(!owner()&&!leader(group))throw Error('Нужны права старосты своей группы.');if(!Number.isInteger(offset)||offset<0)throw Error('Некорректная страница.');return state.memberships.filter(m=>m.group_id===group).map(m=>({...m,full_name:state.profiles.find(p=>p.id===m.user_id)?.full_name||''})).sort((a,b)=>a.full_name.localeCompare(b.full_name)||a.user_id.localeCompare(b.user_id)||a.role.localeCompare(b.role)).slice(offset,offset+50);},
- async courseWorkspace(course){const snap=await this.snapshot();if(!snap.courses.some(c=>c.id===course&&!c.archived))throw Error('Дисциплина недоступна.');
- const topics=state.topics.filter(t=>t.course_id===course).sort((a,b)=>a.position-b.position||a.id.localeCompare(b.id));const visible=new Set<string>();let canManage=false;
- for(const kind of ['lecture','presentation','material'] as MaterialKind[]){try{courseAccess(course,kind);canManage ||= courseManager(course,kind);state.materials.filter(i=>i.course_id===course&&i.kind===kind&&i.status==='published').forEach(i=>visible.add(i.id));}catch{/* A denied section stays hidden. */}}
- try{courseAccess(course,'assignment');canManage ||= gradeCourse(course);state.assignments.filter(a=>a.course_id===course).forEach(a=>visible.add(a.id));}catch{/* A denied section stays hidden. */}
- const resume=[...state.courseReading].reverse().find(r=>r.user_id===me().id&&r.total_pages>0&&visible.has(r.item_id));
- return structuredClone({topics,links:state.topicLinks.filter(l=>topics.some(t=>t.id===l.topic_id)&&visible.has(l.source_id)),completed:state.topicProgress.filter(p=>p.user_id===me().id&&topics.some(t=>t.id===p.topic_id)).map(p=>p.topic_id),canManage,resume:resume?{item_id:resume.item_id,page:resume.page,total_pages:resume.total_pages}:null});},
- async saveCourseTopic(course,title,description,position,id,version){if(!(await this.courseWorkspace(course)).canManage)throw Error('Нет прав на темы.');if(!title.trim()||title.length>200||description.length>5000||!Number.isInteger(position)||position<1||position>1000)throw Error('Проверьте тему.');if(id){const t=state.topics.find(t=>t.id===id&&t.course_id===course&&t.version===version);if(!t)throw Error('Тема изменена. Обновите список.');Object.assign(t,{title:title.trim(),description,position,version:t.version+1});}else{if(state.topics.filter(t=>t.course_id===course).length>=200)throw Error('Лимит тем — 200.');state.topics.push({id:crypto.randomUUID(),course_id:course,title:title.trim(),description,position,version:1});}save();},
- async deleteCourseTopic(id,version){const t=state.topics.find(t=>t.id===id&&t.version===version);if(!t||!(await this.courseWorkspace(t.course_id)).canManage)throw Error('Тема недоступна или изменена.');state.topics=state.topics.filter(t=>t.id!==id);state.topicLinks=state.topicLinks.filter(l=>l.topic_id!==id);state.topicProgress=state.topicProgress.filter(p=>p.topic_id!==id);save();},
- async linkCourseTopic(course,source,kind,topic){if(kind==='material'){const m=state.materials.find(i=>i.id===source&&i.course_id===course);if(!m||!courseManager(course,m.kind))throw Error('Нет прав на материал.');}else if(kind==='assignment'){if(!gradeCourse(course)||!state.assignments.some(a=>a.id===source&&a.course_id===course))throw Error('Нет прав на задание.');}else throw Error('Неизвестный источник.');if(topic&&!state.topics.some(t=>t.id===topic&&t.course_id===course))throw Error('Тема другой дисциплины.');state.topicLinks=state.topicLinks.filter(l=>l.source_id!==source||l.source_kind!==kind);if(topic)state.topicLinks.push({topic_id:topic,source_id:source,source_kind:kind});save();},
- async completeCourseTopic(topic,done){const t=state.topics.find(t=>t.id===topic);if(!t)throw Error('Тема недоступна.');await this.courseWorkspace(t.course_id);state.topicProgress=state.topicProgress.filter(p=>p.user_id!==me().id||p.topic_id!==topic);if(done)state.topicProgress.push({user_id:me().id,topic_id:topic});save();},
- async taskRecords(offset){const user=me().id;const legacy=state.notes.filter(n=>n.user_id===user&&decodePlan(n.body));state.planTasks.push(...legacy);state.notes=state.notes.filter(n=>!legacy.includes(n));if(legacy.length)save();return structuredClone(state.planTasks.filter(n=>n.user_id===user).sort((a,b)=>b.updated_at.localeCompare(a.updated_at)||a.id.localeCompare(b.id)).slice(offset,offset+50));},
- async saveTask(title,body,id,version){if(!decodePlan(body))throw Error('Некорректная задача.');const user=me().id;if(!title.trim()||title.length>200||body.length>50000)throw Error('Проверьте название и текст.');const bytes=(s:string)=>new TextEncoder().encode(s).length,old=state.planTasks.find(n=>n.id===id&&n.user_id===user);if(state.planTasks.filter(n=>n.user_id===user).reduce((sum,n)=>sum+bytes(n.title)+bytes(n.body),0)-(old?bytes(old.title)+bytes(old.body):0)+bytes(title.trim())+bytes(body)>1048576)throw Error('Лимит личных задач — 1 МБ.');if(id){const n=state.planTasks.find(n=>n.id===id&&n.user_id===user&&n.version===version);if(!n)throw Error('Задача недоступна или изменена. Обновите список.');Object.assign(n,{title:title.trim(),body,version:n.version+1,updated_at:new Date().toISOString()});}else{if(state.planTasks.filter(n=>n.user_id===user).length>=1000)throw Error('Достигнут лимит задач.');state.planTasks.push({id:crypto.randomUUID(),user_id:user,title:title.trim(),body,version:1,created_at:new Date().toISOString(),updated_at:new Date().toISOString()});}save();},
- async deleteTask(id,version){const user=me().id;if(!state.planTasks.some(n=>n.id===id&&n.user_id===user&&n.version===version))throw Error('Заметка недоступна или изменена. Обновите список.');state.planTasks=state.planTasks.filter(n=>n.id!==id);save();},
- async assignmentProgress(ids){const user=me().id;return ids.flatMap(id=>{task(id);const latest=state.works.filter(w=>w.assignment===id&&w.student_id===user).sort((a,b)=>b.attempt_no-a.attempt_no)[0];return latest?[{assignment_id:id,status:latest.status,attempt_no:latest.attempt_no}]:[];});},
- async readerSource(id){const book=state.library.find(i=>i.id===id);if(book){await this.readingState(id);return {kind:'library',item:structuredClone(book)};}const material=state.materials.find(m=>m.id===id);if(material){await this.courseReadingState(id);return {kind:'course',item:structuredClone(material)};}throw Error('Источник удалён или доступ к нему закрыт.');},
- async transferStudent(user,from,to){if(!owner())throw Error('Требуются права владельца.');if(from===to)throw Error('Выберите другую группу.');if(!state.groups.some(g=>g.id===to&&!g.blocked))throw Error('Новая группа недоступна.');const old=state.memberships.find(m=>m.user_id===user&&m.group_id===from&&m.role==='student'&&m.active);if(!old)throw Error('Группа студента изменилась. Обновите данные.');old.active=false;const existing=state.memberships.find(m=>m.user_id===user&&m.group_id===to&&m.role==='student');if(existing)existing.active=true;else state.memberships.push({user_id:user,group_id:to,role:'student',active:true});recordAudit('student.transferred',user,{from,to});save();},
- async teachingCatalog(group,offset){if(!leader(group))return [];return state.assignmentsTeaching.filter(a=>state.courses.some(c=>c.id===a.course&&c.group_id===group)).sort((a,b)=>a.course.localeCompare(b.course)||a.teacher.localeCompare(b.teacher)).slice(offset,offset+50).map(a=>({course_id:a.course,teacher_id:a.teacher,teacher_name:state.profiles.find(p=>p.id===a.teacher)?.full_name||'Преподаватель'}));},
- async removeTeaching(course,teacher){const c=state.courses.find(c=>c.id===course);if(!c||!leader(c.group_id))throw Error('Нет прав на эту группу.');if(!state.assignmentsTeaching.some(a=>a.course===course&&a.teacher===teacher))throw Error('Назначение уже снято. Обновите список.');state.assignmentsTeaching=state.assignmentsTeaching.filter(a=>a.course!==course||a.teacher!==teacher);recordAudit('teacher.unassigned',course,{teacher,group:c.group_id});save();},
- async invitationCatalog(offset){const user=me().id;return state.invitations.filter(i=>owner()||i.creator===user&&!!i.group&&leader(i.group)).sort((a,b)=>b.expires-a.expires||(a.id||'').localeCompare(b.id||'')).slice(offset,offset+50).map(i=>({id:i.id!,role:i.role,group_id:i.group,expires_at:new Date(i.expires).toISOString(),max_uses:i.max,used_count:i.uses,revoked:!!i.revoked}));},
- async revokeInvitation(id){const i=state.invitations.find(i=>i.id===id);if(!i||!(owner()||i.creator===me().id&&!!i.group&&leader(i.group)))throw Error('Нет прав на приглашение.');i.revoked=true;recordAudit('invitation.revoked',id);save();},
- async courseReadingState(item){const user=me().id,m=state.materials.find(m=>m.id===item&&m.file_id&&m.status==='published');if(!m)throw Error('Документ недоступен.');(()=>{try{courseAccess(m.course_id,m.kind);}catch(e){if(!state.assignments.some(a=>a.source_material_id===m.id))throw e;courseAccess(m.course_id,'assignment');}})();const r=state.courseReading.find(r=>r.user_id===user&&r.item_id===item);return r?structuredClone(r):emptyReading(item);},
- async saveCourseReading(input){validateReading(input);const user=me().id,current=await this.courseReadingState(input.item_id);if(me().id!==user)throw Error('Аккаунт изменён.');if(input.version!==current.version)throw Error('Отметки изменены. Обновите их перед сохранением.');if(!current.version&&state.courseReading.filter(r=>r.user_id===user).length>=1000)throw Error('Лимит отметок курса — 1000 документов.');const next={...input,favorite:false,bookmarks:[...new Set(input.bookmarks)].sort((a,b)=>a-b),version:current.version+1,user_id:user};state.courseReading=state.courseReading.filter(r=>r.user_id!==user||r.item_id!==input.item_id);state.courseReading.push(next);save();return structuredClone(next);},
- async readingState(item){const user=me().id;if(!libraryAccess()||!state.library.some(i=>i.id===item&&i.status==='published'))throw Error('Доступ к чтению закрыт.');const r=state.reading.find(r=>r.user_id===user&&r.item_id===item);return r?structuredClone(r):emptyReading(item);},
- async saveReading(input){validateReading(input);const user=me().id,current=await this.readingState(input.item_id);if(me().id!==user)throw Error('Аккаунт изменён. Откройте документ заново.');if(current.version!==input.version)throw Error('Отметки изменены. Обновите их перед сохранением.');if(!current.version&&state.reading.filter(r=>r.user_id===user).length>=1000)throw Error('Лимит личных отметок — 1000 материалов.');const next={...input,bookmarks:[...new Set(input.bookmarks)].sort((a,b)=>a-b),version:current.version+1,user_id:user};state.reading=state.reading.filter(r=>r.user_id!==user||r.item_id!==input.item_id);state.reading.push(next);save();return structuredClone(next);},
- async notes(search,offset){const user=me().id,q=search.toLocaleLowerCase();return structuredClone(state.notes.filter(n=>n.user_id===user&&(n.title.toLocaleLowerCase().includes(q)||n.body.toLocaleLowerCase().includes(q))).sort((a,b)=>b.updated_at.localeCompare(a.updated_at)||a.id.localeCompare(b.id)).slice(offset,offset+50));},
- async saveNote(title,body,id,version){const user=me().id;if(!title.trim()||title.length>200||body.length>50000)throw Error('Проверьте название и текст.');const bytes=(s:string)=>new TextEncoder().encode(s).length,old=state.notes.find(n=>n.id===id&&n.user_id===user);if(state.notes.filter(n=>n.user_id===user).reduce((sum,n)=>sum+bytes(n.title)+bytes(n.body),0)-(old?bytes(old.title)+bytes(old.body):0)+bytes(title.trim())+bytes(body)>1048576)throw Error('Лимит личных заметок — 1 МБ.');if(id){const n=state.notes.find(n=>n.id===id&&n.user_id===user&&n.version===version);if(!n)throw Error('Заметка недоступна или изменена. Обновите список.');Object.assign(n,{title:title.trim(),body,version:n.version+1,updated_at:new Date().toISOString()});}else{if(state.notes.filter(n=>n.user_id===user).length>=1000)throw Error('Достигнут лимит заметок.');state.notes.push({id:crypto.randomUUID(),user_id:user,title:title.trim(),body,version:1,created_at:new Date().toISOString(),updated_at:new Date().toISOString()});}save();},
- async deleteNote(id,version){const user=me().id;if(!state.notes.some(n=>n.id===id&&n.user_id===user&&n.version===version))throw Error('Заметка недоступна или изменена. Обновите список.');state.notes=state.notes.filter(n=>n.id!==id);save();},
- async weeklyDay(group,day){if(!boardWrite(group,null,'schedule'))throw Error('Нет прав на расписание.');const row=state.weekly?.[group+':'+day];return structuredClone({items:row?.items||[],version:row?.version||0});},
- async saveWeeklyDay(group,day,items,version,request){if(!boardWrite(group,null,'schedule'))throw Error('Нет прав на расписание.');if(!Number.isInteger(day)||day<1||day>7||!request)throw Error('Некорректный день.');const sorted=validateSlots(items);if(sorted.some(s=>!state.courses.some(c=>c.id===s.course_id&&c.group_id===group&&!c.archived)))throw Error('Дисциплина недоступна в группе.');const key=group+':'+day,old=state.weekly?.[key];if(old?.request===request){if(old.payload===JSON.stringify(items))return;throw Error('Запрос изменился.');}if((old?.version||0)!==version)throw Error('Расписание уже изменилось. Обновите день перед сохранением.');const today=bishkekInput(new Date().toISOString()).slice(0,10);state.weekly||={};const monday=new Date(Date.parse(today+'T12:00:00+06:00'));const mondayDate=new Date(monday.getTime()-((new Date(monday.getTime()+6*3600000).getUTCDay()+6)%7)*86400000);state.weekly[key]={items:structuredClone(sorted),version:version+1,request,payload:JSON.stringify(items),startsOn:old?.startsOn||bishkekInput(mondayDate.toISOString()).slice(0,10)};try{const dates=Object.values(state.scheduleExceptions||{}).filter(e=>entryWeekday(e.date)===day&&e.date>=today&&Object.values(state.weekly||{}).some(w=>w.items.some(s=>s.id===e.slot))).map(e=>e.date);for(const date of new Set(dates)){const entries=weeklyOccurrences(group,boardInstant(date+'T00:00'),new Date(Date.parse(boardInstant(date+'T00:00'))+86400000).toISOString()).filter(e=>!e.cancelled).sort((a,b)=>a.starts_at!.localeCompare(b.starts_at!));if(entries.some((e,i)=>i>0&&entries.slice(0,i).some(p=>p.ends_at!>e.starts_at!)))throw Error('Время пар пересекается с изменением на дату.');}}catch(e){if(old)state.weekly[key]=old;else delete state.weekly[key];throw e;}recordAudit('schedule.weekly.saved',group,{weekday:day,lessons:items.length});save();},
- async saveScheduleException(i,reset=false){const entry=Object.entries(state.weekly||{}).find(([,d])=>d.items.some(s=>s.id===i.slot));if(!entry)throw Error('Пара удалена.');const [group,weekday]=entry[0].split(':');if(!boardWrite(group,null,'schedule'))throw Error('Нет прав на расписание.');const date=new Date(i.date+'T12:00:00+06:00');if(!Number.isFinite(date.getTime())||((new Date(date.getTime()+6*3600000).getUTCDay()+6)%7)+1!==Number(weekday)||i.date<entry[1].startsOn)throw Error('Некорректная дата.');const key=i.slot+':'+i.date,old=state.scheduleExceptions?.[key];if((old?.version||0)!==i.version)throw Error('Расписание уже изменилось. Обновите день перед сохранением.');validateSlots([{id:i.slot,course_id:i.course,start_time:i.start,end_time:i.end,location:i.location}]);if(!state.courses.some(c=>c.id===i.course&&c.group_id===group&&!c.archived))throw Error('Дисциплина недоступна.');const base=entry[1].items.find(s=>s.id===i.slot)!,effective=reset?{...i,cancelled:false,start:base.start_time,end:base.end_time}:i;if(!effective.cancelled){const from=boardInstant(i.date+'T00:00'),to=new Date(Date.parse(from)+86400000).toISOString();for(let offset=0;;offset+=50){const page=await this.board(group,'schedule',from,to,offset);if(page.items.some(e=>e.template_id!==i.slot&&!e.cancelled&&e.starts_at!<boardInstant(i.date+'T'+effective.end)&&e.ends_at!>boardInstant(i.date+'T'+effective.start)))throw Error('Время пар пересекается.');if(page.items.length<50)break;}}state.scheduleExceptions||={};if(reset)delete state.scheduleExceptions[key];else state.scheduleExceptions[key]={...i,version:i.version+1};recordAudit('schedule.exception.saved',i.slot,{date:i.date,reset});save();},
- async board(group,kind,from,to,offset){const canRead=boardRead(group,null,kind);const writeScopes:(string|null)[]=[null,...state.courses.filter(c=>c.group_id===group).map(c=>c.id)];return {canRead,writeScopes:writeScopes.filter(c=>boardWrite(group,c,kind)),items:canRead?[...state.board,...(kind==='schedule'?weeklyOccurrences(group,from,to):[])].filter(b=>b.group_id===group&&b.kind===kind&&boardRead(group,b.course_id,kind)&&(kind!=='schedule'||(!from||b.ends_at!>from)&&(!to||b.starts_at!<to))).sort((a,b)=>kind==='schedule'?a.starts_at!.localeCompare(b.starts_at!):b.created_at.localeCompare(a.created_at)).slice(offset,offset+50).map(b=>({...b,unread:kind==='announcement'&&b.author_id!==me().id&&!state.announcementReads?.some(r=>r.user===me().id&&r.id===b.id),can_manage:boardWrite(group,b.course_id,kind,b.author_id)})):[]};},
- async saveBoard(i){if(i.repeatWeeks&&i.repeatWeeks>1){if(!Number.isInteger(i.repeatWeeks)||i.repeatWeeks>16||i.kind!=='schedule'||i.id||!i.start||!i.end)throw Error('Некорректное повторение.');const backup=structuredClone(state);try{for(let week=0;week<i.repeatWeeks;week++)await this.saveBoard({...i,repeatWeeks:undefined,start:new Date(Date.parse(i.start)+week*7*86400000).toISOString(),end:new Date(Date.parse(i.end)+week*7*86400000).toISOString()});}catch(e){state=backup;save();throw e;}return;}if(!boardWrite(i.group,i.course,i.kind))throw Error('Нет прав на публикацию.');if(!state.groups.some(g=>g.id===i.group)||i.course&&!state.courses.some(c=>c.id===i.course&&c.group_id===i.group))throw Error('Дисциплина другой группы.');if(!i.title.trim()||i.title.length>200||i.body.length>10000||i.location.length>200||!(i.kind==='schedule'?i.start&&i.end&&Number.isFinite(Date.parse(i.start))&&Number.isFinite(Date.parse(i.end))&&i.end>i.start:!i.start&&!i.end))throw Error('Проверьте название и время занятия.');if(i.id){const b=state.board.find(b=>b.id===i.id);if(!b||b.group_id!==i.group||b.course_id!==i.course||b.kind!==i.kind||!boardWrite(b.group_id,b.course_id,b.kind,b.author_id))throw Error('Нет прав.');Object.assign(b,{title:i.title.trim(),body:i.body,location:i.location,starts_at:i.start,ends_at:i.end});}else state.board.unshift({id:crypto.randomUUID(),group_id:i.group,course_id:i.course,kind:i.kind,title:i.title.trim(),body:i.body,location:i.location,starts_at:i.start,ends_at:i.end,author_id:me().id,author_name:me().full_name,created_at:new Date().toISOString(),can_manage:true});save();},
- async deleteBoard(id){const b=state.board.find(b=>b.id===id);if(!b||!boardWrite(b.group_id,b.course_id,b.kind,b.author_id))throw Error('Нет прав.');state.board=state.board.filter(b=>b.id!==id);save();},
- async assignments(course){courseAccess(course,'assignment');return {items:state.assignments.filter(a=>a.course_id===course),canGrade:gradeCourse(course),canSubmit:submitAllowed(course),userId:me().id};},
- async createAssignment(course,title,description,due,max,late){if(!gradeCourse(course))throw Error('Задания создаёт преподаватель.');if(!title.trim()||title.length>200||description.length>50000||!Number.isInteger(max)||max<1||max>1000)throw Error('Проверьте параметры задания.');state.assignments.unshift({id:crypto.randomUUID(),course_id:course,title,description,due_at:due,max_score:max,allow_late:late,created_at:new Date().toISOString()});save();},
- async works(assignment,offset){const a=task(assignment),grader=gradeCourse(a.course_id);return state.works.filter(w=>w.assignment===assignment&&(w.student_id===me().id||grader)).slice().sort((a,b)=>b.attempt_no-a.attempt_no).slice(offset,offset+50).map(w=>({...w,student_name:state.profiles.find(p=>p.id===w.student_id)?.full_name||w.student_name,score:(grader&&w.student_id!==me().id)||owner()||w.released_at?w.score:null,feedback:(grader&&w.student_id!==me().id)||owner()||w.released_at?w.feedback:null}));},
- async submit(assignment,text,file){const a=task(assignment);if(!submitAllowed(a.course_id))throw Error('Нужны права студента.');if(!text.trim()&&!file||text.length>50000)throw Error('Добавьте ответ или файл.');const late=!!a.due_at&&Date.now()>new Date(a.due_at).getTime();if(late&&!a.allow_late)throw Error('Срок сдачи истёк.');const previous=state.works.filter(w=>w.assignment===assignment&&w.student_id===me().id).sort((a,b)=>b.attempt_no-a.attempt_no)[0];if(previous&&previous.status!=='returned')throw Error('Дождитесь проверки или возврата.');const mime=file?validateFile(file):null,id=crypto.randomUUID();if(file&&state.library.reduce((s,i)=>s+i.size_bytes,0)+state.materials.reduce((s,i)=>s+(i.size_bytes||0),0)+state.works.reduce((s,i)=>s+(i.size_bytes||0),0)+file.size>838860800)throw Error('Лимит хранилища достигнут.');if(file)await saveDemoBlob(id,file);state.works.unshift({assignment_snapshot:structuredClone(a),id,assignment,student_id:me().id,student_name:me().full_name,text_answer:text,attempt_no:(previous?.attempt_no||0)+1,status:'submitted',submitted_at:new Date().toISOString(),is_late:late,return_feedback:null,storage_path:file?id:null,original_name:file?.name||null,mime_type:mime,size_bytes:file?.size||null,score:null,feedback:null,released_at:null});save();},
- async grade(work,score,feedback,publish){const w=state.works.find(w=>w.id===work);if(!w)throw Error('Работа недоступна.');const a=task(w.assignment);if(!gradeCourse(a.course_id)||w.student_id===me().id)throw Error('Оценки выставляет преподаватель; свою работу оценивать нельзя.');if(w.status==='graded'&&!publish)throw Error('Опубликованную оценку нельзя скрыть в черновик.');if(!['submitted','graded'].includes(w.status)||!Number.isFinite(score)||score<0||score>a.max_score||feedback.length>50000)throw Error('Некорректная оценка.');w.score=score;w.feedback=feedback;w.released_at=publish?new Date().toISOString():null;w.status=publish?'graded':'submitted';w.review_version=(w.review_version||1)+1;save();},
- async returnWork(work,feedback){const w=state.works.find(w=>w.id===work);if(!w||w.student_id===me().id||!gradeCourse(task(w.assignment).course_id))throw Error('Нет прав.');if(w.status!=='submitted'||!feedback.trim())throw Error('Добавьте комментарий к возврату.');w.status='returned';w.return_feedback=feedback;w.score=null;w.feedback=null;w.released_at=null;w.review_version=(w.review_version||1)+1;save();},
- async cancelUpload(){throw Error('В демонстрации нет незавершённых серверных загрузок.');},
- async downloadWork(work){const w=state.works.find(w=>w.id===work.id);if(!w)throw Error('Файл недоступен.');const a=task(w.assignment);if(w.student_id!==me().id&&!gradeCourse(a.course_id))throw Error('Нельзя читать чужую работу.');return readDemoBlob(w.id);},
- async courseMaterials(course,kind,offset){courseAccess(course,kind);const canManage=courseManager(course,kind);return {items:state.materials.filter(i=>i.course_id===course&&i.kind===kind).slice(offset,offset+50).map(i=>({...i,can_manage:canManage})),canManage};},
- async saveMaterial(course,kind,title,body,file,id){if(!courseManager(course,kind))throw Error('Нет прав на изменение материалов.');if(!title.trim()||title.length>200||body.length>50000)throw Error('Проверьте название и текст.');if(id){const i=state.materials.find(i=>i.id===id&&i.course_id===course&&i.kind===kind);if(!i)throw Error('Материал недоступен.');i.title=title;i.body=body;}else{const mime=file?validateFile(file):null;if(file&&state.library.reduce((s,i)=>s+i.size_bytes,0)+state.materials.reduce((s,i)=>s+(i.size_bytes||0),0)+state.works.reduce((s,i)=>s+(i.size_bytes||0),0)+file.size>838860800)throw Error('Лимит хранилища достигнут.');const newId=crypto.randomUUID();if(file)await saveDemoBlob(newId,file);state.materials.unshift({id:newId,course_id:course,kind,title,body,author_name:me().full_name,created_at:new Date().toISOString(),file_id:file?newId:null,storage_path:file?newId:null,original_name:file?.name||null,mime_type:mime,size_bytes:file?.size||null,status:'published',can_manage:true});}save();},
- async deleteMaterial(id){if(state.assignments.some(a=>a.source_material_id===id))throw Error('Файл прикреплён к заданию. Его нельзя удалить как обычный материал.');const i=state.materials.find(i=>i.id===id);if(!i||!courseManager(i.course_id,i.kind))throw Error('Нет прав.');await deleteDemoBlob(id);state.materials=state.materials.filter(i=>i.id!==id);state.courseReading=state.courseReading.filter(r=>r.item_id!==id);save();},
- async downloadMaterial(item){try{courseAccess(item.course_id,item.kind);}catch(e){if(!state.assignments.some(a=>a.source_material_id===item.id))throw e;courseAccess(item.course_id,'assignment');}if(!state.materials.some(i=>i.id===item.id&&i.file_id))throw Error('Файл недоступен.');return readDemoBlob(item.id);},
- async library(search,offset,favorites=false){const access=libraryAccess();if(!access)return {items:[],canRead:false,quota:null};const personal=state.reading.filter(r=>r.user_id===me().id);const items=state.library.filter(i=>(!favorites||personal.some(r=>r.item_id===i.id&&r.favorite))&&(i.title.toLowerCase().includes(search.toLowerCase())||i.original_name.toLowerCase().includes(search.toLowerCase()))).slice(offset,offset+50).map(i=>{const r=personal.find(r=>r.item_id===i.id);return {...i,can_manage:manage(i),favorite:r?.favorite||false,page:r?.page||1,total_pages:r?.total_pages||0};});return {items,canRead:true,quota:owner()?{used_bytes:state.library.reduce((s,i)=>s+i.size_bytes,0)+state.materials.reduce((s,i)=>s+(i.size_bytes||0),0)+state.works.reduce((s,i)=>s+(i.size_bytes||0),0),budget_bytes:838860800,file_limit_bytes:10485760}:null};},
- async uploadLibrary(group,title,file){const mime=validateFile(file);if(!leader(group)||!libraryAccess())throw Error('Нет прав на загрузку в библиотеку.');if(!title.trim()||title.length>200)throw Error('Введите название до 200 символов.');if(state.library.reduce((s,i)=>s+i.size_bytes,0)+state.materials.reduce((s,i)=>s+(i.size_bytes||0),0)+state.works.reduce((s,i)=>s+(i.size_bytes||0),0)+file.size>838860800)throw Error('Лимит хранилища достигнут.');const p=me(),g=state.groups.find(g=>g.id===group);if(!g||g.blocked)throw Error('Группа недоступна.');const id=crypto.randomUUID();await saveDemoBlob(id,file);state.library.unshift({id,title,author_id:p.id,author_name:p.full_name,source_group_id:group,group_name:g.name,created_at:new Date().toISOString(),status:'published',storage_path:id,original_name:file.name,mime_type:mime,size_bytes:file.size,can_manage:true});save();},
- async renameLibrary(id,title){const i=state.library.find(i=>i.id===id);if(!i||!manage(i))throw Error('Нельзя изменять чужую публикацию.');if(!title.trim()||title.length>200)throw Error('Введите название до 200 символов.');i.title=title;save();},
- async deleteLibrary(id){const i=state.library.find(i=>i.id===id);if(!i||!manage(i))throw Error('Нельзя удалять чужую публикацию.');await deleteDemoBlob(id);state.library=state.library.filter(i=>i.id!==id);state.reading=state.reading.filter(r=>r.item_id!==id);save();},
- async downloadLibrary(item){if(!libraryAccess()||!state.library.some(i=>i.id===item.id&&i.status==='published'))throw Error('Доступ к библиотеке закрыт.');if(item.id==='sample-note')return new Blob(['Это демонстрационный материал StudyHub.\n\nСтароста добавляет материалы в общую библиотеку и управляет своими публикациями. Владелец управляет всеми материалами. Студенты и преподаватели читают и скачивают доступные документы.'],{type:'text/plain'});return readDemoBlob(item.id);},
- async session(){return !!state.session;},async groups(){return state.groups.filter(g=>!g.blocked).map(({id,name})=>({id,name}));},
- async signup(name,_email,_password,group,details){if(group&&!state.groups.some(g=>g.id===group&&!g.blocked))throw Error('Группа недоступна.');const id=crypto.randomUUID();state.profiles.push({id,full_name:profileName(name),blocked:false});state.session=id;state.accountDetails ||= {};state.accountDetails[id]=accountInput(details||{});save();if(group)await this.joinGroup(group);},
- async login(){throw Error('В демонстрации используйте выбор роли.');},async logout(){state.session=null;save();},
- async snapshot(){const p=me(),isOwner=owner();const memberships=state.memberships.filter(m=>isOwner||m.user_id===p.id||leader(m.group_id));const visible=state.groups.filter(g=>isOwner||(!g.blocked&&state.memberships.some(m=>m.user_id===p.id&&m.group_id===g.id&&m.active)));return structuredClone({me:p,owner:isOwner,groups:visible,courses:state.courses.filter(c=>(!c.archived||isOwner||leader(c.group_id))&&visible.some(g=>g.id===c.group_id)&&(isOwner||c.archived&&leader(c.group_id)||!state.denials.some(d=>(d.user_id===p.id||d.group_id===c.group_id)&&d.section==='course'&&d.course_id===c.id))&&(isOwner||state.memberships.some(m=>m.user_id===p.id&&m.group_id===c.group_id&&m.active&&m.role!=='teacher')||state.assignmentsTeaching.some(a=>a.teacher===p.id&&a.course===c.id))),profiles:isOwner?state.profiles:[p],memberships,denials:isOwner?state.denials:[],availableGroups:state.entitlements[p.id]||0} satisfies Snapshot);},
- async joinGroup(group){const p=me();if(!state.groups.some(g=>g.id===group&&!g.blocked))throw Error('Группа недоступна.');if(state.memberships.some(m=>m.user_id===p.id&&m.active&&m.role!=='teacher'))throw Error('Перевод выполняет владелец.');if(state.memberships.some(m=>m.user_id===p.id&&m.group_id===group&&m.role==='student'&&!m.active))throw Error('Членство отключено.');state.requests ||= [];const old=state.requests.find(r=>r.user_id===p.id);if(old?.status==='pending'){if(old.group_id!==group)throw Error('Другая заявка уже ожидает одобрения.');return;}state.requests=state.requests.filter(r=>r.user_id!==p.id);state.requests.push({user_id:p.id,group_id:group,full_name:p.full_name,status:'pending',created_at:new Date().toISOString()});save();},
- async createGroup(name){const p=me();if(!owner()&&!(state.entitlements[p.id]>0))throw Error('Нужно приглашение владельца.');const id=crypto.randomUUID();state.groups.push({id,name,blocked:false,created_by:p.id});state.memberships.push({user_id:p.id,group_id:id,role:'leader',active:true});if(!owner())state.entitlements[p.id]--;recordAudit('group.created',id);save();},
- async manageCourse(course,action,title){const c=state.courses.find(c=>c.id===course.id);if(!c||!(owner()||leader(c.group_id)))throw Error('Недостаточно прав или дисциплина недоступна.');if(!['rename','archive','restore','delete'].includes(action))throw Error('Недопустимое действие.');const originalTitle=c.title,next=title?.trim();if(action==='rename'&&(!next||next.length>200))throw Error('Название должно содержать от 1 до 200 символов.');if(action==='rename'&&c.title===next||action==='archive'&&c.archived||action==='restore'&&!c.archived)return;if(c.title!==course.title||c.archived!==course.archived)throw Error('Дисциплина изменилась. Обновите список и выберите действие заново.');if(action==='delete'){if(Object.values(state.weekly||{}).some(d=>d.items.some(s=>s.course_id===c.id))||Object.values(state.scheduleExceptions||{}).some(e=>e.course===c.id)||state.materials.some(m=>m.course_id===c.id)||state.assignments.some(a=>a.course_id===c.id)||state.board.some(b=>b.course_id===c.id)||state.topics.some(t=>t.course_id===c.id)||state.assignmentsTeaching.some(t=>t.course===c.id)||state.invitations.some(i=>i.courses.includes(c.id))||state.denials.some(d=>d.course_id===c.id)||state.notes.some(n=>n.body.includes(c.id))||state.planTasks.some(n=>n.body.includes(c.id))||Object.values(state.intakes||{}).some(i=>i.payload.includes(c.id)))throw Error('В дисциплине есть связанные данные. Вместо удаления отправьте её в архив.');state.courses=state.courses.filter(item=>item.id!==c.id);}else{if(action==='rename')c.title=next!;else c.archived=action==='archive';}recordAudit(({rename:'course.renamed',archive:'course.archived',restore:'course.restored',delete:'course.deleted'})[action],c.id,{title:originalTitle,new_title:c.title,group_id:c.group_id});save();notifyChanged();},
- async createCourse(group,title){if(!leader(group))throw Error('Нет прав на эту группу.');state.courses.push({id:crypto.randomUUID(),group_id:group,title,archived:false});recordAudit('course.created',state.courses.at(-1)!.id);save();},
- async invite(role,group,courses,max){const p=me();if(role==='leader'?!owner():!group||!leader(group))throw Error('Нет прав.');if(max<1||max>60||role!=='student'&&max!==1)throw Error('Недопустимый лимит приглашения.');if(role==='teacher'&&(!courses.length||courses.some(c=>!state.courses.some(x=>x.id===c&&x.group_id===group))))throw Error('Выберите дисциплины своей группы.');const token=crypto.randomUUID();state.invitations.push({id:crypto.randomUUID(),revoked:false,token,role,group,courses,uses:0,max,creator:p.id,expires:Date.now()+72*3600000,redeemed:[]});recordAudit('invitation.created',state.invitations.at(-1)!.id!);save();return token;},
- async redeem(token){const p=me(),i=state.invitations.find(i=>i.token===token);if(!i||i.revoked||i.expires<=Date.now()||state.profiles.find(p=>p.id===i.creator)?.blocked)throw Error('Приглашение недоступно.');if(i.redeemed.includes(p.id))return;if(i.uses>=i.max)throw Error('Приглашение использовано.');if(i.group&&state.groups.find(g=>g.id===i.group)?.blocked)throw Error('Группа заблокирована.');if(i.creator!=='owner'&&!state.memberships.some(m=>m.user_id===i.creator&&m.group_id===i.group&&m.role==='leader'&&m.active))throw Error('Полномочия автора приглашения изменены.');if(i.role==='leader')state.entitlements[p.id]=(state.entitlements[p.id]||0)+1;else if(i.group){if(i.role==='student'&&state.memberships.some(m=>m.user_id===p.id&&m.group_id!==i.group&&m.active&&m.role!=='teacher'))throw Error('Смену группы выполняет владелец.');if(state.memberships.some(m=>m.user_id===p.id&&m.group_id===i.group&&m.role===i.role&&!m.active))throw Error('Членство отключено. Обратитесь к владельцу.');if(!state.memberships.some(m=>m.user_id===p.id&&m.group_id===i.group&&m.role===i.role))state.memberships.push({user_id:p.id,group_id:i.group,role:i.role,active:true});}if(i.role==='teacher')for(const course of i.courses){if(!state.assignmentsTeaching.some(a=>a.teacher===p.id&&a.course===course))state.assignmentsTeaching.push({teacher:p.id,course});}i.uses++;i.redeemed.push(p.id);save();},
- async block(user,group,blocked){if(!owner())throw Error('Нет прав.');if(user==='owner')throw Error('Владельца нельзя заблокировать.');const target=user?state.profiles.find(p=>p.id===user):state.groups.find(g=>g.id===group);if(!target)throw Error('Не найдено.');target.blocked=blocked;recordAudit('access.block',user||group,{blocked});save();},
- async deny(section,user,group,course){if(!owner())throw Error('Нет прав.');const id=crypto.randomUUID();state.denials.push({id,user_id:user,group_id:group,section,course_id:course});recordAudit('access.denied',id);save();},async restore(id){if(!owner())throw Error('Нет прав.');state.denials=state.denials.filter(d=>d.id!==id);recordAudit('access.restored',id);save();}
+function entryWeekday(date: string) {
+  return ((new Date(date + 'T12:00:00Z').getUTCDay() + 6) % 7) + 1;
+}
+function weeklyOccurrences(
+  group: string,
+  from: string | null,
+  to: string | null,
+): (BoardItem & { author_id: string })[] {
+  const start = from || new Date(Date.now() - 86400000).toISOString(),
+    end = to || new Date(Date.now() + 30 * 86400000).toISOString();
+  if (Date.parse(end) - Date.parse(start) > 370 * 86400000) throw Error('Слишком большой период.');
+  const out: (BoardItem & { author_id: string })[] = [];
+  for (
+    let t = Date.parse(boardInstant(bishkekInput(start).slice(0, 10) + 'T00:00')) - 86400000;
+    t < Date.parse(end);
+    t += 86400000
+  ) {
+    const day = bishkekInput(new Date(t).toISOString()).slice(0, 10),
+      weekday = ((new Date(t + 6 * 3600000).getUTCDay() + 6) % 7) + 1,
+      d = state.weekly?.[group + ':' + weekday];
+    if (!d || day < d.startsOn) continue;
+    for (const s of d.items) {
+      const e = state.scheduleExceptions?.[s.id + ':' + day],
+        course = state.courses.find((c) => c.id === (e?.course || s.course_id) && !c.archived);
+      if (
+        !course ||
+        !state.courses.some((c) => c.id === s.course_id && !c.archived) ||
+        !boardRead(group, s.course_id, 'schedule')
+      )
+        continue;
+      const a = boardInstant(day + 'T' + (e?.start || s.start_time)),
+        b = boardInstant(day + 'T' + (e?.end || s.end_time));
+      if (a >= end || b <= start) continue;
+      out.push({
+        id: s.id + '-' + day,
+        group_id: group,
+        course_id: course.id,
+        kind: 'schedule',
+        title: course.title,
+        body: e?.cancelled ? 'Занятие отменено' : '',
+        location: e?.location ?? s.location,
+        starts_at: a,
+        ends_at: b,
+        author_id: me().id,
+        author_name: '',
+        created_at: new Date(t).toISOString(),
+        can_manage: boardWrite(group, s.course_id, 'schedule'),
+        template_id: s.id,
+        occurrence_date: day,
+        cancelled: e?.cancelled || false,
+        version: e?.version || 0,
+      });
+    }
+  }
+  return out;
+}
+export const demoGateway: Gateway = {
+  demo: true,
+  async studySearch(query, filter, offset, signal) {
+    return catalogSearch(this, await this.snapshot(), query, filter, offset, signal);
+  },
+  async searchNote(id) {
+    const note = state.notes.find(
+      (n) => n.id === id && n.user_id === me().id && !decodePlan(n.body),
+    );
+    if (!note) throw Error('Заметка удалена или недоступна.');
+    return structuredClone(note);
+  },
+  async materialAiQuota() {
+    await this.materialIntakeContext();
+    return {
+      user_daily: 5,
+      project_daily: 20,
+      rpm: 2,
+      tpm: 12000,
+      max_input: 8000,
+      max_output: 2048,
+      user_remaining: 5,
+      project_remaining: 20,
+      minute_remaining: 2,
+      tokens_remaining: 12000,
+      retry_after_seconds: 0,
+      resets_at: new Date(Date.now() + 86400000).toISOString(),
+    };
+  },
+  async materialIntakeContext() {
+    const courses = state.courses
+      .filter((c) => !c.archived && !state.groups.find((g) => g.id === c.group_id)?.blocked)
+      .map((c) => {
+        const kinds: import('./material-intake-types').IntakeKind[] = [];
+        for (const k of ['lecture', 'presentation', 'material'] as const)
+          try {
+            if (courseManager(c.id, k)) kinds.push(k);
+          } catch {}
+        if (kinds.includes('material') && gradeCourse(c.id)) kinds.push('assignment');
+        return { ...c, group_name: state.groups.find((g) => g.id === c.group_id)!.name, kinds };
+      })
+      .filter((c) => c.kinds.length);
+    const groups = state.groups
+      .filter((g) => publishBooks(g.id))
+      .map((g) => ({ id: g.id, name: g.name }));
+    if (!courses.length && !groups.length)
+      throw Error('Добавление доступно старосте, преподавателю и владельцу.');
+    return { courses, groups };
+  },
+  async analyzeMaterial(input, signal) {
+    signal.throwIfAborted();
+    const context = await this.materialIntakeContext();
+    const text = (input.text || input.name).toLowerCase();
+    const kind: import('./material-intake-types').IntakeKind | 'unknown' =
+      /задани|практическ|assignment/.test(text)
+        ? 'assignment'
+        : /учебник|книга|book/.test(text)
+          ? 'book'
+          : /лекци|lecture/.test(text)
+            ? 'lecture'
+            : /слайд|презентац|pptx/.test(text)
+              ? 'presentation'
+              : 'material';
+    const matched = context.courses.filter(
+      (c) =>
+        (!input.scopeGroup || c.group_id === input.scopeGroup) &&
+        text.includes(c.title.toLowerCase()),
+    );
+    const selected = matched.length === 1 ? matched[0].id : null;
+    return {
+      kind,
+      title: (input.text?.trim().split(/\r?\n/)[0] || input.name.replace(/\.[^.]+$/, '')).slice(
+        0,
+        200,
+      ),
+      course_id: selected,
+      topic: '',
+      description:
+        kind === 'assignment'
+          ? 'Условия находятся в приложенном исходном документе. Проверьте их перед публикацией.'
+          : (input.text || '').slice(0, 1000),
+      confidence: selected ? 'medium' : 'low',
+      reason:
+        'Демонстрационное локальное правило, не анализ Gemini. Для настоящего распознавания подключите серверную функцию.',
+      evidence: input.text ? [input.text.slice(0, 200)] : [],
+      excerpted: input.excerpted,
+      demo: true,
+    };
+  },
+  async intakeStatus(request) {
+    const job = state.intakes?.[request];
+    if (!job) return { status: 'none' };
+    if (job.user !== me().id) throw Error('Публикация недоступна.');
+    return {
+      status: job.result === 'cancelled' ? 'cancelled' : 'published',
+      result_id: job.result,
+    };
+  },
+  async cancelIntake(request) {
+    await this.materialIntakeContext();
+    const status = await this.intakeStatus(request);
+    if (status.status === 'published') return status;
+    (state.intakes ||= {})[request] = { user: me().id, payload: 'cancelled', result: 'cancelled' };
+    save();
+    return { status: 'cancelled' };
+  },
+  async publishIntake(i, file) {
+    const user = me().id;
+    const context = await this.materialIntakeContext();
+    validateFile(file);
+    if (
+      state.library.reduce((s, i) => s + i.size_bytes, 0) +
+        state.materials.reduce((s, i) => s + (i.size_bytes || 0), 0) +
+        state.works.reduce((s, i) => s + (i.size_bytes || 0), 0) +
+        file.size >
+      838860800
+    )
+      throw Error('Лимит хранилища достигнут.');
+    const hash = [
+      ...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer())),
+    ].join(',');
+    const payload = JSON.stringify(i) + hash;
+    const old = state.intakes?.[i.request];
+    if (old) {
+      if (old.user !== user || old.payload !== payload) throw Error('Публикация изменилась.');
+      return old.result;
+    }
+    if (!i.title.trim() || i.title.length > 200 || i.description.length > 50000)
+      throw Error('Проверьте название и описание.');
+    if (i.kind === 'book') {
+      if (!context.groups.some((g) => g.id === i.group)) throw Error('Нет прав на библиотеку.');
+      const id = crypto.randomUUID();
+      await saveDemoBlob(id, file);
+      if (me().id !== user) throw Error('Аккаунт изменился.');
+      state.library.unshift({
+        id,
+        title: i.title,
+        author_id: user,
+        author_name: me().full_name,
+        source_group_id: i.group!,
+        group_name: context.groups.find((g) => g.id === i.group)!.name,
+        created_at: new Date().toISOString(),
+        status: 'published',
+        storage_path: id,
+        original_name: file.name,
+        mime_type: validateFile(file),
+        size_bytes: file.size,
+        can_manage: true,
+      });
+      (state.intakes ||= {})[i.request] = { user, payload, result: id };
+      save();
+      return id;
+    }
+    if (!context.courses.some((c) => c.id === i.course && c.kinds.includes(i.kind)))
+      throw Error('Нет прав на публикацию этого типа.');
+    if (
+      i.kind === 'assignment' &&
+      (!Number.isInteger(i.max) || i.max < 1 || i.max > 1000 || !i.description.trim())
+    )
+      throw Error('Проверьте условия задания.');
+    const id = crypto.randomUUID(),
+      mime = validateFile(file);
+    await saveDemoBlob(id, file);
+    if (me().id !== user) throw Error('Аккаунт изменился.');
+    const material: CourseMaterial = {
+      id,
+      course_id: i.course!,
+      kind: i.kind === 'assignment' ? 'material' : i.kind,
+      title: i.title,
+      body: i.description,
+      author_name: me().full_name,
+      created_at: new Date().toISOString(),
+      file_id: id,
+      storage_path: id,
+      original_name: file.name,
+      mime_type: mime,
+      size_bytes: file.size,
+      status: 'published',
+      can_manage: true,
+    };
+    state.materials.unshift(material);
+    let result = id;
+    if (i.kind === 'assignment') {
+      result = crypto.randomUUID();
+      state.assignments.unshift({
+        id: result,
+        course_id: i.course!,
+        title: i.title,
+        description: i.description,
+        due_at: i.due,
+        max_score: i.max,
+        allow_late: i.late,
+        created_at: new Date().toISOString(),
+        source_material_id: id,
+      });
+    }
+    (state.intakes ||= {})[i.request] = { user, payload, result };
+    recordAudit('material.intake_published', result, { kind: i.kind });
+    save();
+    return result;
+  },
+
+  async teacherCatalog() {
+    me();
+    return state.courses
+      .filter((c) => activeTeaching(c.id))
+      .flatMap((c) => {
+        if (
+          state.denials.some(
+            (d) =>
+              (d.user_id === me().id || d.group_id === c.group_id) &&
+              d.section === 'course' &&
+              d.course_id === c.id,
+          )
+        )
+          return [];
+        let canGrade = false;
+        try {
+          canGrade = gradeCourse(c.id);
+        } catch {
+          /* Assignment access may be denied separately. */
+        }
+        const reviews = canGrade ? reviewRows(c.id, null) : [];
+        return [
+          {
+            ...c,
+            group_name: state.groups.find((g) => g.id === c.group_id)?.name || '',
+            can_grade: canGrade,
+            assignment_count: canGrade
+              ? state.assignments.filter((a) => a.course_id === c.id).length
+              : null,
+            pending: canGrade ? reviews.filter((r) => r.status === 'submitted').length : null,
+            drafts: canGrade
+              ? reviews.filter(
+                  (r) => r.status === 'submitted' && r.score !== null && !r.released_at,
+                ).length
+              : null,
+            students: canGrade
+              ? new Set(
+                  state.memberships
+                    .filter(
+                      (m) =>
+                        m.group_id === c.group_id &&
+                        m.active &&
+                        m.role !== 'teacher' &&
+                        state.profiles.some((p) => p.id === m.user_id && !p.blocked),
+                    )
+                    .map((m) => m.user_id),
+                ).size
+              : null,
+          } satisfies TeacherCourse,
+        ];
+      });
+  },
+  async teacherQueue(course, assignment, status, search, offset) {
+    me();
+    if (course && !gradeCourse(course)) throw Error('Нет прав преподавателя.');
+    if (assignment && !gradeCourse(task(assignment).course_id)) throw Error('Задание недоступно.');
+    const match = (s: string) => s.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+    const rows = reviewRows(course, assignment)
+      .filter(
+        (r) =>
+          ['submitted', 'graded', 'returned'].includes(r.status) &&
+          (status === 'all' ||
+            (status === 'pending' && r.status === 'submitted') ||
+            (status === 'draft' &&
+              r.status === 'submitted' &&
+              r.score !== null &&
+              !r.released_at) ||
+            (status === 'graded' && r.status === 'graded') ||
+            (status === 'returned' && r.status === 'returned')) &&
+          match(
+            r.student_name + ' ' + r.assignment_title + ' ' + r.course_title + ' ' + r.group_name,
+          ),
+      )
+      .sort(
+        (a, b) =>
+          (a.submitted_at || '9999').localeCompare(b.submitted_at || '9999') ||
+          a.id.localeCompare(b.id),
+      );
+    return structuredClone({ items: rows.slice(offset, offset + 30), total: rows.length });
+  },
+  async teacherReviewHistory(id, offset) {
+    const d = await this.teacherDetail(id);
+    const own = d.work.student_id === me().id && !owner();
+    const rows = (state.reviewHistory || [])
+      .filter((e) => e.work === id && (!own || e.action !== 'draft'))
+      .reverse()
+      .map((e) => ({
+        ...e,
+        previous_score: own && !e.previous_published ? null : e.previous_score,
+      }));
+    return structuredClone({ items: rows.slice(offset, offset + 20), total: rows.length });
+  },
+  async teacherHistory(id, offset) {
+    await this.teacherDetail(id);
+    const w = state.works.find((w) => w.id === id)!;
+    const items = state.works
+      .filter((x) => x.assignment === w.assignment && x.student_id === w.student_id)
+      .sort((a, b) => b.attempt_no - a.attempt_no)
+      .map((w) => ({
+        id: w.id,
+        attempt_no: w.attempt_no,
+        status: w.status,
+        submitted_at: w.submitted_at,
+      }));
+    return structuredClone({ items: items.slice(offset, offset + 20), total: items.length });
+  },
+  async teacherDetail(id) {
+    me();
+    const w = state.works.find((w) => w.id === id);
+    if (!w) throw Error('Работа недоступна.');
+    const a = task(w.assignment);
+    if (
+      !gradeCourse(a.course_id) ||
+      (!['submitted', 'graded', 'returned'].includes(w.status) && w.student_id !== me().id)
+    )
+      throw Error('Работа ещё не отправлена или недоступна.');
+    const history = state.works
+      .filter((x) => x.assignment === a.id && x.student_id === w.student_id)
+      .sort((a, b) => b.attempt_no - a.attempt_no);
+    return structuredClone({
+      work: {
+        ...w,
+        student_name:
+          state.profiles.find((p) => p.id === w.student_id)?.full_name || w.student_name,
+        score: w.student_id === me().id && !owner() && !w.released_at ? null : w.score,
+        feedback: w.student_id === me().id && !owner() && !w.released_at ? null : w.feedback,
+        current_member:
+          state.profiles.some((p) => p.id === w.student_id && !p.blocked) &&
+          state.memberships.some(
+            (m) =>
+              m.user_id === w.student_id &&
+              m.group_id === state.courses.find((c) => c.id === a.course_id)?.group_id &&
+              m.active &&
+              m.role !== 'teacher',
+          ),
+        review_version: w.review_version || 1,
+      },
+      assignment: w.assignment_snapshot || a,
+      assignment_snapshot: !!w.assignment_snapshot,
+      latest_id: history[0].id,
+      can_review:
+        w.id === history[0].id &&
+        w.student_id !== me().id &&
+        ['submitted', 'graded'].includes(w.status),
+      history: history
+        .slice(0, 20)
+        .map((w) => ({
+          id: w.id,
+          attempt_no: w.attempt_no,
+          status: w.status,
+          submitted_at: w.submitted_at,
+        })),
+      group_name:
+        state.groups.find((g) => g.id === state.courses.find((c) => c.id === a.course_id)?.group_id)
+          ?.name || '',
+      course_title: state.courses.find((c) => c.id === a.course_id)!.title,
+    } satisfies TeacherDetail);
+  },
+  async teacherRoster(assignment, search, status, offset) {
+    const a = task(assignment),
+      c = state.courses.find((c) => c.id === a.course_id)!;
+    if (!gradeCourse(c.id)) throw Error('Нет прав преподавателя.');
+    const ids = [
+      ...new Set(
+        state.memberships
+          .filter((m) => m.group_id === c.group_id && m.active && m.role !== 'teacher')
+          .map((m) => m.user_id),
+      ),
+    ];
+    const rows = ids
+      .flatMap((id) => {
+        const p = state.profiles.find((p) => p.id === id && !p.blocked);
+        if (!p) return [];
+        const w = latestWorks().find((w) => w.assignment === assignment && w.student_id === id);
+        return [
+          {
+            student_id: id,
+            student_name: p.full_name,
+            work_id:
+              w &&
+              (['submitted', 'graded', 'returned'].includes(w.status) || w.student_id === me().id)
+                ? w.id
+                : null,
+            status: w?.status || 'not_submitted',
+            attempt_no: w?.attempt_no || null,
+            submitted_at: w?.submitted_at || null,
+            is_late: w?.is_late ?? null,
+            score:
+              w?.student_id === me().id && !owner() && !w.released_at ? null : (w?.score ?? null),
+            released_at: w?.released_at || null,
+          },
+        ];
+      })
+      .filter(
+        (r) =>
+          r.student_name.toLowerCase().includes(search.toLowerCase()) &&
+          (status === 'all' || r.status === status),
+      )
+      .sort(
+        (a, b) =>
+          a.student_name.localeCompare(b.student_name) || a.student_id.localeCompare(b.student_id),
+      );
+    return structuredClone({ items: rows.slice(offset, offset + 30), total: rows.length });
+  },
+  async teacherSaveAssignment(i) {
+    if (!gradeCourse(i.course)) throw Error('Нет прав преподавателя.');
+    if (!i.id) {
+      await this.createAssignment(i.course, i.title, i.description, i.due, i.max, i.late);
+      return state.assignments[0]!.id;
+    }
+    const a = state.assignments.find((a) => a.id === i.id && a.course_id === i.course);
+    if (!a || !i.revision || (a.revision || 1) !== i.revision)
+      throw Error('Задание изменилось. Обновите перед сохранением.');
+    if (i.max !== a.max_score && state.works.some((w) => w.assignment === a.id))
+      throw Error('После начала сдачи нельзя менять максимальный балл.');
+    if (
+      !i.title.trim() ||
+      i.title.length > 200 ||
+      i.description.length > 50000 ||
+      !Number.isInteger(i.max) ||
+      i.max < 1 ||
+      i.max > 1000
+    )
+      throw Error('Проверьте поля задания.');
+    Object.assign(a, {
+      title: i.title.trim(),
+      description: i.description,
+      due_at: i.due,
+      max_score: i.max,
+      allow_late: i.late,
+      revision: (a.revision || 1) + 1,
+    });
+    recordAudit('assignment.updated', a.id);
+    save();
+    return a.id;
+  },
+  async teacherReview(id, version, action, score, feedback) {
+    const actor = me();
+    const d = await this.teacherDetail(id),
+      current = state.works.find((w) => w.id === id);
+    if (me().id !== actor.id) throw Error('Аккаунт изменился. Откройте работу заново.');
+    if (
+      !d.can_review ||
+      !current ||
+      (current.review_version || 1) !== version ||
+      d.work.review_version !== version
+    )
+      throw Error(
+        'Работа изменилась. Обновите её перед сохранением; ваш текст остаётся в черновике.',
+      );
+    if (action === 'return') await this.returnWork(id, feedback);
+    else {
+      if (d.work.status === 'graded' && action === 'draft')
+        throw Error('Опубликованную оценку нельзя скрыть в черновик.');
+      if (score === null) throw Error('Укажите балл.');
+      await this.grade(id, score, feedback, action === 'publish');
+    }
+    state.reviewHistory ||= [];
+    state.reviewHistory.push({
+      id: crypto.randomUUID(),
+      work: id,
+      actor: actor.id,
+      actor_name: actor.full_name,
+      action,
+      score: action === 'return' ? null : score,
+      previous_score: d.work.score,
+      previous_published: !!d.work.released_at,
+      created_at: new Date().toISOString(),
+    });
+    save();
+  },
+
+  async notificationCounts() {
+    const p = me();
+    if (owner()) return { user_id: p.id, announcements: 0, overdue: 0 };
+    const announcements = state.board.filter(
+      (b) =>
+        b.kind === 'announcement' &&
+        b.author_id !== p.id &&
+        boardRead(b.group_id, b.course_id, b.kind) &&
+        !state.announcementReads?.some((r) => r.user === p.id && r.id === b.id),
+    ).length;
+    const overdue = state.assignments.filter((a) => {
+      try {
+        if (
+          state.courses.find((c) => c.id === a.course_id)?.archived ||
+          !submitAllowed(a.course_id)
+        )
+          return false;
+        const latest = state.works
+          .filter((w) => w.assignment === a.id && w.student_id === p.id)
+          .sort((a, b) => b.attempt_no - a.attempt_no)[0];
+        return isOverdue(a.due_at, latest?.status || 'not_submitted', Date.now());
+      } catch {
+        return false;
+      }
+    }).length;
+    return { user_id: p.id, announcements, overdue };
+  },
+  async markAnnouncementRead(id) {
+    const p = me(),
+      b = state.board.find((b) => b.id === id && b.kind === 'announcement');
+    if (!b || !boardRead(b.group_id, b.course_id, b.kind)) throw Error('Объявление недоступно.');
+    state.announcementReads ||= [];
+    if (!state.announcementReads.some((r) => r.user === p.id && r.id === id))
+      state.announcementReads.push({ user: p.id, id });
+    save();
+  },
+  async finishPasswordReset() {
+    throw Error('В демонстрации нет настоящих паролей.');
+  },
+  async resetPassword() {
+    throw Error('В демонстрации нет настоящих паролей.');
+  },
+  async cancelGroupRequest() {
+    const p = me();
+    for (const r of state.requests || [])
+      if (r.user_id === p.id && r.status === 'pending') r.status = 'cancelled';
+    save();
+  },
+  async groupRequests(group, offset) {
+    const p = me();
+    if (group && !leader(group)) throw Error('Нет прав.');
+    return structuredClone(
+      (state.requests || [])
+        .filter((r) =>
+          group ? r.group_id === group && r.status === 'pending' : r.user_id === p.id,
+        )
+        .slice(offset, offset + 50)
+        .map((r) => ({
+          ...r,
+          full_name: state.profiles.find((p) => p.id === r.user_id)?.full_name || r.full_name,
+        })),
+    );
+  },
+  async resolveGroupRequest(user, group, approve) {
+    if (!leader(group)) throw Error('Нет прав.');
+    const r = state.requests?.find(
+      (r) => r.user_id === user && r.group_id === group && r.status === 'pending',
+    );
+    const p = state.profiles.find((p) => p.id === user && !p.blocked);
+    if (!r || !p) throw Error('Заявка недоступна.');
+    if (approve) {
+      if (state.memberships.some((m) => m.user_id === user && m.active && m.role !== 'teacher'))
+        throw Error('Участник уже состоит в группе.');
+      if (
+        state.memberships.some(
+          (m) => m.user_id === user && m.group_id === group && m.role === 'student' && !m.active,
+        )
+      )
+        throw Error('Членство отключено.');
+      state.memberships.push({ user_id: user, group_id: group, role: 'student', active: true });
+    }
+    r.status = approve ? 'approved' : 'rejected';
+    recordAudit('student.request_resolved', user, { group_id: group, approved: approve });
+    save();
+  },
+  async account() {
+    const p = me();
+    return { ...accountInput(state.accountDetails?.[p.id] || {}), email: '', confirmed: false };
+  },
+  async saveAccount(name, details) {
+    const checked = accountInput(details),
+      checkedName = profileName(name),
+      p = me();
+    p.full_name = checkedName;
+    state.accountDetails ||= {};
+    state.accountDetails[p.id] = checked;
+    save();
+  },
+  async changePassword() {
+    throw Error('Смена пароля доступна только в настоящем аккаунте.');
+  },
+  async auditEvents(offset) {
+    if (!owner()) throw Error('Требуются права владельца.');
+    if (!Number.isInteger(offset) || offset < 0) throw Error('Некорректная страница.');
+    return structuredClone(state.audit.slice(offset, offset + 50));
+  },
+  async groupMembers(group, offset) {
+    me();
+    if (!owner() && !leader(group)) throw Error('Нужны права старосты своей группы.');
+    if (!Number.isInteger(offset) || offset < 0) throw Error('Некорректная страница.');
+    return state.memberships
+      .filter((m) => m.group_id === group)
+      .map((m) => ({
+        ...m,
+        full_name: state.profiles.find((p) => p.id === m.user_id)?.full_name || '',
+      }))
+      .sort(
+        (a, b) =>
+          a.full_name.localeCompare(b.full_name) ||
+          a.user_id.localeCompare(b.user_id) ||
+          a.role.localeCompare(b.role),
+      )
+      .slice(offset, offset + 50);
+  },
+  async courseWorkspace(course) {
+    const snap = await this.snapshot();
+    if (!snap.courses.some((c) => c.id === course && !c.archived))
+      throw Error('Дисциплина недоступна.');
+    const topics = state.topics
+      .filter((t) => t.course_id === course)
+      .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+    const visible = new Set<string>();
+    let canManage = false;
+    for (const kind of ['lecture', 'presentation', 'material'] as MaterialKind[]) {
+      try {
+        courseAccess(course, kind);
+        canManage ||= courseManager(course, kind);
+        state.materials
+          .filter((i) => i.course_id === course && i.kind === kind && i.status === 'published')
+          .forEach((i) => visible.add(i.id));
+      } catch {
+        /* A denied section stays hidden. */
+      }
+    }
+    try {
+      courseAccess(course, 'assignment');
+      canManage ||= gradeCourse(course);
+      state.assignments.filter((a) => a.course_id === course).forEach((a) => visible.add(a.id));
+    } catch {
+      /* A denied section stays hidden. */
+    }
+    const resume = [...state.courseReading]
+      .reverse()
+      .find((r) => r.user_id === me().id && r.total_pages > 0 && visible.has(r.item_id));
+    return structuredClone({
+      topics,
+      links: state.topicLinks.filter(
+        (l) => topics.some((t) => t.id === l.topic_id) && visible.has(l.source_id),
+      ),
+      completed: state.topicProgress
+        .filter((p) => p.user_id === me().id && topics.some((t) => t.id === p.topic_id))
+        .map((p) => p.topic_id),
+      canManage,
+      resume: resume
+        ? { item_id: resume.item_id, page: resume.page, total_pages: resume.total_pages }
+        : null,
+    });
+  },
+  async saveCourseTopic(course, title, description, position, id, version) {
+    if (!(await this.courseWorkspace(course)).canManage) throw Error('Нет прав на темы.');
+    if (
+      !title.trim() ||
+      title.length > 200 ||
+      description.length > 5000 ||
+      !Number.isInteger(position) ||
+      position < 1 ||
+      position > 1000
+    )
+      throw Error('Проверьте тему.');
+    if (id) {
+      const t = state.topics.find(
+        (t) => t.id === id && t.course_id === course && t.version === version,
+      );
+      if (!t) throw Error('Тема изменена. Обновите список.');
+      Object.assign(t, { title: title.trim(), description, position, version: t.version + 1 });
+    } else {
+      if (state.topics.filter((t) => t.course_id === course).length >= 200)
+        throw Error('Лимит тем — 200.');
+      state.topics.push({
+        id: crypto.randomUUID(),
+        course_id: course,
+        title: title.trim(),
+        description,
+        position,
+        version: 1,
+      });
+    }
+    save();
+  },
+  async deleteCourseTopic(id, version) {
+    const t = state.topics.find((t) => t.id === id && t.version === version);
+    if (!t || !(await this.courseWorkspace(t.course_id)).canManage)
+      throw Error('Тема недоступна или изменена.');
+    state.topics = state.topics.filter((t) => t.id !== id);
+    state.topicLinks = state.topicLinks.filter((l) => l.topic_id !== id);
+    state.topicProgress = state.topicProgress.filter((p) => p.topic_id !== id);
+    save();
+  },
+  async linkCourseTopic(course, source, kind, topic) {
+    if (kind === 'material') {
+      const m = state.materials.find((i) => i.id === source && i.course_id === course);
+      if (!m || !courseManager(course, m.kind)) throw Error('Нет прав на материал.');
+    } else if (kind === 'assignment') {
+      if (
+        !gradeCourse(course) ||
+        !state.assignments.some((a) => a.id === source && a.course_id === course)
+      )
+        throw Error('Нет прав на задание.');
+    } else throw Error('Неизвестный источник.');
+    if (topic && !state.topics.some((t) => t.id === topic && t.course_id === course))
+      throw Error('Тема другой дисциплины.');
+    state.topicLinks = state.topicLinks.filter(
+      (l) => l.source_id !== source || l.source_kind !== kind,
+    );
+    if (topic) state.topicLinks.push({ topic_id: topic, source_id: source, source_kind: kind });
+    save();
+  },
+  async completeCourseTopic(topic, done) {
+    const t = state.topics.find((t) => t.id === topic);
+    if (!t) throw Error('Тема недоступна.');
+    await this.courseWorkspace(t.course_id);
+    state.topicProgress = state.topicProgress.filter(
+      (p) => p.user_id !== me().id || p.topic_id !== topic,
+    );
+    if (done) state.topicProgress.push({ user_id: me().id, topic_id: topic });
+    save();
+  },
+  async taskRecords(offset) {
+    const user = me().id;
+    const legacy = state.notes.filter((n) => n.user_id === user && decodePlan(n.body));
+    state.planTasks.push(...legacy);
+    state.notes = state.notes.filter((n) => !legacy.includes(n));
+    if (legacy.length) save();
+    return structuredClone(
+      state.planTasks
+        .filter((n) => n.user_id === user)
+        .sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
+        .slice(offset, offset + 50),
+    );
+  },
+  async saveTask(title, body, id, version) {
+    if (!decodePlan(body)) throw Error('Некорректная задача.');
+    const user = me().id;
+    if (!title.trim() || title.length > 200 || body.length > 50000)
+      throw Error('Проверьте название и текст.');
+    const bytes = (s: string) => new TextEncoder().encode(s).length,
+      old = state.planTasks.find((n) => n.id === id && n.user_id === user);
+    if (
+      state.planTasks
+        .filter((n) => n.user_id === user)
+        .reduce((sum, n) => sum + bytes(n.title) + bytes(n.body), 0) -
+        (old ? bytes(old.title) + bytes(old.body) : 0) +
+        bytes(title.trim()) +
+        bytes(body) >
+      1048576
+    )
+      throw Error('Лимит личных задач — 1 МБ.');
+    if (id) {
+      const n = state.planTasks.find(
+        (n) => n.id === id && n.user_id === user && n.version === version,
+      );
+      if (!n) throw Error('Задача недоступна или изменена. Обновите список.');
+      Object.assign(n, {
+        title: title.trim(),
+        body,
+        version: n.version + 1,
+        updated_at: new Date().toISOString(),
+      });
+    } else {
+      if (state.planTasks.filter((n) => n.user_id === user).length >= 1000)
+        throw Error('Достигнут лимит задач.');
+      state.planTasks.push({
+        id: crypto.randomUUID(),
+        user_id: user,
+        title: title.trim(),
+        body,
+        version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+    save();
+  },
+  async deleteTask(id, version) {
+    const user = me().id;
+    if (!state.planTasks.some((n) => n.id === id && n.user_id === user && n.version === version))
+      throw Error('Заметка недоступна или изменена. Обновите список.');
+    state.planTasks = state.planTasks.filter((n) => n.id !== id);
+    save();
+  },
+  async assignmentProgress(ids) {
+    const user = me().id;
+    return ids.flatMap((id) => {
+      task(id);
+      const latest = state.works
+        .filter((w) => w.assignment === id && w.student_id === user)
+        .sort((a, b) => b.attempt_no - a.attempt_no)[0];
+      return latest
+        ? [{ assignment_id: id, status: latest.status, attempt_no: latest.attempt_no }]
+        : [];
+    });
+  },
+  async readerSource(id) {
+    const book = state.library.find((i) => i.id === id);
+    if (book) {
+      await this.readingState(id);
+      return { kind: 'library', item: structuredClone(book) };
+    }
+    const material = state.materials.find((m) => m.id === id);
+    if (material) {
+      await this.courseReadingState(id);
+      return { kind: 'course', item: structuredClone(material) };
+    }
+    throw Error('Источник удалён или доступ к нему закрыт.');
+  },
+  async transferStudent(user, from, to) {
+    if (!owner()) throw Error('Требуются права владельца.');
+    if (from === to) throw Error('Выберите другую группу.');
+    if (!state.groups.some((g) => g.id === to && !g.blocked))
+      throw Error('Новая группа недоступна.');
+    const old = state.memberships.find(
+      (m) => m.user_id === user && m.group_id === from && m.role === 'student' && m.active,
+    );
+    if (!old) throw Error('Группа студента изменилась. Обновите данные.');
+    old.active = false;
+    const existing = state.memberships.find(
+      (m) => m.user_id === user && m.group_id === to && m.role === 'student',
+    );
+    if (existing) existing.active = true;
+    else state.memberships.push({ user_id: user, group_id: to, role: 'student', active: true });
+    recordAudit('student.transferred', user, { from, to });
+    save();
+  },
+  async teachingCatalog(group, offset) {
+    if (!leader(group)) return [];
+    return state.assignmentsTeaching
+      .filter((a) => state.courses.some((c) => c.id === a.course && c.group_id === group))
+      .sort((a, b) => a.course.localeCompare(b.course) || a.teacher.localeCompare(b.teacher))
+      .slice(offset, offset + 50)
+      .map((a) => ({
+        course_id: a.course,
+        teacher_id: a.teacher,
+        teacher_name: state.profiles.find((p) => p.id === a.teacher)?.full_name || 'Преподаватель',
+      }));
+  },
+  async removeTeaching(course, teacher) {
+    const c = state.courses.find((c) => c.id === course);
+    if (!c || !leader(c.group_id)) throw Error('Нет прав на эту группу.');
+    if (!state.assignmentsTeaching.some((a) => a.course === course && a.teacher === teacher))
+      throw Error('Назначение уже снято. Обновите список.');
+    state.assignmentsTeaching = state.assignmentsTeaching.filter(
+      (a) => a.course !== course || a.teacher !== teacher,
+    );
+    recordAudit('teacher.unassigned', course, { teacher, group: c.group_id });
+    save();
+  },
+  async invitationCatalog(offset) {
+    const user = me().id;
+    return state.invitations
+      .filter((i) => owner() || (i.creator === user && !!i.group && leader(i.group)))
+      .sort((a, b) => b.expires - a.expires || (a.id || '').localeCompare(b.id || ''))
+      .slice(offset, offset + 50)
+      .map((i) => ({
+        id: i.id!,
+        role: i.role,
+        group_id: i.group,
+        expires_at: new Date(i.expires).toISOString(),
+        max_uses: i.max,
+        used_count: i.uses,
+        revoked: !!i.revoked,
+      }));
+  },
+  async revokeInvitation(id) {
+    const i = state.invitations.find((i) => i.id === id);
+    if (!i || !(owner() || (i.creator === me().id && !!i.group && leader(i.group))))
+      throw Error('Нет прав на приглашение.');
+    i.revoked = true;
+    recordAudit('invitation.revoked', id);
+    save();
+  },
+  async courseReadingState(item) {
+    const user = me().id,
+      m = state.materials.find((m) => m.id === item && m.file_id && m.status === 'published');
+    if (!m) throw Error('Документ недоступен.');
+    (() => {
+      try {
+        courseAccess(m.course_id, m.kind);
+      } catch (e) {
+        if (!state.assignments.some((a) => a.source_material_id === m.id)) throw e;
+        courseAccess(m.course_id, 'assignment');
+      }
+    })();
+    const r = state.courseReading.find((r) => r.user_id === user && r.item_id === item);
+    return r ? structuredClone(r) : emptyReading(item);
+  },
+  async saveCourseReading(input) {
+    validateReading(input);
+    const user = me().id,
+      current = await this.courseReadingState(input.item_id);
+    if (me().id !== user) throw Error('Аккаунт изменён.');
+    if (input.version !== current.version)
+      throw Error('Отметки изменены. Обновите их перед сохранением.');
+    if (!current.version && state.courseReading.filter((r) => r.user_id === user).length >= 1000)
+      throw Error('Лимит отметок курса — 1000 документов.');
+    const next = {
+      ...input,
+      favorite: false,
+      bookmarks: [...new Set(input.bookmarks)].sort((a, b) => a - b),
+      version: current.version + 1,
+      user_id: user,
+    };
+    state.courseReading = state.courseReading.filter(
+      (r) => r.user_id !== user || r.item_id !== input.item_id,
+    );
+    state.courseReading.push(next);
+    save();
+    return structuredClone(next);
+  },
+  async readingState(item) {
+    const user = me().id;
+    if (!libraryAccess() || !state.library.some((i) => i.id === item && i.status === 'published'))
+      throw Error('Доступ к чтению закрыт.');
+    const r = state.reading.find((r) => r.user_id === user && r.item_id === item);
+    return r ? structuredClone(r) : emptyReading(item);
+  },
+  async saveReading(input) {
+    validateReading(input);
+    const user = me().id,
+      current = await this.readingState(input.item_id);
+    if (me().id !== user) throw Error('Аккаунт изменён. Откройте документ заново.');
+    if (current.version !== input.version)
+      throw Error('Отметки изменены. Обновите их перед сохранением.');
+    if (!current.version && state.reading.filter((r) => r.user_id === user).length >= 1000)
+      throw Error('Лимит личных отметок — 1000 материалов.');
+    const next = {
+      ...input,
+      bookmarks: [...new Set(input.bookmarks)].sort((a, b) => a - b),
+      version: current.version + 1,
+      user_id: user,
+    };
+    state.reading = state.reading.filter((r) => r.user_id !== user || r.item_id !== input.item_id);
+    state.reading.push(next);
+    save();
+    return structuredClone(next);
+  },
+  async notes(search, offset) {
+    const user = me().id,
+      q = search.toLocaleLowerCase();
+    return structuredClone(
+      state.notes
+        .filter(
+          (n) =>
+            n.user_id === user &&
+            (n.title.toLocaleLowerCase().includes(q) || n.body.toLocaleLowerCase().includes(q)),
+        )
+        .sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
+        .slice(offset, offset + 50),
+    );
+  },
+  async saveNote(title, body, id, version) {
+    const user = me().id;
+    if (!title.trim() || title.length > 200 || body.length > 50000)
+      throw Error('Проверьте название и текст.');
+    const bytes = (s: string) => new TextEncoder().encode(s).length,
+      old = state.notes.find((n) => n.id === id && n.user_id === user);
+    if (
+      state.notes
+        .filter((n) => n.user_id === user)
+        .reduce((sum, n) => sum + bytes(n.title) + bytes(n.body), 0) -
+        (old ? bytes(old.title) + bytes(old.body) : 0) +
+        bytes(title.trim()) +
+        bytes(body) >
+      1048576
+    )
+      throw Error('Лимит личных заметок — 1 МБ.');
+    if (id) {
+      const n = state.notes.find((n) => n.id === id && n.user_id === user && n.version === version);
+      if (!n) throw Error('Заметка недоступна или изменена. Обновите список.');
+      Object.assign(n, {
+        title: title.trim(),
+        body,
+        version: n.version + 1,
+        updated_at: new Date().toISOString(),
+      });
+    } else {
+      if (state.notes.filter((n) => n.user_id === user).length >= 1000)
+        throw Error('Достигнут лимит заметок.');
+      state.notes.push({
+        id: crypto.randomUUID(),
+        user_id: user,
+        title: title.trim(),
+        body,
+        version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+    save();
+  },
+  async deleteNote(id, version) {
+    const user = me().id;
+    if (!state.notes.some((n) => n.id === id && n.user_id === user && n.version === version))
+      throw Error('Заметка недоступна или изменена. Обновите список.');
+    state.notes = state.notes.filter((n) => n.id !== id);
+    save();
+  },
+  async weeklyDay(group, day) {
+    if (!boardWrite(group, null, 'schedule')) throw Error('Нет прав на расписание.');
+    const row = state.weekly?.[group + ':' + day];
+    return structuredClone({ items: row?.items || [], version: row?.version || 0 });
+  },
+  async saveWeeklyDay(group, day, items, version, request) {
+    if (!boardWrite(group, null, 'schedule')) throw Error('Нет прав на расписание.');
+    if (!Number.isInteger(day) || day < 1 || day > 7 || !request) throw Error('Некорректный день.');
+    const sorted = validateSlots(items);
+    if (
+      sorted.some(
+        (s) =>
+          !state.courses.some((c) => c.id === s.course_id && c.group_id === group && !c.archived),
+      )
+    )
+      throw Error('Дисциплина недоступна в группе.');
+    const key = group + ':' + day,
+      old = state.weekly?.[key];
+    if (old?.request === request) {
+      if (old.payload === JSON.stringify(items)) return;
+      throw Error('Запрос изменился.');
+    }
+    if ((old?.version || 0) !== version)
+      throw Error('Расписание уже изменилось. Обновите день перед сохранением.');
+    const today = bishkekInput(new Date().toISOString()).slice(0, 10);
+    state.weekly ||= {};
+    const monday = new Date(Date.parse(today + 'T12:00:00+06:00'));
+    const mondayDate = new Date(
+      monday.getTime() -
+        ((new Date(monday.getTime() + 6 * 3600000).getUTCDay() + 6) % 7) * 86400000,
+    );
+    state.weekly[key] = {
+      items: structuredClone(sorted),
+      version: version + 1,
+      request,
+      payload: JSON.stringify(items),
+      startsOn: old?.startsOn || bishkekInput(mondayDate.toISOString()).slice(0, 10),
+    };
+    try {
+      const dates = Object.values(state.scheduleExceptions || {})
+        .filter(
+          (e) =>
+            entryWeekday(e.date) === day &&
+            e.date >= today &&
+            Object.values(state.weekly || {}).some((w) => w.items.some((s) => s.id === e.slot)),
+        )
+        .map((e) => e.date);
+      for (const date of new Set(dates)) {
+        const entries = weeklyOccurrences(
+          group,
+          boardInstant(date + 'T00:00'),
+          new Date(Date.parse(boardInstant(date + 'T00:00')) + 86400000).toISOString(),
+        )
+          .filter((e) => !e.cancelled)
+          .sort((a, b) => a.starts_at!.localeCompare(b.starts_at!));
+        if (
+          entries.some(
+            (e, i) => i > 0 && entries.slice(0, i).some((p) => p.ends_at! > e.starts_at!),
+          )
+        )
+          throw Error('Время пар пересекается с изменением на дату.');
+      }
+    } catch (e) {
+      if (old) state.weekly[key] = old;
+      else delete state.weekly[key];
+      throw e;
+    }
+    recordAudit('schedule.weekly.saved', group, { weekday: day, lessons: items.length });
+    save();
+  },
+  async saveScheduleException(i, reset = false) {
+    const entry = Object.entries(state.weekly || {}).find(([, d]) =>
+      d.items.some((s) => s.id === i.slot),
+    );
+    if (!entry) throw Error('Пара удалена.');
+    const [group, weekday] = entry[0].split(':');
+    if (!boardWrite(group, null, 'schedule')) throw Error('Нет прав на расписание.');
+    const date = new Date(i.date + 'T12:00:00+06:00');
+    if (
+      !Number.isFinite(date.getTime()) ||
+      ((new Date(date.getTime() + 6 * 3600000).getUTCDay() + 6) % 7) + 1 !== Number(weekday) ||
+      i.date < entry[1].startsOn
+    )
+      throw Error('Некорректная дата.');
+    const key = i.slot + ':' + i.date,
+      old = state.scheduleExceptions?.[key];
+    if ((old?.version || 0) !== i.version)
+      throw Error('Расписание уже изменилось. Обновите день перед сохранением.');
+    validateSlots([
+      {
+        id: i.slot,
+        course_id: i.course,
+        start_time: i.start,
+        end_time: i.end,
+        location: i.location,
+      },
+    ]);
+    if (!state.courses.some((c) => c.id === i.course && c.group_id === group && !c.archived))
+      throw Error('Дисциплина недоступна.');
+    const base = entry[1].items.find((s) => s.id === i.slot)!,
+      effective = reset
+        ? { ...i, cancelled: false, start: base.start_time, end: base.end_time }
+        : i;
+    if (!effective.cancelled) {
+      const from = boardInstant(i.date + 'T00:00'),
+        to = new Date(Date.parse(from) + 86400000).toISOString();
+      for (let offset = 0; ; offset += 50) {
+        const page = await this.board(group, 'schedule', from, to, offset);
+        if (
+          page.items.some(
+            (e) =>
+              e.template_id !== i.slot &&
+              !e.cancelled &&
+              e.starts_at! < boardInstant(i.date + 'T' + effective.end) &&
+              e.ends_at! > boardInstant(i.date + 'T' + effective.start),
+          )
+        )
+          throw Error('Время пар пересекается.');
+        if (page.items.length < 50) break;
+      }
+    }
+    state.scheduleExceptions ||= {};
+    if (reset) delete state.scheduleExceptions[key];
+    else state.scheduleExceptions[key] = { ...i, version: i.version + 1 };
+    recordAudit('schedule.exception.saved', i.slot, { date: i.date, reset });
+    save();
+  },
+  async board(group, kind, from, to, offset) {
+    const canRead = boardRead(group, null, kind);
+    const writeScopes: (string | null)[] = [
+      null,
+      ...state.courses.filter((c) => c.group_id === group).map((c) => c.id),
+    ];
+    return {
+      canRead,
+      writeScopes: writeScopes.filter((c) => boardWrite(group, c, kind)),
+      items: canRead
+        ? [...state.board, ...(kind === 'schedule' ? weeklyOccurrences(group, from, to) : [])]
+            .filter(
+              (b) =>
+                b.group_id === group &&
+                b.kind === kind &&
+                boardRead(group, b.course_id, kind) &&
+                (kind !== 'schedule' ||
+                  ((!from || b.ends_at! > from) && (!to || b.starts_at! < to))),
+            )
+            .sort((a, b) =>
+              kind === 'schedule'
+                ? a.starts_at!.localeCompare(b.starts_at!)
+                : b.created_at.localeCompare(a.created_at),
+            )
+            .slice(offset, offset + 50)
+            .map((b) => ({
+              ...b,
+              unread:
+                kind === 'announcement' &&
+                b.author_id !== me().id &&
+                !state.announcementReads?.some((r) => r.user === me().id && r.id === b.id),
+              can_manage: boardWrite(group, b.course_id, kind, b.author_id),
+            }))
+        : [],
+    };
+  },
+  async saveBoard(i) {
+    if (i.repeatWeeks && i.repeatWeeks > 1) {
+      if (
+        !Number.isInteger(i.repeatWeeks) ||
+        i.repeatWeeks > 16 ||
+        i.kind !== 'schedule' ||
+        i.id ||
+        !i.start ||
+        !i.end
+      )
+        throw Error('Некорректное повторение.');
+      const backup = structuredClone(state);
+      try {
+        for (let week = 0; week < i.repeatWeeks; week++)
+          await this.saveBoard({
+            ...i,
+            repeatWeeks: undefined,
+            start: new Date(Date.parse(i.start) + week * 7 * 86400000).toISOString(),
+            end: new Date(Date.parse(i.end) + week * 7 * 86400000).toISOString(),
+          });
+      } catch (e) {
+        state = backup;
+        save();
+        throw e;
+      }
+      return;
+    }
+    if (!boardWrite(i.group, i.course, i.kind)) throw Error('Нет прав на публикацию.');
+    if (
+      !state.groups.some((g) => g.id === i.group) ||
+      (i.course && !state.courses.some((c) => c.id === i.course && c.group_id === i.group))
+    )
+      throw Error('Дисциплина другой группы.');
+    if (
+      !i.title.trim() ||
+      i.title.length > 200 ||
+      i.body.length > 10000 ||
+      i.location.length > 200 ||
+      !(i.kind === 'schedule'
+        ? i.start &&
+          i.end &&
+          Number.isFinite(Date.parse(i.start)) &&
+          Number.isFinite(Date.parse(i.end)) &&
+          i.end > i.start
+        : !i.start && !i.end)
+    )
+      throw Error('Проверьте название и время занятия.');
+    if (i.id) {
+      const b = state.board.find((b) => b.id === i.id);
+      if (
+        !b ||
+        b.group_id !== i.group ||
+        b.course_id !== i.course ||
+        b.kind !== i.kind ||
+        !boardWrite(b.group_id, b.course_id, b.kind, b.author_id)
+      )
+        throw Error('Нет прав.');
+      Object.assign(b, {
+        title: i.title.trim(),
+        body: i.body,
+        location: i.location,
+        starts_at: i.start,
+        ends_at: i.end,
+      });
+    } else
+      state.board.unshift({
+        id: crypto.randomUUID(),
+        group_id: i.group,
+        course_id: i.course,
+        kind: i.kind,
+        title: i.title.trim(),
+        body: i.body,
+        location: i.location,
+        starts_at: i.start,
+        ends_at: i.end,
+        author_id: me().id,
+        author_name: me().full_name,
+        created_at: new Date().toISOString(),
+        can_manage: true,
+      });
+    save();
+  },
+  async deleteBoard(id) {
+    const b = state.board.find((b) => b.id === id);
+    if (!b || !boardWrite(b.group_id, b.course_id, b.kind, b.author_id)) throw Error('Нет прав.');
+    state.board = state.board.filter((b) => b.id !== id);
+    save();
+  },
+  async assignments(course) {
+    courseAccess(course, 'assignment');
+    return {
+      items: state.assignments.filter((a) => a.course_id === course),
+      canGrade: gradeCourse(course),
+      canSubmit: submitAllowed(course),
+      userId: me().id,
+    };
+  },
+  async createAssignment(course, title, description, due, max, late) {
+    if (!gradeCourse(course)) throw Error('Задания создаёт преподаватель.');
+    if (
+      !title.trim() ||
+      title.length > 200 ||
+      description.length > 50000 ||
+      !Number.isInteger(max) ||
+      max < 1 ||
+      max > 1000
+    )
+      throw Error('Проверьте параметры задания.');
+    state.assignments.unshift({
+      id: crypto.randomUUID(),
+      course_id: course,
+      title,
+      description,
+      due_at: due,
+      max_score: max,
+      allow_late: late,
+      created_at: new Date().toISOString(),
+    });
+    save();
+  },
+  async works(assignment, offset) {
+    const a = task(assignment),
+      grader = gradeCourse(a.course_id);
+    return state.works
+      .filter((w) => w.assignment === assignment && (w.student_id === me().id || grader))
+      .slice()
+      .sort((a, b) => b.attempt_no - a.attempt_no)
+      .slice(offset, offset + 50)
+      .map((w) => ({
+        ...w,
+        student_name:
+          state.profiles.find((p) => p.id === w.student_id)?.full_name || w.student_name,
+        score: (grader && w.student_id !== me().id) || owner() || w.released_at ? w.score : null,
+        feedback:
+          (grader && w.student_id !== me().id) || owner() || w.released_at ? w.feedback : null,
+      }));
+  },
+  async submit(assignment, text, file) {
+    const a = task(assignment);
+    if (!submitAllowed(a.course_id)) throw Error('Нужны права студента.');
+    if ((!text.trim() && !file) || text.length > 50000) throw Error('Добавьте ответ или файл.');
+    const late = !!a.due_at && Date.now() > new Date(a.due_at).getTime();
+    if (late && !a.allow_late) throw Error('Срок сдачи истёк.');
+    const previous = state.works
+      .filter((w) => w.assignment === assignment && w.student_id === me().id)
+      .sort((a, b) => b.attempt_no - a.attempt_no)[0];
+    if (previous && previous.status !== 'returned') throw Error('Дождитесь проверки или возврата.');
+    const mime = file ? validateFile(file) : null,
+      id = crypto.randomUUID();
+    if (
+      file &&
+      state.library.reduce((s, i) => s + i.size_bytes, 0) +
+        state.materials.reduce((s, i) => s + (i.size_bytes || 0), 0) +
+        state.works.reduce((s, i) => s + (i.size_bytes || 0), 0) +
+        file.size >
+        838860800
+    )
+      throw Error('Лимит хранилища достигнут.');
+    if (file) await saveDemoBlob(id, file);
+    state.works.unshift({
+      assignment_snapshot: structuredClone(a),
+      id,
+      assignment,
+      student_id: me().id,
+      student_name: me().full_name,
+      text_answer: text,
+      attempt_no: (previous?.attempt_no || 0) + 1,
+      status: 'submitted',
+      submitted_at: new Date().toISOString(),
+      is_late: late,
+      return_feedback: null,
+      storage_path: file ? id : null,
+      original_name: file?.name || null,
+      mime_type: mime,
+      size_bytes: file?.size || null,
+      score: null,
+      feedback: null,
+      released_at: null,
+    });
+    save();
+  },
+  async grade(work, score, feedback, publish) {
+    const w = state.works.find((w) => w.id === work);
+    if (!w) throw Error('Работа недоступна.');
+    const a = task(w.assignment);
+    if (!gradeCourse(a.course_id) || w.student_id === me().id)
+      throw Error('Оценки выставляет преподаватель; свою работу оценивать нельзя.');
+    if (w.status === 'graded' && !publish)
+      throw Error('Опубликованную оценку нельзя скрыть в черновик.');
+    if (
+      !['submitted', 'graded'].includes(w.status) ||
+      !Number.isFinite(score) ||
+      score < 0 ||
+      score > a.max_score ||
+      feedback.length > 50000
+    )
+      throw Error('Некорректная оценка.');
+    w.score = score;
+    w.feedback = feedback;
+    w.released_at = publish ? new Date().toISOString() : null;
+    w.status = publish ? 'graded' : 'submitted';
+    w.review_version = (w.review_version || 1) + 1;
+    save();
+  },
+  async returnWork(work, feedback) {
+    const w = state.works.find((w) => w.id === work);
+    if (!w || w.student_id === me().id || !gradeCourse(task(w.assignment).course_id))
+      throw Error('Нет прав.');
+    if (w.status !== 'submitted' || !feedback.trim())
+      throw Error('Добавьте комментарий к возврату.');
+    w.status = 'returned';
+    w.return_feedback = feedback;
+    w.score = null;
+    w.feedback = null;
+    w.released_at = null;
+    w.review_version = (w.review_version || 1) + 1;
+    save();
+  },
+  async cancelUpload() {
+    throw Error('В демонстрации нет незавершённых серверных загрузок.');
+  },
+  async downloadWork(work) {
+    const w = state.works.find((w) => w.id === work.id);
+    if (!w) throw Error('Файл недоступен.');
+    const a = task(w.assignment);
+    if (w.student_id !== me().id && !gradeCourse(a.course_id))
+      throw Error('Нельзя читать чужую работу.');
+    return readDemoBlob(w.id);
+  },
+  async courseMaterials(course, kind, offset) {
+    courseAccess(course, kind);
+    const canManage = courseManager(course, kind);
+    return {
+      items: state.materials
+        .filter((i) => i.course_id === course && i.kind === kind)
+        .slice(offset, offset + 50)
+        .map((i) => ({ ...i, can_manage: canManage })),
+      canManage,
+    };
+  },
+  async saveMaterial(course, kind, title, body, file, id) {
+    if (!courseManager(course, kind)) throw Error('Нет прав на изменение материалов.');
+    if (!title.trim() || title.length > 200 || body.length > 50000)
+      throw Error('Проверьте название и текст.');
+    if (id) {
+      const i = state.materials.find(
+        (i) => i.id === id && i.course_id === course && i.kind === kind,
+      );
+      if (!i) throw Error('Материал недоступен.');
+      i.title = title;
+      i.body = body;
+    } else {
+      const mime = file ? validateFile(file) : null;
+      if (
+        file &&
+        state.library.reduce((s, i) => s + i.size_bytes, 0) +
+          state.materials.reduce((s, i) => s + (i.size_bytes || 0), 0) +
+          state.works.reduce((s, i) => s + (i.size_bytes || 0), 0) +
+          file.size >
+          838860800
+      )
+        throw Error('Лимит хранилища достигнут.');
+      const newId = crypto.randomUUID();
+      if (file) await saveDemoBlob(newId, file);
+      state.materials.unshift({
+        id: newId,
+        course_id: course,
+        kind,
+        title,
+        body,
+        author_name: me().full_name,
+        created_at: new Date().toISOString(),
+        file_id: file ? newId : null,
+        storage_path: file ? newId : null,
+        original_name: file?.name || null,
+        mime_type: mime,
+        size_bytes: file?.size || null,
+        status: 'published',
+        can_manage: true,
+      });
+    }
+    save();
+  },
+  async deleteMaterial(id) {
+    if (state.assignments.some((a) => a.source_material_id === id))
+      throw Error('Файл прикреплён к заданию. Его нельзя удалить как обычный материал.');
+    const i = state.materials.find((i) => i.id === id);
+    if (!i || !courseManager(i.course_id, i.kind)) throw Error('Нет прав.');
+    await deleteDemoBlob(id);
+    state.materials = state.materials.filter((i) => i.id !== id);
+    state.courseReading = state.courseReading.filter((r) => r.item_id !== id);
+    save();
+  },
+  async downloadMaterial(item) {
+    try {
+      courseAccess(item.course_id, item.kind);
+    } catch (e) {
+      if (!state.assignments.some((a) => a.source_material_id === item.id)) throw e;
+      courseAccess(item.course_id, 'assignment');
+    }
+    if (!state.materials.some((i) => i.id === item.id && i.file_id))
+      throw Error('Файл недоступен.');
+    return readDemoBlob(item.id);
+  },
+  async library(search, offset, favorites = false) {
+    const access = libraryAccess();
+    if (!access) return { items: [], canRead: false, quota: null };
+    const personal = state.reading.filter((r) => r.user_id === me().id);
+    const items = state.library
+      .filter(
+        (i) =>
+          (!favorites || personal.some((r) => r.item_id === i.id && r.favorite)) &&
+          (i.title.toLowerCase().includes(search.toLowerCase()) ||
+            i.original_name.toLowerCase().includes(search.toLowerCase())),
+      )
+      .slice(offset, offset + 50)
+      .map((i) => {
+        const r = personal.find((r) => r.item_id === i.id);
+        return {
+          ...i,
+          can_manage: manage(i),
+          favorite: r?.favorite || false,
+          page: r?.page || 1,
+          total_pages: r?.total_pages || 0,
+        };
+      });
+    return {
+      items,
+      canRead: true,
+      quota: owner()
+        ? {
+            used_bytes:
+              state.library.reduce((s, i) => s + i.size_bytes, 0) +
+              state.materials.reduce((s, i) => s + (i.size_bytes || 0), 0) +
+              state.works.reduce((s, i) => s + (i.size_bytes || 0), 0),
+            budget_bytes: 838860800,
+            file_limit_bytes: 10485760,
+          }
+        : null,
+    };
+  },
+  async uploadLibrary(group, title, file) {
+    const mime = validateFile(file);
+    if (!leader(group) || !libraryAccess()) throw Error('Нет прав на загрузку в библиотеку.');
+    if (!title.trim() || title.length > 200) throw Error('Введите название до 200 символов.');
+    if (
+      state.library.reduce((s, i) => s + i.size_bytes, 0) +
+        state.materials.reduce((s, i) => s + (i.size_bytes || 0), 0) +
+        state.works.reduce((s, i) => s + (i.size_bytes || 0), 0) +
+        file.size >
+      838860800
+    )
+      throw Error('Лимит хранилища достигнут.');
+    const p = me(),
+      g = state.groups.find((g) => g.id === group);
+    if (!g || g.blocked) throw Error('Группа недоступна.');
+    const id = crypto.randomUUID();
+    await saveDemoBlob(id, file);
+    state.library.unshift({
+      id,
+      title,
+      author_id: p.id,
+      author_name: p.full_name,
+      source_group_id: group,
+      group_name: g.name,
+      created_at: new Date().toISOString(),
+      status: 'published',
+      storage_path: id,
+      original_name: file.name,
+      mime_type: mime,
+      size_bytes: file.size,
+      can_manage: true,
+    });
+    save();
+  },
+  async renameLibrary(id, title) {
+    const i = state.library.find((i) => i.id === id);
+    if (!i || !manage(i)) throw Error('Нельзя изменять чужую публикацию.');
+    if (!title.trim() || title.length > 200) throw Error('Введите название до 200 символов.');
+    i.title = title;
+    save();
+  },
+  async deleteLibrary(id) {
+    const i = state.library.find((i) => i.id === id);
+    if (!i || !manage(i)) throw Error('Нельзя удалять чужую публикацию.');
+    await deleteDemoBlob(id);
+    state.library = state.library.filter((i) => i.id !== id);
+    state.reading = state.reading.filter((r) => r.item_id !== id);
+    save();
+  },
+  async downloadLibrary(item) {
+    if (
+      !libraryAccess() ||
+      !state.library.some((i) => i.id === item.id && i.status === 'published')
+    )
+      throw Error('Доступ к библиотеке закрыт.');
+    if (item.id === 'sample-note')
+      return new Blob(
+        [
+          'Это демонстрационный материал StudyHub.\n\nСтароста добавляет материалы в общую библиотеку и управляет своими публикациями. Владелец управляет всеми материалами. Студенты и преподаватели читают и скачивают доступные документы.',
+        ],
+        { type: 'text/plain' },
+      );
+    return readDemoBlob(item.id);
+  },
+  async session() {
+    return !!state.session;
+  },
+  async groups() {
+    return state.groups.filter((g) => !g.blocked).map(({ id, name }) => ({ id, name }));
+  },
+  async signup(name, _email, _password, group, details) {
+    if (group && !state.groups.some((g) => g.id === group && !g.blocked))
+      throw Error('Группа недоступна.');
+    const id = crypto.randomUUID();
+    state.profiles.push({ id, full_name: profileName(name), blocked: false });
+    state.session = id;
+    state.accountDetails ||= {};
+    state.accountDetails[id] = accountInput(details || {});
+    save();
+    if (group) await this.joinGroup(group);
+  },
+  async login() {
+    throw Error('В демонстрации используйте выбор роли.');
+  },
+  async logout() {
+    state.session = null;
+    save();
+  },
+  async snapshot() {
+    const p = me(),
+      isOwner = owner();
+    const memberships = state.memberships.filter(
+      (m) => isOwner || m.user_id === p.id || leader(m.group_id),
+    );
+    const visible = state.groups.filter(
+      (g) =>
+        isOwner ||
+        (!g.blocked &&
+          state.memberships.some((m) => m.user_id === p.id && m.group_id === g.id && m.active)),
+    );
+    return structuredClone({
+      me: p,
+      owner: isOwner,
+      groups: visible,
+      courses: state.courses.filter(
+        (c) =>
+          (!c.archived || isOwner || leader(c.group_id)) &&
+          visible.some((g) => g.id === c.group_id) &&
+          (isOwner ||
+            (c.archived && leader(c.group_id)) ||
+            !state.denials.some(
+              (d) =>
+                (d.user_id === p.id || d.group_id === c.group_id) &&
+                d.section === 'course' &&
+                d.course_id === c.id,
+            )) &&
+          (isOwner ||
+            state.memberships.some(
+              (m) =>
+                m.user_id === p.id && m.group_id === c.group_id && m.active && m.role !== 'teacher',
+            ) ||
+            state.assignmentsTeaching.some((a) => a.teacher === p.id && a.course === c.id)),
+      ),
+      profiles: isOwner ? state.profiles : [p],
+      memberships,
+      denials: isOwner ? state.denials : [],
+      availableGroups: state.entitlements[p.id] || 0,
+    } satisfies Snapshot);
+  },
+  async joinGroup(group) {
+    const p = me();
+    if (!state.groups.some((g) => g.id === group && !g.blocked)) throw Error('Группа недоступна.');
+    if (state.memberships.some((m) => m.user_id === p.id && m.active && m.role !== 'teacher'))
+      throw Error('Перевод выполняет владелец.');
+    if (
+      state.memberships.some(
+        (m) => m.user_id === p.id && m.group_id === group && m.role === 'student' && !m.active,
+      )
+    )
+      throw Error('Членство отключено.');
+    state.requests ||= [];
+    const old = state.requests.find((r) => r.user_id === p.id);
+    if (old?.status === 'pending') {
+      if (old.group_id !== group) throw Error('Другая заявка уже ожидает одобрения.');
+      return;
+    }
+    state.requests = state.requests.filter((r) => r.user_id !== p.id);
+    state.requests.push({
+      user_id: p.id,
+      group_id: group,
+      full_name: p.full_name,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    });
+    save();
+  },
+  async createGroup(name) {
+    const p = me();
+    if (!owner() && !(state.entitlements[p.id] > 0)) throw Error('Нужно приглашение владельца.');
+    const id = crypto.randomUUID();
+    state.groups.push({ id, name, blocked: false, created_by: p.id });
+    state.memberships.push({ user_id: p.id, group_id: id, role: 'leader', active: true });
+    if (!owner()) state.entitlements[p.id]--;
+    recordAudit('group.created', id);
+    save();
+  },
+  async manageCourse(course, action, title) {
+    const c = state.courses.find((c) => c.id === course.id);
+    if (!c || !(owner() || leader(c.group_id)))
+      throw Error('Недостаточно прав или дисциплина недоступна.');
+    if (!['rename', 'archive', 'restore', 'delete'].includes(action))
+      throw Error('Недопустимое действие.');
+    const originalTitle = c.title,
+      next = title?.trim();
+    if (action === 'rename' && (!next || next.length > 200))
+      throw Error('Название должно содержать от 1 до 200 символов.');
+    if (
+      (action === 'rename' && c.title === next) ||
+      (action === 'archive' && c.archived) ||
+      (action === 'restore' && !c.archived)
+    )
+      return;
+    if (c.title !== course.title || c.archived !== course.archived)
+      throw Error('Дисциплина изменилась. Обновите список и выберите действие заново.');
+    if (action === 'delete') {
+      if (
+        Object.values(state.weekly || {}).some((d) => d.items.some((s) => s.course_id === c.id)) ||
+        Object.values(state.scheduleExceptions || {}).some((e) => e.course === c.id) ||
+        state.materials.some((m) => m.course_id === c.id) ||
+        state.assignments.some((a) => a.course_id === c.id) ||
+        state.board.some((b) => b.course_id === c.id) ||
+        state.topics.some((t) => t.course_id === c.id) ||
+        state.assignmentsTeaching.some((t) => t.course === c.id) ||
+        state.invitations.some((i) => i.courses.includes(c.id)) ||
+        state.denials.some((d) => d.course_id === c.id) ||
+        state.notes.some((n) => n.body.includes(c.id)) ||
+        state.planTasks.some((n) => n.body.includes(c.id)) ||
+        Object.values(state.intakes || {}).some((i) => i.payload.includes(c.id))
+      )
+        throw Error('В дисциплине есть связанные данные. Вместо удаления отправьте её в архив.');
+      state.courses = state.courses.filter((item) => item.id !== c.id);
+    } else {
+      if (action === 'rename') c.title = next!;
+      else c.archived = action === 'archive';
+    }
+    recordAudit(
+      {
+        rename: 'course.renamed',
+        archive: 'course.archived',
+        restore: 'course.restored',
+        delete: 'course.deleted',
+      }[action],
+      c.id,
+      { title: originalTitle, new_title: c.title, group_id: c.group_id },
+    );
+    save();
+    notifyChanged();
+  },
+  async createCourse(group, title) {
+    if (!leader(group)) throw Error('Нет прав на эту группу.');
+    state.courses.push({ id: crypto.randomUUID(), group_id: group, title, archived: false });
+    recordAudit('course.created', state.courses.at(-1)!.id);
+    save();
+  },
+  async invite(role, group, courses, max) {
+    const p = me();
+    if (role === 'leader' ? !owner() : !group || !leader(group)) throw Error('Нет прав.');
+    if (max < 1 || max > 60 || (role !== 'student' && max !== 1))
+      throw Error('Недопустимый лимит приглашения.');
+    if (
+      role === 'teacher' &&
+      (!courses.length ||
+        courses.some((c) => !state.courses.some((x) => x.id === c && x.group_id === group)))
+    )
+      throw Error('Выберите дисциплины своей группы.');
+    const token = crypto.randomUUID();
+    state.invitations.push({
+      id: crypto.randomUUID(),
+      revoked: false,
+      token,
+      role,
+      group,
+      courses,
+      uses: 0,
+      max,
+      creator: p.id,
+      expires: Date.now() + 72 * 3600000,
+      redeemed: [],
+    });
+    recordAudit('invitation.created', state.invitations.at(-1)!.id!);
+    save();
+    return token;
+  },
+  async redeem(token) {
+    const p = me(),
+      i = state.invitations.find((i) => i.token === token);
+    if (
+      !i ||
+      i.revoked ||
+      i.expires <= Date.now() ||
+      state.profiles.find((p) => p.id === i.creator)?.blocked
+    )
+      throw Error('Приглашение недоступно.');
+    if (i.redeemed.includes(p.id)) return;
+    if (i.uses >= i.max) throw Error('Приглашение использовано.');
+    if (i.group && state.groups.find((g) => g.id === i.group)?.blocked)
+      throw Error('Группа заблокирована.');
+    if (
+      i.creator !== 'owner' &&
+      !state.memberships.some(
+        (m) => m.user_id === i.creator && m.group_id === i.group && m.role === 'leader' && m.active,
+      )
+    )
+      throw Error('Полномочия автора приглашения изменены.');
+    if (i.role === 'leader') state.entitlements[p.id] = (state.entitlements[p.id] || 0) + 1;
+    else if (i.group) {
+      if (
+        i.role === 'student' &&
+        state.memberships.some(
+          (m) => m.user_id === p.id && m.group_id !== i.group && m.active && m.role !== 'teacher',
+        )
+      )
+        throw Error('Смену группы выполняет владелец.');
+      if (
+        state.memberships.some(
+          (m) => m.user_id === p.id && m.group_id === i.group && m.role === i.role && !m.active,
+        )
+      )
+        throw Error('Членство отключено. Обратитесь к владельцу.');
+      if (
+        !state.memberships.some(
+          (m) => m.user_id === p.id && m.group_id === i.group && m.role === i.role,
+        )
+      )
+        state.memberships.push({ user_id: p.id, group_id: i.group, role: i.role, active: true });
+    }
+    if (i.role === 'teacher')
+      for (const course of i.courses) {
+        if (!state.assignmentsTeaching.some((a) => a.teacher === p.id && a.course === course))
+          state.assignmentsTeaching.push({ teacher: p.id, course });
+      }
+    i.uses++;
+    i.redeemed.push(p.id);
+    save();
+  },
+  async block(user, group, blocked) {
+    if (!owner()) throw Error('Нет прав.');
+    if (user === 'owner') throw Error('Владельца нельзя заблокировать.');
+    const target = user
+      ? state.profiles.find((p) => p.id === user)
+      : state.groups.find((g) => g.id === group);
+    if (!target) throw Error('Не найдено.');
+    target.blocked = blocked;
+    recordAudit('access.block', user || group, { blocked });
+    save();
+  },
+  async deny(section, user, group, course) {
+    if (!owner()) throw Error('Нет прав.');
+    const id = crypto.randomUUID();
+    state.denials.push({ id, user_id: user, group_id: group, section, course_id: course });
+    recordAudit('access.denied', id);
+    save();
+  },
+  async restore(id) {
+    if (!owner()) throw Error('Нет прав.');
+    state.denials = state.denials.filter((d) => d.id !== id);
+    recordAudit('access.restored', id);
+    save();
+  },
 };

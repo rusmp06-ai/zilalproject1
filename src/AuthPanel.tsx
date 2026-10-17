@@ -1,19 +1,230 @@
-import React,{useState} from 'react';
-import type {Gateway} from './types';
-import type {AccountInput} from './account';
-export function AuthPanel({api,groups,invite,onDone,onDemo,recovery=false}:{api:Gateway;groups:{id:string;name:string}[];invite:boolean;onDone:()=>Promise<void>;onDemo:()=>void;recovery?:boolean}){
- const [mode,setMode]=useState<'login'|'signup'|'forgot'>('login'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
- async function submit(e:React.FormEvent<HTMLFormElement>){e.preventDefault();const form=e.currentTarget,d=new FormData(form);setBusy(true);setError('');setMessage('');try{
- const email=String(d.get('email')||'').trim(),password=String(d.get('password')||'');
- if(recovery){if(password!==d.get('repeat'))throw Error('Пароли не совпадают.');await api.finishPasswordReset(password);setMessage('Пароль изменён.');await onDone();}
- else if(mode==='forgot'){await api.resetPassword(email);setMessage('Если аккаунт с такой почтой существует, вы получите письмо со ссылкой для смены пароля.');}
- else if(mode==='signup'){if(password!==d.get('repeat'))throw Error('Пароли не совпадают.');const details={} as AccountInput;for(const k of ['university','faculty','specialty','year'] as const)details[k]=String(d.get(k)||'');details.avatar='';await api.signup(String(d.get('name')),email,password,invite?null:String(d.get('group')||'')||null,details);if(await api.session())await onDone();else{form.reset();setMode('login');setMessage('Проверьте почту и подтвердите регистрацию. Затем войдите. Если вы пришли по приглашению, откройте его ссылку снова.');}}
- else{await api.login(email,password);await onDone();}
- }catch(e){setError(e instanceof Error?e.message:'Не удалось выполнить действие.');}finally{setBusy(false);}}
- return <section className="auth card"><div className="eyebrow">ДОБРО ПОЖАЛОВАТЬ</div><h2>{recovery?'Новый пароль':mode==='signup'?'Создать аккаунт':mode==='forgot'?'Восстановить пароль':'Войти в StudyHub'}</h2><p>{invite?'Приглашение сохранено. Войдите или создайте аккаунт, затем примите его.':mode==='signup'?'Создайте аккаунт и укажите свою учебную группу.':'Продолжите работу в своём учебном пространстве.'}</p>{api.demo&&<p className="helper">Это демонстрация. Не используйте настоящие пароли.</p>}{error&&<p role="alert" className="notice error">{error}</p>}{message&&<p role="status" className="notice success">{message}</p>}
- <form onSubmit={submit}>{!recovery&&mode==='signup'&&<label>Имя и фамилия<input name="name" required maxLength={150} autoComplete="name"/></label>}{!recovery&&<label>Email<input name="email" type="email" required autoComplete="email"/></label>}{(recovery||mode!=='forgot')&&<label>Пароль<input name="password" type="password" required minLength={recovery||mode==='signup'?10:undefined} maxLength={128} autoComplete={recovery||mode==='signup'?'new-password':'current-password'}/></label>}{(recovery||mode==='signup')&&<label>Повторите пароль<input name="repeat" type="password" required minLength={10} maxLength={128} autoComplete="new-password"/></label>}
- {!recovery&&mode==='signup'&&<fieldset><legend>Учебные данные</legend>{([['university','Университет'],['faculty','Факультет'],['specialty','Специальность'],['year','Курс']] as const).map(([key,label])=><label key={key}>{label}<input name={key} maxLength={150}/></label>)}{invite?<p>Группу и полномочия определяет приглашение. Повторный выбор не нужен.</p>:<><label>Группа<select aria-label="Группа" name="group" defaultValue=""><option value="">Укажу позже</option>{groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></label><p className="helper">Выбор группы отправит заявку. Закрытые материалы откроются после одобрения старосты или владельца.</p></>}</fieldset>}
- <button className="primary" disabled={busy}>{busy?'Подождите…':recovery?'Сохранить новый пароль':mode==='signup'?'Зарегистрироваться':mode==='forgot'?'Отправить письмо':'Войти'}</button></form>
- {!recovery&&<><button className="text-button" disabled={busy} onClick={()=>{setMode(mode==='signup'?'login':'signup');setError('');setMessage('');}}>{mode==='signup'?'Уже есть аккаунт? Войти':'Создать аккаунт'}</button>{mode==='login'?<button className="text-button" onClick={()=>{setMode('forgot');setError('');setMessage('');}}>Забыли пароль?</button>:mode==='forgot'&&<button onClick={()=>setMode('login')}>Вернуться ко входу</button>}<button className="text-button" onClick={onDemo}>Посмотреть демоверсию</button></>}
- </section>;
+import React, { useState } from 'react';
+import type { Gateway } from './types';
+import type { AccountInput } from './account';
+export function AuthPanel({
+  api,
+  groups,
+  invite,
+  onDone,
+  onDemo,
+  recovery = false,
+}: {
+  api: Gateway;
+  groups: { id: string; name: string }[];
+  invite: boolean;
+  onDone: () => Promise<void>;
+  onDemo: () => void;
+  recovery?: boolean;
+}) {
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login'),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [message, setMessage] = useState('');
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget,
+      d = new FormData(form);
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const email = String(d.get('email') || '').trim(),
+        password = String(d.get('password') || '');
+      if (recovery) {
+        if (password !== d.get('repeat')) throw Error('Пароли не совпадают.');
+        await api.finishPasswordReset(password);
+        setMessage('Пароль изменён.');
+        await onDone();
+      } else if (mode === 'forgot') {
+        await api.resetPassword(email);
+        setMessage(
+          'Если аккаунт с такой почтой существует, вы получите письмо со ссылкой для смены пароля.',
+        );
+      } else if (mode === 'signup') {
+        if (password !== d.get('repeat')) throw Error('Пароли не совпадают.');
+        const details = {} as AccountInput;
+        for (const k of ['university', 'faculty', 'specialty', 'year'] as const)
+          details[k] = String(d.get(k) || '');
+        details.avatar = '';
+        await api.signup(
+          String(d.get('name')),
+          email,
+          password,
+          invite ? null : String(d.get('group') || '') || null,
+          details,
+        );
+        if (await api.session()) await onDone();
+        else {
+          form.reset();
+          setMode('login');
+          setMessage(
+            'Проверьте почту и подтвердите регистрацию. Затем войдите. Если вы пришли по приглашению, откройте его ссылку снова.',
+          );
+        }
+      } else {
+        await api.login(email, password);
+        await onDone();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось выполнить действие.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="auth card">
+      <div className="eyebrow">ДОБРО ПОЖАЛОВАТЬ</div>
+      <h2>
+        {recovery
+          ? 'Новый пароль'
+          : mode === 'signup'
+            ? 'Создать аккаунт'
+            : mode === 'forgot'
+              ? 'Восстановить пароль'
+              : 'Войти в StudyHub'}
+      </h2>
+      <p>
+        {invite
+          ? 'Приглашение сохранено. Войдите или создайте аккаунт, затем примите его.'
+          : mode === 'signup'
+            ? 'Создайте аккаунт и укажите свою учебную группу.'
+            : 'Продолжите работу в своём учебном пространстве.'}
+      </p>
+      {api.demo && <p className="helper">Это демонстрация. Не используйте настоящие пароли.</p>}
+      {error && (
+        <p role="alert" className="notice error">
+          {error}
+        </p>
+      )}
+      {message && (
+        <p role="status" className="notice success">
+          {message}
+        </p>
+      )}
+      <form onSubmit={submit}>
+        {!recovery && mode === 'signup' && (
+          <label>
+            Имя и фамилия
+            <input name="name" required maxLength={150} autoComplete="name" />
+          </label>
+        )}
+        {!recovery && (
+          <label>
+            Email
+            <input name="email" type="email" required autoComplete="email" />
+          </label>
+        )}
+        {(recovery || mode !== 'forgot') && (
+          <label>
+            Пароль
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={recovery || mode === 'signup' ? 10 : undefined}
+              maxLength={128}
+              autoComplete={recovery || mode === 'signup' ? 'new-password' : 'current-password'}
+            />
+          </label>
+        )}
+        {(recovery || mode === 'signup') && (
+          <label>
+            Повторите пароль
+            <input
+              name="repeat"
+              type="password"
+              required
+              minLength={10}
+              maxLength={128}
+              autoComplete="new-password"
+            />
+          </label>
+        )}
+        {!recovery && mode === 'signup' && (
+          <fieldset>
+            <legend>Учебные данные</legend>
+            {(
+              [
+                ['university', 'Университет'],
+                ['faculty', 'Факультет'],
+                ['specialty', 'Специальность'],
+                ['year', 'Курс'],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key}>
+                {label}
+                <input name={key} maxLength={150} />
+              </label>
+            ))}
+            {invite ? (
+              <p>Группу и полномочия определяет приглашение. Повторный выбор не нужен.</p>
+            ) : (
+              <>
+                <label>
+                  Группа
+                  <select aria-label="Группа" name="group" defaultValue="">
+                    <option value="">Укажу позже</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="helper">
+                  Выбор группы отправит заявку. Закрытые материалы откроются после одобрения
+                  старосты или владельца.
+                </p>
+              </>
+            )}
+          </fieldset>
+        )}
+        <button className="primary" disabled={busy}>
+          {busy
+            ? 'Подождите…'
+            : recovery
+              ? 'Сохранить новый пароль'
+              : mode === 'signup'
+                ? 'Зарегистрироваться'
+                : mode === 'forgot'
+                  ? 'Отправить письмо'
+                  : 'Войти'}
+        </button>
+      </form>
+      {!recovery && (
+        <>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              setMode(mode === 'signup' ? 'login' : 'signup');
+              setError('');
+              setMessage('');
+            }}
+          >
+            {mode === 'signup' ? 'Уже есть аккаунт? Войти' : 'Создать аккаунт'}
+          </button>
+          {mode === 'login' ? (
+            <button
+              className="text-button"
+              onClick={() => {
+                setMode('forgot');
+                setError('');
+                setMessage('');
+              }}
+            >
+              Забыли пароль?
+            </button>
+          ) : (
+            mode === 'forgot' && (
+              <button onClick={() => setMode('login')}>Вернуться ко входу</button>
+            )
+          )}
+          <button className="text-button" onClick={onDemo}>
+            Посмотреть демоверсию
+          </button>
+        </>
+      )}
+    </section>
+  );
 }

@@ -1,30 +1,449 @@
-import {scheduleChanged} from './useSchedule';
-import {NotificationBell} from './notifications';
-import {boardNotice,encodeBoardNotice} from './board-notice';
-import {useEffect,useState} from 'react';
-import {groupContext} from './group-context';
-import type {Gateway,Snapshot,BoardKind,BoardItem} from './types';
-import {bishkekInput,boardInstant,boardWindow,boardDate} from './board-time';
-export function BoardPanel({api,snapshot,kind,courseFilter,initialGroup,allowManagement=true}:{api:Gateway;snapshot:Snapshot;kind:BoardKind;courseFilter?:string;initialGroup?:string;allowManagement?:boolean}){
- const [selectedGroup,setGroup]=useState(groupContext(snapshot,initialGroup).id),[date,setDate]=useState(bishkekInput(new Date().toISOString()).slice(0,10)),[offset,setOffset]=useState(0),[items,setItems]=useState<BoardItem[]>([]),[scopes,setScopes]=useState<(string|null)[]>([]),[read,setRead]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[edit,setEdit]=useState<BoardItem|null>(null),[deleting,setDeleting]=useState(''),[revision,setRevision]=useState(0);
- const context=groupContext(snapshot,courseFilter?snapshot.courses.find(c=>c.id===courseFilter)?.group_id:selectedGroup),group=courseFilter?snapshot.courses.find(c=>c.id===courseFilter)?.group_id||'':context.id;
- useEffect(()=>{setGroup(old=>groupContext(snapshot,old).id);},[snapshot]);
- useEffect(()=>{setOffset(0);setEdit(null);setDeleting('');},[group]);
- const displayedGroupName=courseFilter?snapshot.groups.find(g=>g.id===group)?.name:context.name;
- const schedule=kind==='schedule';
- useEffect(()=>{let active=true;setBusy(true);setItems([]);setScopes([]);setRead(false);setError('');if(!group){setBusy(false);return;}
- try{const w=schedule?boardWindow(date):{from:null,to:null};(async()=>{if(!courseFilter)return api.board(group,kind,w.from,w.to,offset);const items:BoardItem[]=[];let scopes:(string|null)[]=[];for(let page=0;page<=100000;page+=50){const p=await api.board(group,kind,w.from,w.to,page);if(!p.canRead)return {items:[],writeScopes:[],canRead:false};scopes=p.writeScopes.filter(c=>c===courseFilter);items.push(...p.items.filter(i=>i.course_id===courseFilter));if(p.items.length<50)return {items:items.slice(offset,offset+50),writeScopes:scopes,canRead:true};}throw Error('Слишком много записей.');})().then(p=>{if(active){setItems(p.items);setScopes(p.writeScopes);setRead(p.canRead);}}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setBusy(false);});}catch(e){setError(e instanceof Error?e.message:'Проверьте дату.');setBusy(false);}return()=>{active=false;};},[api,group,kind,date,offset,revision,courseFilter]);
- async function action(fn:()=>Promise<void>,ok:string){setBusy(true);setError('');setMessage('');try{await fn();if(schedule)scheduleChanged();setMessage(ok);setRevision(n=>n+1);}catch(e){setError(e instanceof Error?e.message:'Действие не выполнено.');}finally{setBusy(false);}}
- function reset(){setEdit(null);setDeleting('');setOffset(0);setMessage('');}
- return <section><p>{schedule?'Занятия и события вашей группы на выбранные семь дней. Время — Бишкек (UTC+6).':'Сообщения группы и преподавателей по вашим дисциплинам.'}</p><div className="form-row">{!courseFilter&&context.canChoose?<label>Группа<select disabled={busy} value={group} onChange={e=>{setGroup(e.target.value);reset();}}><option value="">Выберите группу</option>{context.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></label>:displayedGroupName&&<span className="group-context"><span>{courseFilter?'Учебная группа':'Моя группа'}</span><b>{displayedGroupName}</b></span>}{schedule&&<label>Показать неделю с<input disabled={busy} type="date" value={date} onChange={e=>{setDate(e.target.value);reset();}}/></label>}</div><button disabled={busy} onClick={()=>{reset();setRevision(n=>n+1);}}>Обновить список</button>
- {error&&<div role="alert" className="notice error">{error}</div>}{message&&<div role="status" className="notice success">{message}</div>}
- {!busy&&!read&&group&&!error&&<div className="card empty">Доступ к разделу закрыт. Обратитесь к владельцу.</div>}
- {read&&allowManagement&&scopes.length>0&&<section className="card upload-panel" style={{marginTop:22}}><h2>{edit?'Изменить запись':schedule?'Добавить занятие':'Новое объявление'}</h2><form key={edit?.id||group+kind} onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f);void action(async()=>{await api.saveBoard({repeatWeeks:schedule&&!edit?Number(d.get('repeat')||1):1,group,kind,course:String(d.get('course'))||null,title:String(d.get('title')),body:encodeBoardNotice(String(d.get('body')||''),!schedule&&d.get('important')==='on'),location:schedule?String(d.get('location')||''):'',start:schedule?boardInstant(String(d.get('start'))):null,end:schedule?boardInstant(String(d.get('end'))):null,id:edit?.id||null});setEdit(null);f.reset();},edit?'Запись обновлена.':schedule?'Занятие добавлено.':'Объявление опубликовано.');}}>
- <label>Дисциплина<select name="course" defaultValue={edit?.course_id||scopes[0]||''} disabled={!!edit}>{scopes.map(c=><option key={c||'group'} value={c||''}>{c?snapshot.courses.find(x=>x.id===c)?.title:'Общее событие группы'}</option>)}</select></label>{edit&&<input type="hidden" name="course" value={edit.course_id||''}/>}
- <label>{schedule?'Название занятия':'Заголовок объявления'}<input name="title" required maxLength={200} defaultValue={edit?.title||''}/></label><label>Описание<textarea name="body" maxLength={10000} defaultValue={edit?(schedule?edit.body:boardNotice(edit.body).text):''}/></label>
- {!schedule&&<label className="check"><input name="important" type="checkbox" defaultChecked={edit?boardNotice(edit.body).important:false}/>Изменение расписания — показывать на главной</label>}
- {schedule&&<><div className="form-row"><label>Начало · Бишкек<input name="start" type="datetime-local" required defaultValue={edit?.starts_at?bishkekInput(edit.starts_at):date+'T09:00'}/></label><label>Окончание · Бишкек<input name="end" type="datetime-local" required defaultValue={edit?.ends_at?bishkekInput(edit.ends_at):date+'T10:20'}/></label></div>{!edit&&<label>Повторять каждую неделю<select name="repeat" defaultValue="1">{[1,2,4,8,12,16].map(n=><option key={n} value={n}>{n===1?'Не повторять':n+' недель'}</option>)}</select></label>}<label>Аудитория или место<input name="location" maxLength={200} defaultValue={edit?.location||''}/></label></>}
- <div className="card-actions"><button className="primary" disabled={busy}>{edit?'Сохранить изменения':schedule?'Добавить занятие':'Опубликовать объявление'}</button>{edit&&<button disabled={busy} type="button" onClick={()=>setEdit(null)}>Отменить изменение</button>}</div></form></section>}
- {busy&&<p role="status">Загрузка…</p>}{read&&<div style={{marginTop:24}}>{items.map(b=><article className="card" key={b.id} style={{marginBottom:18}}><span className="badge">{b.course_id?snapshot.courses.find(c=>c.id===b.course_id)?.title:'Вся группа'}</span><h3>{b.title}{!schedule&&b.unread&&<NotificationBell count={1} title="Непрочитанное объявление"/>}</h3>{b.starts_at&&b.ends_at&&<p><b>{boardDate(b.starts_at)} — {boardDate(b.ends_at)}</b></p>}{b.location&&<p>Место: {b.location}</p>}<p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{schedule?b.body:boardNotice(b.body).text}</p>{!schedule&&boardNotice(b.body).important&&<span className="badge">Изменение расписания</span>}{!schedule&&b.unread&&<button disabled={busy} onClick={()=>void action(async()=>{await api.markAnnouncementRead(b.id);setItems(old=>old.map(item=>item.id===b.id?{...item,unread:false}:item));},'Объявление отмечено прочитанным.')}>Отметить прочитанным</button>}<small>{b.author_name} · {boardDate(b.created_at)}</small>{allowManagement&&b.can_manage&&<div className="card-actions">{deleting===b.id?<><span>Удалить запись?</span><button className="danger" disabled={busy} onClick={()=>void action(async()=>{await api.deleteBoard(b.id);setDeleting('');if(edit?.id===b.id)setEdit(null);},'Запись удалена.')}>Подтвердить удаление</button><button disabled={busy} onClick={()=>setDeleting('')}>Отмена</button></>:<><button disabled={busy} onClick={()=>{setEdit(b);setDeleting('');setMessage('');}}>Изменить запись</button><button disabled={busy} className="danger" onClick={()=>setDeleting(b.id)}>Удалить запись</button></>}</div>}</article>)}{!items.length&&!busy&&<div className="card empty">{schedule?'В выбранные семь дней занятий нет.':'Объявлений пока нет.'}</div>}<div className="pagination"><button disabled={busy||offset===0} onClick={()=>{setOffset(n=>Math.max(0,n-50));setEdit(null);}}>Назад</button><span>Страница {offset/50+1}</span><button disabled={busy||items.length<50} onClick={()=>{setOffset(n=>n+50);setEdit(null);}}>Далее</button></div></div>}
- </section>;
+import { scheduleChanged } from './useSchedule';
+import { NotificationBell } from './notifications';
+import { boardNotice, encodeBoardNotice } from './board-notice';
+import { useEffect, useState } from 'react';
+import { groupContext } from './group-context';
+import type { Gateway, Snapshot, BoardKind, BoardItem } from './types';
+import { bishkekInput, boardInstant, boardWindow, boardDate } from './board-time';
+export function BoardPanel({
+  api,
+  snapshot,
+  kind,
+  courseFilter,
+  initialGroup,
+  allowManagement = true,
+}: {
+  api: Gateway;
+  snapshot: Snapshot;
+  kind: BoardKind;
+  courseFilter?: string;
+  initialGroup?: string;
+  allowManagement?: boolean;
+}) {
+  const [selectedGroup, setGroup] = useState(groupContext(snapshot, initialGroup).id),
+    [date, setDate] = useState(bishkekInput(new Date().toISOString()).slice(0, 10)),
+    [offset, setOffset] = useState(0),
+    [items, setItems] = useState<BoardItem[]>([]),
+    [scopes, setScopes] = useState<(string | null)[]>([]),
+    [read, setRead] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [message, setMessage] = useState(''),
+    [edit, setEdit] = useState<BoardItem | null>(null),
+    [deleting, setDeleting] = useState(''),
+    [revision, setRevision] = useState(0);
+  const context = groupContext(
+      snapshot,
+      courseFilter ? snapshot.courses.find((c) => c.id === courseFilter)?.group_id : selectedGroup,
+    ),
+    group = courseFilter
+      ? snapshot.courses.find((c) => c.id === courseFilter)?.group_id || ''
+      : context.id;
+  useEffect(() => {
+    setGroup((old) => groupContext(snapshot, old).id);
+  }, [snapshot]);
+  useEffect(() => {
+    setOffset(0);
+    setEdit(null);
+    setDeleting('');
+  }, [group]);
+  const displayedGroupName = courseFilter
+    ? snapshot.groups.find((g) => g.id === group)?.name
+    : context.name;
+  const schedule = kind === 'schedule';
+  useEffect(() => {
+    let active = true;
+    setBusy(true);
+    setItems([]);
+    setScopes([]);
+    setRead(false);
+    setError('');
+    if (!group) {
+      setBusy(false);
+      return;
+    }
+    try {
+      const w = schedule ? boardWindow(date) : { from: null, to: null };
+      (async () => {
+        if (!courseFilter) return api.board(group, kind, w.from, w.to, offset);
+        const items: BoardItem[] = [];
+        let scopes: (string | null)[] = [];
+        for (let page = 0; page <= 100000; page += 50) {
+          const p = await api.board(group, kind, w.from, w.to, page);
+          if (!p.canRead) return { items: [], writeScopes: [], canRead: false };
+          scopes = p.writeScopes.filter((c) => c === courseFilter);
+          items.push(...p.items.filter((i) => i.course_id === courseFilter));
+          if (p.items.length < 50)
+            return { items: items.slice(offset, offset + 50), writeScopes: scopes, canRead: true };
+        }
+        throw Error('Слишком много записей.');
+      })()
+        .then((p) => {
+          if (active) {
+            setItems(p.items);
+            setScopes(p.writeScopes);
+            setRead(p.canRead);
+          }
+        })
+        .catch((e) => {
+          if (active) setError(e.message);
+        })
+        .finally(() => {
+          if (active) setBusy(false);
+        });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Проверьте дату.');
+      setBusy(false);
+    }
+    return () => {
+      active = false;
+    };
+  }, [api, group, kind, date, offset, revision, courseFilter]);
+  async function action(fn: () => Promise<void>, ok: string) {
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await fn();
+      if (schedule) scheduleChanged();
+      setMessage(ok);
+      setRevision((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Действие не выполнено.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  function reset() {
+    setEdit(null);
+    setDeleting('');
+    setOffset(0);
+    setMessage('');
+  }
+  return (
+    <section>
+      <p>
+        {schedule
+          ? 'Занятия и события вашей группы на выбранные семь дней. Время — Бишкек (UTC+6).'
+          : 'Сообщения группы и преподавателей по вашим дисциплинам.'}
+      </p>
+      <div className="form-row">
+        {!courseFilter && context.canChoose ? (
+          <label>
+            Группа
+            <select
+              disabled={busy}
+              value={group}
+              onChange={(e) => {
+                setGroup(e.target.value);
+                reset();
+              }}
+            >
+              <option value="">Выберите группу</option>
+              {context.groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          displayedGroupName && (
+            <span className="group-context">
+              <span>{courseFilter ? 'Учебная группа' : 'Моя группа'}</span>
+              <b>{displayedGroupName}</b>
+            </span>
+          )
+        )}
+        {schedule && (
+          <label>
+            Показать неделю с
+            <input
+              disabled={busy}
+              type="date"
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                reset();
+              }}
+            />
+          </label>
+        )}
+      </div>
+      <button
+        disabled={busy}
+        onClick={() => {
+          reset();
+          setRevision((n) => n + 1);
+        }}
+      >
+        Обновить список
+      </button>
+      {error && (
+        <div role="alert" className="notice error">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div role="status" className="notice success">
+          {message}
+        </div>
+      )}
+      {!busy && !read && group && !error && (
+        <div className="card empty">Доступ к разделу закрыт. Обратитесь к владельцу.</div>
+      )}
+      {read && allowManagement && scopes.length > 0 && (
+        <section className="card upload-panel" style={{ marginTop: 22 }}>
+          <h2>{edit ? 'Изменить запись' : schedule ? 'Добавить занятие' : 'Новое объявление'}</h2>
+          <form
+            key={edit?.id || group + kind}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const f = e.currentTarget,
+                d = new FormData(f);
+              void action(
+                async () => {
+                  await api.saveBoard({
+                    repeatWeeks: schedule && !edit ? Number(d.get('repeat') || 1) : 1,
+                    group,
+                    kind,
+                    course: String(d.get('course')) || null,
+                    title: String(d.get('title')),
+                    body: encodeBoardNotice(
+                      String(d.get('body') || ''),
+                      !schedule && d.get('important') === 'on',
+                    ),
+                    location: schedule ? String(d.get('location') || '') : '',
+                    start: schedule ? boardInstant(String(d.get('start'))) : null,
+                    end: schedule ? boardInstant(String(d.get('end'))) : null,
+                    id: edit?.id || null,
+                  });
+                  setEdit(null);
+                  f.reset();
+                },
+                edit
+                  ? 'Запись обновлена.'
+                  : schedule
+                    ? 'Занятие добавлено.'
+                    : 'Объявление опубликовано.',
+              );
+            }}
+          >
+            <label>
+              Дисциплина
+              <select
+                name="course"
+                defaultValue={edit?.course_id || scopes[0] || ''}
+                disabled={!!edit}
+              >
+                {scopes.map((c) => (
+                  <option key={c || 'group'} value={c || ''}>
+                    {c ? snapshot.courses.find((x) => x.id === c)?.title : 'Общее событие группы'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {edit && <input type="hidden" name="course" value={edit.course_id || ''} />}
+            <label>
+              {schedule ? 'Название занятия' : 'Заголовок объявления'}
+              <input name="title" required maxLength={200} defaultValue={edit?.title || ''} />
+            </label>
+            <label>
+              Описание
+              <textarea
+                name="body"
+                maxLength={10000}
+                defaultValue={edit ? (schedule ? edit.body : boardNotice(edit.body).text) : ''}
+              />
+            </label>
+            {!schedule && (
+              <label className="check">
+                <input
+                  name="important"
+                  type="checkbox"
+                  defaultChecked={edit ? boardNotice(edit.body).important : false}
+                />
+                Изменение расписания — показывать на главной
+              </label>
+            )}
+            {schedule && (
+              <>
+                <div className="form-row">
+                  <label>
+                    Начало · Бишкек
+                    <input
+                      name="start"
+                      type="datetime-local"
+                      required
+                      defaultValue={
+                        edit?.starts_at ? bishkekInput(edit.starts_at) : date + 'T09:00'
+                      }
+                    />
+                  </label>
+                  <label>
+                    Окончание · Бишкек
+                    <input
+                      name="end"
+                      type="datetime-local"
+                      required
+                      defaultValue={edit?.ends_at ? bishkekInput(edit.ends_at) : date + 'T10:20'}
+                    />
+                  </label>
+                </div>
+                {!edit && (
+                  <label>
+                    Повторять каждую неделю
+                    <select name="repeat" defaultValue="1">
+                      {[1, 2, 4, 8, 12, 16].map((n) => (
+                        <option key={n} value={n}>
+                          {n === 1 ? 'Не повторять' : n + ' недель'}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label>
+                  Аудитория или место
+                  <input name="location" maxLength={200} defaultValue={edit?.location || ''} />
+                </label>
+              </>
+            )}
+            <div className="card-actions">
+              <button className="primary" disabled={busy}>
+                {edit
+                  ? 'Сохранить изменения'
+                  : schedule
+                    ? 'Добавить занятие'
+                    : 'Опубликовать объявление'}
+              </button>
+              {edit && (
+                <button disabled={busy} type="button" onClick={() => setEdit(null)}>
+                  Отменить изменение
+                </button>
+              )}
+            </div>
+          </form>
+        </section>
+      )}
+      {busy && <p role="status">Загрузка…</p>}
+      {read && (
+        <div style={{ marginTop: 24 }}>
+          {items.map((b) => (
+            <article className="card" key={b.id} style={{ marginBottom: 18 }}>
+              <span className="badge">
+                {b.course_id
+                  ? snapshot.courses.find((c) => c.id === b.course_id)?.title
+                  : 'Вся группа'}
+              </span>
+              <h3>
+                {b.title}
+                {!schedule && b.unread && (
+                  <NotificationBell count={1} title="Непрочитанное объявление" />
+                )}
+              </h3>
+              {b.starts_at && b.ends_at && (
+                <p>
+                  <b>
+                    {boardDate(b.starts_at)} — {boardDate(b.ends_at)}
+                  </b>
+                </p>
+              )}
+              {b.location && <p>Место: {b.location}</p>}
+              <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                {schedule ? b.body : boardNotice(b.body).text}
+              </p>
+              {!schedule && boardNotice(b.body).important && (
+                <span className="badge">Изменение расписания</span>
+              )}
+              {!schedule && b.unread && (
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    void action(async () => {
+                      await api.markAnnouncementRead(b.id);
+                      setItems((old) =>
+                        old.map((item) => (item.id === b.id ? { ...item, unread: false } : item)),
+                      );
+                    }, 'Объявление отмечено прочитанным.')
+                  }
+                >
+                  Отметить прочитанным
+                </button>
+              )}
+              <small>
+                {b.author_name} · {boardDate(b.created_at)}
+              </small>
+              {allowManagement && b.can_manage && (
+                <div className="card-actions">
+                  {deleting === b.id ? (
+                    <>
+                      <span>Удалить запись?</span>
+                      <button
+                        className="danger"
+                        disabled={busy}
+                        onClick={() =>
+                          void action(async () => {
+                            await api.deleteBoard(b.id);
+                            setDeleting('');
+                            if (edit?.id === b.id) setEdit(null);
+                          }, 'Запись удалена.')
+                        }
+                      >
+                        Подтвердить удаление
+                      </button>
+                      <button disabled={busy} onClick={() => setDeleting('')}>
+                        Отмена
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          setEdit(b);
+                          setDeleting('');
+                          setMessage('');
+                        }}
+                      >
+                        Изменить запись
+                      </button>
+                      <button disabled={busy} className="danger" onClick={() => setDeleting(b.id)}>
+                        Удалить запись
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </article>
+          ))}
+          {!items.length && !busy && (
+            <div className="card empty">
+              {schedule ? 'В выбранные семь дней занятий нет.' : 'Объявлений пока нет.'}
+            </div>
+          )}
+          <div className="pagination">
+            <button
+              disabled={busy || offset === 0}
+              onClick={() => {
+                setOffset((n) => Math.max(0, n - 50));
+                setEdit(null);
+              }}
+            >
+              Назад
+            </button>
+            <span>Страница {offset / 50 + 1}</span>
+            <button
+              disabled={busy || items.length < 50}
+              onClick={() => {
+                setOffset((n) => n + 50);
+                setEdit(null);
+              }}
+            >
+              Далее
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }

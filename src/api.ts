@@ -1,125 +1,1024 @@
-import {catalogSearch} from './study-search';
-import {uploadIntake} from './upload-intake';
-import {publishRecoverable} from './intake-recovery';
-import {notifyChanged} from './notifications';
-import {accountInput,profileName} from './account';
-import {catalogPages} from './catalog-pages';
-import {decodePlan} from './personal-plan';
-import {createClient} from '@supabase/supabase-js';
-import {emptyReading,validateReading} from './reader-state';
-import {validateFile} from './files';
-import type {CourseWorkspace,ManagedInvitation,TeachingAssignment,ReadingState,Note,BoardItem,Assignment,Work,CourseMaterial,LibraryItem,Gateway,Snapshot,Profile,Group,Course,Membership,Denial} from './types';
-const env=import.meta.env||{};
-const url=env.VITE_SUPABASE_URL,key=env.VITE_SUPABASE_ANON_KEY;
-export const configured=Boolean(url&&key);
-export const client=configured?createClient(url,key):null;
-function db(){if(!client)throw Error('Supabase ещё не подключён.');return client;}
-async function rpc<T>(name:string,args:Record<string,unknown>={}){const {data,error}=await db().rpc(name,args);if(error)throw Object.assign(Error(error.message),{code:error.code});if(['manage_course','finish_material_intake','teacher_review_submission','teacher_save_assignment','mark_announcement_read','submit_work','publish_submission','save_grade','return_submission','finish_submission_cancel','save_group_board','delete_group_board'].includes(name))notifyChanged();return data as T;}
-async function teacherRpc<T>(name:string,args:Record<string,unknown>={}){try{return await rpc<T>(name,args);}catch(e){const error=e as Error&{code?:string};let message=error.message;if(error.code==='PGRST202')message='Для кабинета преподавателя требуется обновление базы v0.28.';else if(/changed|refresh/.test(message))message=name==='teacher_save_assignment'?'Задание изменилось. Обновите журнал перед сохранением; черновик остаётся на устройстве.':'Работа изменилась. Обновите её перед сохранением; ваш текст остаётся в черновике.';else if(/Cannot change maximum/.test(message))message='После начала сдачи нельзя менять максимальный балл.';else if(/Published grade/.test(message))message='Опубликованную оценку нельзя скрыть в черновик.';else if(/self grading/.test(message))message='Свою работу оценивать нельзя.';else if(/Teacher required|Work unavailable|Assignment unavailable|Account unavailable/.test(message))message='Действие недоступно с текущими правами. Обновите данные или обратитесь к старосте и владельцу.';else if(/fetch|network/i.test(message))message='Проверьте соединение с интернетом и повторите действие.';throw Object.assign(Error(message),{code:error.code});}}
-async function rows<T>(table:string){const order=table==='group_memberships'?['group_id','user_id','role']:table==='leader_entitlements'?['user_id']:['id'];return catalogPages<T>(async(offset,limit)=>{let q=db().from(table).select('*');for(const column of order)q=q.order(column);const {data,error}=await q.range(offset,offset+limit-1);if(error)throw Error(error.message);return (data||[]) as T[];});}
-async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').upsert({id:data.user.id,full_name:name},{onConflict:'id',ignoreDuplicates:true});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
-export const liveGateway:Gateway={
- demo:false,
- async studySearch(query,filter,offset,signal){const request=db().rpc('study_search',{p_query:query,p_kind:filter,p_offset:offset});const {data,error}=await(signal?request.abortSignal(signal):request);if(error){if(error.code==='PGRST202'){const result=await catalogSearch(this,await this.snapshot(),query,filter,offset,signal);result.issues.unshift('Базовый поиск. Для поиска по русским формам слов примените SQL v0.43.');return result;}throw Error('Поиск не выполнен. Проверьте соединение и повторите.');}return data as import('./study-search').SearchPage;},
- async searchNote(id){try{const rows=await rpc<Note[]>('study_search_note',{p_id:id});if(!rows[0])throw Error('Заметка удалена или недоступна.');return rows[0];}catch(e){if((e as {code?:string}).code==='PGRST202'){for(let offset=0;offset<100000;offset+=50){const rows=await this.notes('',offset),note=rows.find(n=>n.id===id&&!decodePlan(n.body));if(note)return note;if(rows.length<50)break;}throw Error('Заметка удалена или недоступна.');}throw e;}},
- async materialAiQuota(){try{return await rpc('material_ai_quota');}catch{throw Error('Счётчик ИИ недоступен. Примените SQL v0.31; ручная публикация остаётся доступной.');}},
- async materialIntakeContext(){try{return await rpc('material_intake_context');}catch(e){if((e as {code?:string}).code==='PGRST202')throw Error('Для помощника добавления материалов требуется SQL v0.30.');throw e;}},
- async analyzeMaterial(input,signal){
-  const {data,error}=await db().functions.invoke('material-analyze',{body:input,signal});if(error){let quota:import('./material-intake-types').MaterialAiQuota|undefined;let message='ИИ недоступен. Поля можно заполнить вручную.';try{const body=await (error as {context?:Response}).context?.json();if(typeof body?.error==='string')message=body.error;if(body?.quota)quota=body.quota;}catch{}throw Object.assign(Error(message),{quota});}return data;
- },
- async intakeStatus(request){try{return await rpc('material_intake_status',{p_request:request});}catch(e){if((e as {code?:string}).code==='PGRST202')throw Error('Для проверки и отмены публикации примените SQL v0.35. Без него можно повторить отправку того же файла.');throw e;}},
- async cancelIntake(request){let result:import('./material-intake-types').IntakeStatus;try{result=await rpc('begin_material_intake_cancel',{p_request:request});}catch(e){if((e as {code?:string}).code==='PGRST202')throw Object.assign(Error('Для безопасной отмены требуется SQL v0.35.'),{notStarted:true});throw e;}if(result.status!=='deleting')return result;const {error}=await db().storage.from(result.bucket!).remove([result.path!]);if(error)throw Error('Файл пока не удалён. Повторите отмену: '+error.message);await rpc('finish_material_intake_cancel',{p_request:request});return {status:'cancelled'};},
- async publishIntake(i,file){return uploadIntake({
-  prepare:(p,f,mime,hash)=>rpc('prepare_material_intake',{p_request:p.request,p_kind:p.kind,p_course:p.course,p_group:p.group,p_title:p.title,p_description:p.description,p_due:p.due,p_max:p.max,p_late:p.late,p_name:f.name,p_mime:mime,p_size:f.size,p_hash:hash}),
-  upload:async(r,f,mime)=>{const {error}=await db().storage.from(r.bucket).upload(r.path,f,{contentType:mime,upsert:false});if(error)throw error;},
-  finish:request=>rpc('finish_material_intake',{p_request:request})
- },i,file);},
-
- async teacherCatalog(){return teacherRpc('teacher_catalog');},
- async teacherQueue(course,assignment,status,search,offset){return teacherRpc('teacher_review_queue',{p_course:course,p_assignment:assignment,p_status:status,p_search:search,p_offset:offset});},
- async teacherReviewHistory(work,offset){return teacherRpc('teacher_review_history_page',{p_id:work,p_offset:offset});},
- async teacherHistory(work,offset){return teacherRpc('teacher_submission_history',{p_id:work,p_offset:offset});},
- async teacherDetail(work){return teacherRpc('teacher_submission_detail',{p_id:work});},
- async teacherRoster(assignment,search,status,offset){return teacherRpc('teacher_assignment_roster',{p_assignment:assignment,p_search:search,p_status:status,p_offset:offset});},
- async teacherSaveAssignment(i){return teacherRpc<string>('teacher_save_assignment',{p_course:i.course,p_title:i.title,p_description:i.description,p_due:i.due,p_max:i.max,p_late:i.late,p_id:i.id,p_revision:i.revision});},
- async teacherReview(work,version,action,score,feedback){try{await teacherRpc('teacher_review_submission',{p_id:work,p_version:version,p_action:action,p_score:score,p_feedback:feedback});}catch(e){if((e as {code?:string}).code==='P0001'&&/changed/.test((e as Error).message))throw Error('Работа изменилась. Обновите её перед сохранением; ваш текст остаётся в черновике.');throw e;}},
-
- async notificationCounts(){return rpc('section_notification_counts');},
- async markAnnouncementRead(id){await rpc('mark_announcement_read',{p_id:id});},
- async cancelGroupRequest(){await rpc('cancel_group_request');},
- async groupRequests(group,offset){return rpc('group_request_catalog',{p_group:group,p_offset:offset});},
- async resolveGroupRequest(user,group,approve){await rpc('resolve_group_request',{p_user:user,p_group:group,p_approve:approve});},
- async finishPasswordReset(password){if(password.length<10||password.length>128)throw Error('Пароль: от 10 до 128 символов.');const {error}=await db().auth.updateUser({password});if(error)throw Error(error.message);},
- async resetPassword(email){const {error}=await db().auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error)throw Error(error.message);},
- async account(){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const u=data.user;return {...accountInput(u.user_metadata.studyhub_profile||{}),email:u.email||'',confirmed:!!u.email_confirmed_at};},
- async saveAccount(name,details){name=profileName(name);const checked=accountInput(details);if(!await rpc<boolean>('is_active_user'))throw Error('Доступ к аккаунту закрыт.');const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const result=await db().from('profiles').update({full_name:name}).eq('id',data.user.id).select('id');if(result.error)throw Error(result.error.message);if(!result.data?.length)throw Error('Профиль не обновлён.');const updated=await db().auth.updateUser({data:{full_name:name,studyhub_profile:checked}});if(updated.error)throw Error('Имя сохранено, но дополнительные сведения не обновлены. Повторите сохранение.');},
- async changePassword(current,next){if(next.length<10||next.length>128)throw Error('Новый пароль: от 10 до 128 символов.');if(current===next)throw Error('Новый пароль должен отличаться от текущего.');const {data,error}=await db().auth.getUser();if(error||!data.user?.email)throw Error('Войдите в аккаунт.');const verified=await db().auth.signInWithPassword({email:data.user.email,password:current});if(verified.error)throw Error('Текущий пароль неверен.');const updated=await db().auth.updateUser({password:next});if(updated.error)throw Error(updated.error.message);},
- async auditEvents(offset){if(!Number.isInteger(offset)||offset<0)throw Error('Некорректная страница.');if(!await rpc<boolean>('is_owner'))throw Error('Требуются права владельца.');const {data,error}=await db().from('audit_events').select('id,actor_id,action,entity_id,details,created_at').order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+49);if(error)throw Error(error.message);return (data||[]) as import('./types').AuditEvent[];},
- async groupMembers(group,offset){return rpc<import('./types').GroupMember[]>('group_member_catalog',{p_group:group,p_offset:offset});},
- async courseWorkspace(course){return rpc<CourseWorkspace>('course_workspace',{p_course:course});},
- async saveCourseTopic(course,title,description,position,id,version){await rpc('save_course_topic',{p_course:course,p_title:title,p_description:description,p_position:position,p_id:id,p_version:version});},
- async deleteCourseTopic(id,version){await rpc('delete_course_topic',{p_id:id,p_version:version});},
- async linkCourseTopic(course,source,kind,topic){await rpc('link_course_topic',{p_course:course,p_source:source,p_kind:kind,p_topic:topic});},
- async completeCourseTopic(topic,done){await rpc('complete_course_topic',{p_topic:topic,p_done:done});},
- async taskRecords(offset){try{return await rpc<Note[]>('task_catalog',{p_search:'',p_offset:offset});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;const items:Note[]=[];for(let page=0;page<1000;page+=50){const rows=await this.notes('',page);items.push(...rows.filter(n=>decodePlan(n.body)));if(rows.length<50)break;}return items.slice(offset,offset+50);}},
- async saveTask(title,body,id,version){try{await rpc('save_private_task',{p_title:title,p_body:body,p_id:id,p_version:version});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;await this.saveNote(title,body,id,version);}},
- async deleteTask(id,version){try{await rpc('delete_private_task',{p_id:id,p_version:version});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;await this.deleteNote(id,version);}},
-
- async assignmentProgress(ids){if(!ids.length)return [];const user=await db().auth.getUser();if(user.error||!user.data.user)throw Error('Войдите в аккаунт.');const result:import('./types').AssignmentProgress[]=[];for(let i=0;i<ids.length;i+=100){const seen=new Set<string>();for(let offset=0;;offset+=1000){const {data,error}=await db().from('submissions').select('assignment_id,status,attempt_no').eq('student_id',user.data.user.id).in('assignment_id',ids.slice(i,i+100)).order('attempt_no',{ascending:false}).order('id').range(offset,offset+999);if(error)throw Error('Не удалось загрузить статус сдачи.');for(const row of data||[])if(!seen.has(row.assignment_id)){seen.add(row.assignment_id);result.push(row);}if(!data||data.length<1000)break;if(offset>=100000)throw Error('Слишком много попыток сдачи.');}}return result;},
- async readerSource(id){
-  const {data:book,error:bookError}=await db().from('library_items').select('id,title').eq('id',id).maybeSingle();if(bookError)throw Error('Не удалось проверить источник.');
-  if(book){await this.readingState(id);for(let offset=0;offset<100000;offset+=50){const items=await rpc<LibraryItem[]>('reader_library_catalog',{p_search:book.title,p_offset:offset,p_favorites:false});const item=items.find(i=>i.id===id);if(item)return {kind:'library',item};if(items.length<50)break;}}
-  else{
-   const {data:content,error}=await db().from('course_content').select('course_id,kind').eq('id',id).maybeSingle();if(error)throw Error('Не удалось проверить источник.');
-   if(content&&content.kind!=='assignment'){await this.courseReadingState(id);for(let offset=0;offset<100000;offset+=50){const items=await rpc<CourseMaterial[]>('course_catalog',{p_course:content.course_id,p_kind:content.kind,p_offset:offset});const item=items.find(i=>i.id===id);if(item)return {kind:'course',item};if(items.length<50)break;}}
+import { catalogSearch } from './study-search';
+import { uploadIntake } from './upload-intake';
+import { publishRecoverable } from './intake-recovery';
+import { notifyChanged } from './notifications';
+import { accountInput, profileName } from './account';
+import { catalogPages } from './catalog-pages';
+import { decodePlan } from './personal-plan';
+import { createClient } from '@supabase/supabase-js';
+import { emptyReading, validateReading } from './reader-state';
+import { validateFile } from './files';
+import type {
+  CourseWorkspace,
+  ManagedInvitation,
+  TeachingAssignment,
+  ReadingState,
+  Note,
+  BoardItem,
+  Assignment,
+  Work,
+  CourseMaterial,
+  LibraryItem,
+  Gateway,
+  Snapshot,
+  Profile,
+  Group,
+  Course,
+  Membership,
+  Denial,
+} from './types';
+const env = import.meta.env || {};
+const url = env.VITE_SUPABASE_URL,
+  key = env.VITE_SUPABASE_ANON_KEY;
+export const configured = Boolean(url && key);
+export const client = configured ? createClient(url, key) : null;
+function db() {
+  if (!client) throw Error('Supabase ещё не подключён.');
+  return client;
+}
+async function rpc<T>(name: string, args: Record<string, unknown> = {}) {
+  const { data, error } = await db().rpc(name, args);
+  if (error) throw Object.assign(Error(error.message), { code: error.code });
+  if (
+    [
+      'manage_course',
+      'finish_material_intake',
+      'teacher_review_submission',
+      'teacher_save_assignment',
+      'mark_announcement_read',
+      'submit_work',
+      'publish_submission',
+      'save_grade',
+      'return_submission',
+      'finish_submission_cancel',
+      'save_group_board',
+      'delete_group_board',
+    ].includes(name)
+  )
+    notifyChanged();
+  return data as T;
+}
+async function teacherRpc<T>(name: string, args: Record<string, unknown> = {}) {
+  try {
+    return await rpc<T>(name, args);
+  } catch (e) {
+    const error = e as Error & { code?: string };
+    let message = error.message;
+    if (error.code === 'PGRST202')
+      message = 'Для кабинета преподавателя требуется обновление базы v0.28.';
+    else if (/changed|refresh/.test(message))
+      message =
+        name === 'teacher_save_assignment'
+          ? 'Задание изменилось. Обновите журнал перед сохранением; черновик остаётся на устройстве.'
+          : 'Работа изменилась. Обновите её перед сохранением; ваш текст остаётся в черновике.';
+    else if (/Cannot change maximum/.test(message))
+      message = 'После начала сдачи нельзя менять максимальный балл.';
+    else if (/Published grade/.test(message))
+      message = 'Опубликованную оценку нельзя скрыть в черновик.';
+    else if (/self grading/.test(message)) message = 'Свою работу оценивать нельзя.';
+    else if (
+      /Teacher required|Work unavailable|Assignment unavailable|Account unavailable/.test(message)
+    )
+      message =
+        'Действие недоступно с текущими правами. Обновите данные или обратитесь к старосте и владельцу.';
+    else if (/fetch|network/i.test(message))
+      message = 'Проверьте соединение с интернетом и повторите действие.';
+    throw Object.assign(Error(message), { code: error.code });
   }
-  throw Error('Источник удалён или доступ к нему закрыт.');
- },
- async transferStudent(user,from,to){await rpc('transfer_student',{p_user:user,p_from:from,p_to:to});},
- async teachingCatalog(group,offset){return rpc<TeachingAssignment[]>('teaching_catalog',{p_group:group,p_offset:offset});},
- async removeTeaching(course,teacher){await rpc('remove_teaching_assignment',{p_course:course,p_teacher:teacher});},
- async invitationCatalog(offset){return rpc<ManagedInvitation[]>('invitation_catalog',{p_offset:offset});},
- async revokeInvitation(id){await rpc('revoke_invitation',{p_id:id});},
- async courseReadingState(item){const rows=await rpc<ReadingState[]>('course_reader_state',{p_item:item});return rows[0]||emptyReading(item);},
- async saveCourseReading(state){validateReading(state);return rpc<ReadingState>('save_course_reader_state',{p_item:state.item_id,p_page:state.page,p_total:state.total_pages,p_favorite:false,p_bookmarks:state.bookmarks,p_version:state.version});},
- async readingState(item){const rows=await rpc<ReadingState[]>('reader_state',{p_item:item});return rows[0]||emptyReading(item);},
- async saveReading(state){validateReading(state);return rpc<ReadingState>('save_reader_state',{p_item:state.item_id,p_page:state.page,p_total:state.total_pages,p_favorite:state.favorite,p_bookmarks:state.bookmarks,p_version:state.version});},
- async notes(search,offset){return rpc<Note[]>('note_catalog',{p_search:search,p_offset:offset});},
- async saveNote(title,body,id,version){await rpc('save_private_note',{p_title:title,p_body:body,p_id:id,p_version:version});},
- async deleteNote(id,version){await rpc('delete_private_note',{p_id:id,p_version:version});},
- async weeklyDay(group,day){try{return await rpc('weekly_schedule_day',{p_group:group,p_day:day});}catch(e){if((e as {code?:string}).code==='PGRST202')throw Error('Для недельного расписания примените SQL v0.45.');throw e;}},
- async saveWeeklyDay(group,day,items,version,request){try{await rpc('save_weekly_schedule',{p_group:group,p_day:day,p_items:items,p_version:version,p_request:request});}catch(e){const message=e instanceof Error?e.message:'';if(/changed|Request changed/i.test(message))throw Error('Расписание уже изменилось. Обновите день перед сохранением.');if(/overlap/i.test(message))throw Error('Время пар пересекается. Исправьте начало или окончание.');throw e;}},
- async saveScheduleException(i,reset=false){try{await rpc('save_schedule_exception',{p_slot:i.slot,p_date:i.date,p_cancelled:i.cancelled,p_course:i.course,p_start:i.start,p_end:i.end,p_location:i.location,p_version:i.version,p_reset:reset});}catch(e){const message=e instanceof Error?e.message:'';if(/changed/i.test(message))throw Error('Расписание уже изменилось. Обновите день перед сохранением.');if(/overlap/i.test(message))throw Error('Время пар пересекается. Исправьте начало или окончание.');throw e;}},
- async board(group,kind,from,to,offset){const canRead=await rpc<boolean>('read_group_board',{g:group,c:null,k:kind});if(!canRead)return {items:[],canRead:false,writeScopes:[]};const courses=await rows<Course>('courses');const scopes:(string|null)[]=[null,...courses.filter(c=>c.group_id===group).map(c=>c.id)];const permissions=await Promise.all(scopes.map(c=>rpc<boolean>('write_group_board',{g:group,c,k:kind})));let items:BoardItem[];if(kind==='schedule'){try{items=await rpc<BoardItem[]>('schedule_catalog',{p_group:group,p_from:from||new Date(Date.now()-86400000).toISOString(),p_to:to||new Date(Date.now()+30*86400000).toISOString(),p_offset:offset});}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;items=await rpc<BoardItem[]>('board_catalog',{p_group:group,p_kind:kind,p_from:from,p_to:to,p_offset:offset});}}else items=await rpc<BoardItem[]>('board_catalog',{p_group:group,p_kind:kind,p_from:from,p_to:to,p_offset:offset});if(kind==='announcement'&&items.length){try{const unread=await rpc<string[]>('unread_announcements',{p_ids:items.map(i=>i.id)});for(const item of items)item.unread=unread.includes(item.id);}catch(e){if((e as {code?:string}).code!=='PGRST202')throw e;}}return {items,canRead:true,writeScopes:scopes.filter((_,i)=>permissions[i])};},
- async saveBoard(i){if(i.repeatWeeks&&i.repeatWeeks>1){await rpc('save_board_series',{p_group:i.group,p_course:i.course,p_title:i.title,p_body:i.body,p_location:i.location,p_start:i.start,p_end:i.end,p_weeks:i.repeatWeeks});return;}await rpc('save_group_board',{p_group:i.group,p_course:i.course,p_kind:i.kind,p_title:i.title,p_body:i.body,p_location:i.location,p_start:i.start,p_end:i.end,p_id:i.id});},
- async deleteBoard(id){await rpc('delete_group_board',{p_id:id});},
- async assignments(course){const [items,canGrade]=await Promise.all([rpc<Assignment[]>('assignment_catalog',{p_course:course}),rpc<boolean>('can_grade_course',{c:course})]);const user=await db().auth.getUser();const members=await rows<Membership>('group_memberships'),courses=await rows<Course>('courses');const group=courses.find(c=>c.id===course)?.group_id;const canSubmit=members.some(m=>m.user_id===user.data.user?.id&&m.group_id===group&&m.active&&m.role!=='teacher');return {items,canGrade,canSubmit,userId:user.data.user?.id||''};},
- async createAssignment(course,title,description,due,max,late){await rpc('create_assignment',{p_course:course,p_title:title,p_description:description,p_due:due,p_max:max,p_late:late});},
- async works(assignment,offset){return rpc<Work[]>('work_catalog',{p_assignment:assignment,p_offset:offset});},
- async submit(assignment,text,file){const mime=file?validateFile(file):null;const [r]=await rpc<{submission_id:string;storage_path:string|null}[]>('submit_work',{p_assignment:assignment,p_text:text,p_name:file?.name||null,p_mime:mime,p_size:file?.size||null});if(file&&r.storage_path){const {error}=await db().storage.from('studyhub-submissions').upload(r.storage_path,file,{contentType:mime!,upsert:false});if(error)throw Error('Загрузка не завершена. Отмените незавершённую загрузку перед повторной попыткой. '+error.message);await rpc('publish_submission',{p_id:r.submission_id});}},
- async grade(work,score,feedback,publish){const detail=await this.teacherDetail(work);await this.teacherReview(work,detail.work.review_version,publish?'publish':'draft',score,feedback);},
- async returnWork(work,feedback){const detail=await this.teacherDetail(work);await this.teacherReview(work,detail.work.review_version,'return',null,feedback);},
- async cancelUpload(work){const path=await rpc<string>('begin_submission_cancel',{p_id:work});const {error}=await db().storage.from('studyhub-submissions').remove([path]);if(error)throw Error(error.message);await rpc('finish_submission_cancel',{p_id:work});},
- async downloadWork(work){if(!work.storage_path)throw Error('У работы нет файла.');const {data,error}=await db().storage.from('studyhub-submissions').download(work.storage_path);if(error||!data)throw Error(error?.message||'Файл недоступен.');return data;},
- async courseMaterials(course,kind,offset){const [items,canManage]=await Promise.all([rpc<CourseMaterial[]>('course_catalog',{p_course:course,p_kind:kind,p_offset:offset}),rpc<boolean>('manage_course_material',{c:course,k:kind})]);return {items,canManage};},
- async saveMaterial(course,kind,title,body,file,id){if(!file){await rpc('save_course_text',{p_course:course,p_kind:kind,p_title:title,p_body:body,p_id:id});return;}if(id)throw Error('Замена файла пока не поддерживается. Создайте новый материал.');await publishRecoverable(this,{request:crypto.randomUUID(),kind,course,group:(await this.snapshot()).courses.find(c=>c.id===course)?.group_id||null,title:title.trim(),description:body,due:null,max:100,late:false},file);},
- async deleteMaterial(id){const path=await rpc<string|null>('begin_course_delete',{p_id:id});if(path){const {error}=await db().storage.from('studyhub-courses').remove([path]);if(error)throw Error(error.message);await rpc('finish_course_delete',{p_id:id});}},
- async downloadMaterial(item){if(!item.storage_path)throw Error('У материала нет файла.');const {data,error}=await db().storage.from('studyhub-courses').download(item.storage_path);if(error||!data)throw Error(error?.message||'Файл недоступен.');return data;},
- async library(search,offset,favorites=false){const canRead=await rpc<boolean>('has_section_access',{s:'library'});if(!canRead)return {items:[],canRead:false,quota:null};const [items,quotas]=await Promise.all([rpc<LibraryItem[]>('reader_library_catalog',{p_search:search,p_offset:offset,p_favorites:favorites}),rpc<{used_bytes:number;budget_bytes:number;file_limit_bytes:number}[]>('library_quota')]);return {items,canRead:true,quota:quotas[0]||null};},
- async uploadLibrary(group,title,file){await publishRecoverable(this,{request:crypto.randomUUID(),kind:'book',course:null,group,title:title.trim(),description:'',due:null,max:100,late:false},file);},
- async renameLibrary(id,title){await rpc('rename_library_item',{p_id:id,p_title:title});},
- async deleteLibrary(id){const path=await rpc<string>('begin_library_delete',{p_id:id});const {error}=await db().storage.from('studyhub-library').remove([path]);if(error)throw Error(error.message);await rpc('finish_library_delete',{p_id:id});},
- async downloadLibrary(item){const {data,error}=await db().storage.from('studyhub-library').download(item.storage_path);if(error||!data)throw Error(error?.message||'Файл недоступен.');return data;},
- async session(){const {data}=await db().auth.getSession();return !!data.session;},
- async signup(name,email,password,group,details){const profile=accountInput(details||{});const {data,error}=await db().auth.signUp({email,password,options:{data:{full_name:profileName(name),studyhub_profile:profile,studyhub_requested_group:group},emailRedirectTo:location.origin+location.pathname+location.hash}});if(error)throw Error(error.message);if(data.session){await ensureProfile(name);if(group)await this.joinGroup(group);}},
- async login(email,password){const {error}=await db().auth.signInWithPassword({email,password});if(error)throw Error(error.message);const {data}=await db().auth.getUser();await ensureProfile(String(data.user?.user_metadata.full_name||'Пользователь'));},
- async logout(){const {error}=await db().auth.signOut();if(error)throw Error(error.message);},
- async groups(){return rpc<{id:string;name:string}[]>('signup_groups');},
- async snapshot(){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');await ensureProfile(String(data.user.user_metadata.full_name||'Пользователь'));if(!await rpc<boolean>('is_active_user'))throw Error('Доступ к аккаунту закрыт. Обратитесь к владельцу.');if(data.user.user_metadata.studyhub_requested_group){const memberships=await rows<Membership>('group_memberships');const requests=await this.groupRequests(null,0);if(!memberships.some(m=>m.user_id===data.user!.id&&m.active)&&!requests.length)await this.joinGroup(data.user.user_metadata.studyhub_requested_group);}const [owner,profiles,groups,courses,memberships,denials,entitlements]=await Promise.all([rpc<boolean>('is_owner'),rows<Profile>('profiles'),rows<Group>('study_groups'),rows<Course>('courses'),rows<Membership>('group_memberships'),rows<Denial>('access_denials'),rows<{user_id:string;available_groups:number}>('leader_entitlements')]);const me=profiles.find(p=>p.id===data.user!.id);if(!me)throw Error('Профиль отсутствует. Выйдите и войдите снова для завершения регистрации.');return {me,owner,profiles,groups,courses,memberships,denials,availableGroups:entitlements.find(e=>e.user_id===me.id)?.available_groups||0} satisfies Snapshot;},
- async joinGroup(group){try{await rpc('request_group_access',{p_group:group});}catch(e){if((e as {code?:string}).code==='PGRST202')throw Error('Для заявок требуется обновление базы v0.26. Аккаунт сохранён.');throw e;}},
- async manageCourse(course,action,title){try{await rpc('manage_course',{p_course:course.id,p_action:action,p_title:title||null,p_expected_title:course.title,p_expected_archived:course.archived});}catch(e){const error=e as Error&{code?:string};let message=error.message;if(error.code==='PGRST202')message='Для управления дисциплинами примените SQL v0.42.';else if(error.code==='23503'||message.includes('not empty'))message='В дисциплине есть связанные данные. Вместо удаления отправьте её в архив.';else if(message.includes('changed'))message='Дисциплина изменилась. Обновите список и выберите действие заново.';else if(message.includes('denied'))message='Недостаточно прав или дисциплина недоступна.';else if(message.includes('Invalid course title'))message='Название должно содержать от 1 до 200 символов.';throw Object.assign(Error(message),{code:error.code});}},
- async createGroup(name){await rpc('create_group',{p_name:name});},async createCourse(group,title){await rpc('create_course',{p_group:group,p_title:title});},
- async invite(role,group,courses,max){return rpc<string>('create_invitation',{p_role:role,p_group:group,p_courses:courses,p_max_uses:max});},
- async redeem(token){await rpc('redeem_invitation',{p_token:token});},async block(user,group,blocked){await rpc('set_block',{p_user:user,p_group:group,p_blocked:blocked});},
- async deny(section,user,group,course){await rpc('deny_section',{p_section:section,p_user:user,p_group:group,p_course:course});},async restore(id){await rpc('remove_denial',{p_id:id});}
+}
+async function rows<T>(table: string) {
+  const order =
+    table === 'group_memberships'
+      ? ['group_id', 'user_id', 'role']
+      : table === 'leader_entitlements'
+        ? ['user_id']
+        : ['id'];
+  return catalogPages<T>(async (offset, limit) => {
+    let q = db().from(table).select('*');
+    for (const column of order) q = q.order(column);
+    const { data, error } = await q.range(offset, offset + limit - 1);
+    if (error) throw Error(error.message);
+    return (data || []) as T[];
+  });
+}
+async function ensureProfile(name: string) {
+  const { data, error } = await db().auth.getUser();
+  if (error || !data.user) throw Error('Войдите в аккаунт.');
+  const p = await rows<Profile>('profiles');
+  if (!p.some((p) => p.id === data.user!.id)) {
+    const { error: insertError } = await db()
+      .from('profiles')
+      .upsert({ id: data.user.id, full_name: name }, { onConflict: 'id', ignoreDuplicates: true });
+    if (insertError) throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');
+  }
+}
+export const liveGateway: Gateway = {
+  demo: false,
+  async studySearch(query, filter, offset, signal) {
+    const request = db().rpc('study_search', { p_query: query, p_kind: filter, p_offset: offset });
+    const { data, error } = await (signal ? request.abortSignal(signal) : request);
+    if (error) {
+      if (error.code === 'PGRST202') {
+        const result = await catalogSearch(
+          this,
+          await this.snapshot(),
+          query,
+          filter,
+          offset,
+          signal,
+        );
+        result.issues.unshift(
+          'Базовый поиск. Для поиска по русским формам слов примените SQL v0.43.',
+        );
+        return result;
+      }
+      throw Error('Поиск не выполнен. Проверьте соединение и повторите.');
+    }
+    return data as import('./study-search').SearchPage;
+  },
+  async searchNote(id) {
+    try {
+      const rows = await rpc<Note[]>('study_search_note', { p_id: id });
+      if (!rows[0]) throw Error('Заметка удалена или недоступна.');
+      return rows[0];
+    } catch (e) {
+      if ((e as { code?: string }).code === 'PGRST202') {
+        for (let offset = 0; offset < 100000; offset += 50) {
+          const rows = await this.notes('', offset),
+            note = rows.find((n) => n.id === id && !decodePlan(n.body));
+          if (note) return note;
+          if (rows.length < 50) break;
+        }
+        throw Error('Заметка удалена или недоступна.');
+      }
+      throw e;
+    }
+  },
+  async materialAiQuota() {
+    try {
+      return await rpc('material_ai_quota');
+    } catch {
+      throw Error(
+        'Счётчик ИИ недоступен. Примените SQL v0.31; ручная публикация остаётся доступной.',
+      );
+    }
+  },
+  async materialIntakeContext() {
+    try {
+      return await rpc('material_intake_context');
+    } catch (e) {
+      if ((e as { code?: string }).code === 'PGRST202')
+        throw Error('Для помощника добавления материалов требуется SQL v0.30.');
+      throw e;
+    }
+  },
+  async analyzeMaterial(input, signal) {
+    const { data, error } = await db().functions.invoke('material-analyze', {
+      body: input,
+      signal,
+    });
+    if (error) {
+      let quota: import('./material-intake-types').MaterialAiQuota | undefined;
+      let message = 'ИИ недоступен. Поля можно заполнить вручную.';
+      try {
+        const body = await (error as { context?: Response }).context?.json();
+        if (typeof body?.error === 'string') message = body.error;
+        if (body?.quota) quota = body.quota;
+      } catch {}
+      throw Object.assign(Error(message), { quota });
+    }
+    return data;
+  },
+  async intakeStatus(request) {
+    try {
+      return await rpc('material_intake_status', { p_request: request });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'PGRST202')
+        throw Error(
+          'Для проверки и отмены публикации примените SQL v0.35. Без него можно повторить отправку того же файла.',
+        );
+      throw e;
+    }
+  },
+  async cancelIntake(request) {
+    let result: import('./material-intake-types').IntakeStatus;
+    try {
+      result = await rpc('begin_material_intake_cancel', { p_request: request });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'PGRST202')
+        throw Object.assign(Error('Для безопасной отмены требуется SQL v0.35.'), {
+          notStarted: true,
+        });
+      throw e;
+    }
+    if (result.status !== 'deleting') return result;
+    const { error } = await db().storage.from(result.bucket!).remove([result.path!]);
+    if (error) throw Error('Файл пока не удалён. Повторите отмену: ' + error.message);
+    await rpc('finish_material_intake_cancel', { p_request: request });
+    return { status: 'cancelled' };
+  },
+  async publishIntake(i, file) {
+    return uploadIntake(
+      {
+        prepare: (p, f, mime, hash) =>
+          rpc('prepare_material_intake', {
+            p_request: p.request,
+            p_kind: p.kind,
+            p_course: p.course,
+            p_group: p.group,
+            p_title: p.title,
+            p_description: p.description,
+            p_due: p.due,
+            p_max: p.max,
+            p_late: p.late,
+            p_name: f.name,
+            p_mime: mime,
+            p_size: f.size,
+            p_hash: hash,
+          }),
+        upload: async (r, f, mime) => {
+          const { error } = await db()
+            .storage.from(r.bucket)
+            .upload(r.path, f, { contentType: mime, upsert: false });
+          if (error) throw error;
+        },
+        finish: (request) => rpc('finish_material_intake', { p_request: request }),
+      },
+      i,
+      file,
+    );
+  },
+
+  async teacherCatalog() {
+    return teacherRpc('teacher_catalog');
+  },
+  async teacherQueue(course, assignment, status, search, offset) {
+    return teacherRpc('teacher_review_queue', {
+      p_course: course,
+      p_assignment: assignment,
+      p_status: status,
+      p_search: search,
+      p_offset: offset,
+    });
+  },
+  async teacherReviewHistory(work, offset) {
+    return teacherRpc('teacher_review_history_page', { p_id: work, p_offset: offset });
+  },
+  async teacherHistory(work, offset) {
+    return teacherRpc('teacher_submission_history', { p_id: work, p_offset: offset });
+  },
+  async teacherDetail(work) {
+    return teacherRpc('teacher_submission_detail', { p_id: work });
+  },
+  async teacherRoster(assignment, search, status, offset) {
+    return teacherRpc('teacher_assignment_roster', {
+      p_assignment: assignment,
+      p_search: search,
+      p_status: status,
+      p_offset: offset,
+    });
+  },
+  async teacherSaveAssignment(i) {
+    return teacherRpc<string>('teacher_save_assignment', {
+      p_course: i.course,
+      p_title: i.title,
+      p_description: i.description,
+      p_due: i.due,
+      p_max: i.max,
+      p_late: i.late,
+      p_id: i.id,
+      p_revision: i.revision,
+    });
+  },
+  async teacherReview(work, version, action, score, feedback) {
+    try {
+      await teacherRpc('teacher_review_submission', {
+        p_id: work,
+        p_version: version,
+        p_action: action,
+        p_score: score,
+        p_feedback: feedback,
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P0001' && /changed/.test((e as Error).message))
+        throw Error(
+          'Работа изменилась. Обновите её перед сохранением; ваш текст остаётся в черновике.',
+        );
+      throw e;
+    }
+  },
+
+  async notificationCounts() {
+    return rpc('section_notification_counts');
+  },
+  async markAnnouncementRead(id) {
+    await rpc('mark_announcement_read', { p_id: id });
+  },
+  async cancelGroupRequest() {
+    await rpc('cancel_group_request');
+  },
+  async groupRequests(group, offset) {
+    return rpc('group_request_catalog', { p_group: group, p_offset: offset });
+  },
+  async resolveGroupRequest(user, group, approve) {
+    await rpc('resolve_group_request', { p_user: user, p_group: group, p_approve: approve });
+  },
+  async finishPasswordReset(password) {
+    if (password.length < 10 || password.length > 128)
+      throw Error('Пароль: от 10 до 128 символов.');
+    const { error } = await db().auth.updateUser({ password });
+    if (error) throw Error(error.message);
+  },
+  async resetPassword(email) {
+    const { error } = await db().auth.resetPasswordForEmail(email, {
+      redirectTo: location.origin + location.pathname,
+    });
+    if (error) throw Error(error.message);
+  },
+  async account() {
+    const { data, error } = await db().auth.getUser();
+    if (error || !data.user) throw Error('Войдите в аккаунт.');
+    const u = data.user;
+    return {
+      ...accountInput(u.user_metadata.studyhub_profile || {}),
+      email: u.email || '',
+      confirmed: !!u.email_confirmed_at,
+    };
+  },
+  async saveAccount(name, details) {
+    name = profileName(name);
+    const checked = accountInput(details);
+    if (!(await rpc<boolean>('is_active_user'))) throw Error('Доступ к аккаунту закрыт.');
+    const { data, error } = await db().auth.getUser();
+    if (error || !data.user) throw Error('Войдите в аккаунт.');
+    const result = await db()
+      .from('profiles')
+      .update({ full_name: name })
+      .eq('id', data.user.id)
+      .select('id');
+    if (result.error) throw Error(result.error.message);
+    if (!result.data?.length) throw Error('Профиль не обновлён.');
+    const updated = await db().auth.updateUser({
+      data: { full_name: name, studyhub_profile: checked },
+    });
+    if (updated.error)
+      throw Error('Имя сохранено, но дополнительные сведения не обновлены. Повторите сохранение.');
+  },
+  async changePassword(current, next) {
+    if (next.length < 10 || next.length > 128) throw Error('Новый пароль: от 10 до 128 символов.');
+    if (current === next) throw Error('Новый пароль должен отличаться от текущего.');
+    const { data, error } = await db().auth.getUser();
+    if (error || !data.user?.email) throw Error('Войдите в аккаунт.');
+    const verified = await db().auth.signInWithPassword({
+      email: data.user.email,
+      password: current,
+    });
+    if (verified.error) throw Error('Текущий пароль неверен.');
+    const updated = await db().auth.updateUser({ password: next });
+    if (updated.error) throw Error(updated.error.message);
+  },
+  async auditEvents(offset) {
+    if (!Number.isInteger(offset) || offset < 0) throw Error('Некорректная страница.');
+    if (!(await rpc<boolean>('is_owner'))) throw Error('Требуются права владельца.');
+    const { data, error } = await db()
+      .from('audit_events')
+      .select('id,actor_id,action,entity_id,details,created_at')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + 49);
+    if (error) throw Error(error.message);
+    return (data || []) as import('./types').AuditEvent[];
+  },
+  async groupMembers(group, offset) {
+    return rpc<import('./types').GroupMember[]>('group_member_catalog', {
+      p_group: group,
+      p_offset: offset,
+    });
+  },
+  async courseWorkspace(course) {
+    return rpc<CourseWorkspace>('course_workspace', { p_course: course });
+  },
+  async saveCourseTopic(course, title, description, position, id, version) {
+    await rpc('save_course_topic', {
+      p_course: course,
+      p_title: title,
+      p_description: description,
+      p_position: position,
+      p_id: id,
+      p_version: version,
+    });
+  },
+  async deleteCourseTopic(id, version) {
+    await rpc('delete_course_topic', { p_id: id, p_version: version });
+  },
+  async linkCourseTopic(course, source, kind, topic) {
+    await rpc('link_course_topic', {
+      p_course: course,
+      p_source: source,
+      p_kind: kind,
+      p_topic: topic,
+    });
+  },
+  async completeCourseTopic(topic, done) {
+    await rpc('complete_course_topic', { p_topic: topic, p_done: done });
+  },
+  async taskRecords(offset) {
+    try {
+      return await rpc<Note[]>('task_catalog', { p_search: '', p_offset: offset });
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'PGRST202') throw e;
+      const items: Note[] = [];
+      for (let page = 0; page < 1000; page += 50) {
+        const rows = await this.notes('', page);
+        items.push(...rows.filter((n) => decodePlan(n.body)));
+        if (rows.length < 50) break;
+      }
+      return items.slice(offset, offset + 50);
+    }
+  },
+  async saveTask(title, body, id, version) {
+    try {
+      await rpc('save_private_task', {
+        p_title: title,
+        p_body: body,
+        p_id: id,
+        p_version: version,
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'PGRST202') throw e;
+      await this.saveNote(title, body, id, version);
+    }
+  },
+  async deleteTask(id, version) {
+    try {
+      await rpc('delete_private_task', { p_id: id, p_version: version });
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'PGRST202') throw e;
+      await this.deleteNote(id, version);
+    }
+  },
+
+  async assignmentProgress(ids) {
+    if (!ids.length) return [];
+    const user = await db().auth.getUser();
+    if (user.error || !user.data.user) throw Error('Войдите в аккаунт.');
+    const result: import('./types').AssignmentProgress[] = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const seen = new Set<string>();
+      for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await db()
+          .from('submissions')
+          .select('assignment_id,status,attempt_no')
+          .eq('student_id', user.data.user.id)
+          .in('assignment_id', ids.slice(i, i + 100))
+          .order('attempt_no', { ascending: false })
+          .order('id')
+          .range(offset, offset + 999);
+        if (error) throw Error('Не удалось загрузить статус сдачи.');
+        for (const row of data || [])
+          if (!seen.has(row.assignment_id)) {
+            seen.add(row.assignment_id);
+            result.push(row);
+          }
+        if (!data || data.length < 1000) break;
+        if (offset >= 100000) throw Error('Слишком много попыток сдачи.');
+      }
+    }
+    return result;
+  },
+  async readerSource(id) {
+    const { data: book, error: bookError } = await db()
+      .from('library_items')
+      .select('id,title')
+      .eq('id', id)
+      .maybeSingle();
+    if (bookError) throw Error('Не удалось проверить источник.');
+    if (book) {
+      await this.readingState(id);
+      for (let offset = 0; offset < 100000; offset += 50) {
+        const items = await rpc<LibraryItem[]>('reader_library_catalog', {
+          p_search: book.title,
+          p_offset: offset,
+          p_favorites: false,
+        });
+        const item = items.find((i) => i.id === id);
+        if (item) return { kind: 'library', item };
+        if (items.length < 50) break;
+      }
+    } else {
+      const { data: content, error } = await db()
+        .from('course_content')
+        .select('course_id,kind')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) throw Error('Не удалось проверить источник.');
+      if (content && content.kind !== 'assignment') {
+        await this.courseReadingState(id);
+        for (let offset = 0; offset < 100000; offset += 50) {
+          const items = await rpc<CourseMaterial[]>('course_catalog', {
+            p_course: content.course_id,
+            p_kind: content.kind,
+            p_offset: offset,
+          });
+          const item = items.find((i) => i.id === id);
+          if (item) return { kind: 'course', item };
+          if (items.length < 50) break;
+        }
+      }
+    }
+    throw Error('Источник удалён или доступ к нему закрыт.');
+  },
+  async transferStudent(user, from, to) {
+    await rpc('transfer_student', { p_user: user, p_from: from, p_to: to });
+  },
+  async teachingCatalog(group, offset) {
+    return rpc<TeachingAssignment[]>('teaching_catalog', { p_group: group, p_offset: offset });
+  },
+  async removeTeaching(course, teacher) {
+    await rpc('remove_teaching_assignment', { p_course: course, p_teacher: teacher });
+  },
+  async invitationCatalog(offset) {
+    return rpc<ManagedInvitation[]>('invitation_catalog', { p_offset: offset });
+  },
+  async revokeInvitation(id) {
+    await rpc('revoke_invitation', { p_id: id });
+  },
+  async courseReadingState(item) {
+    const rows = await rpc<ReadingState[]>('course_reader_state', { p_item: item });
+    return rows[0] || emptyReading(item);
+  },
+  async saveCourseReading(state) {
+    validateReading(state);
+    return rpc<ReadingState>('save_course_reader_state', {
+      p_item: state.item_id,
+      p_page: state.page,
+      p_total: state.total_pages,
+      p_favorite: false,
+      p_bookmarks: state.bookmarks,
+      p_version: state.version,
+    });
+  },
+  async readingState(item) {
+    const rows = await rpc<ReadingState[]>('reader_state', { p_item: item });
+    return rows[0] || emptyReading(item);
+  },
+  async saveReading(state) {
+    validateReading(state);
+    return rpc<ReadingState>('save_reader_state', {
+      p_item: state.item_id,
+      p_page: state.page,
+      p_total: state.total_pages,
+      p_favorite: state.favorite,
+      p_bookmarks: state.bookmarks,
+      p_version: state.version,
+    });
+  },
+  async notes(search, offset) {
+    return rpc<Note[]>('note_catalog', { p_search: search, p_offset: offset });
+  },
+  async saveNote(title, body, id, version) {
+    await rpc('save_private_note', { p_title: title, p_body: body, p_id: id, p_version: version });
+  },
+  async deleteNote(id, version) {
+    await rpc('delete_private_note', { p_id: id, p_version: version });
+  },
+  async weeklyDay(group, day) {
+    try {
+      return await rpc('weekly_schedule_day', { p_group: group, p_day: day });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'PGRST202')
+        throw Error('Для недельного расписания примените SQL v0.45.');
+      throw e;
+    }
+  },
+  async saveWeeklyDay(group, day, items, version, request) {
+    try {
+      await rpc('save_weekly_schedule', {
+        p_group: group,
+        p_day: day,
+        p_items: items,
+        p_version: version,
+        p_request: request,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '';
+      if (/changed|Request changed/i.test(message))
+        throw Error('Расписание уже изменилось. Обновите день перед сохранением.');
+      if (/overlap/i.test(message))
+        throw Error('Время пар пересекается. Исправьте начало или окончание.');
+      throw e;
+    }
+  },
+  async saveScheduleException(i, reset = false) {
+    try {
+      await rpc('save_schedule_exception', {
+        p_slot: i.slot,
+        p_date: i.date,
+        p_cancelled: i.cancelled,
+        p_course: i.course,
+        p_start: i.start,
+        p_end: i.end,
+        p_location: i.location,
+        p_version: i.version,
+        p_reset: reset,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '';
+      if (/changed/i.test(message))
+        throw Error('Расписание уже изменилось. Обновите день перед сохранением.');
+      if (/overlap/i.test(message))
+        throw Error('Время пар пересекается. Исправьте начало или окончание.');
+      throw e;
+    }
+  },
+  async board(group, kind, from, to, offset) {
+    const canRead = await rpc<boolean>('read_group_board', { g: group, c: null, k: kind });
+    if (!canRead) return { items: [], canRead: false, writeScopes: [] };
+    const courses = await rows<Course>('courses');
+    const scopes: (string | null)[] = [
+      null,
+      ...courses.filter((c) => c.group_id === group).map((c) => c.id),
+    ];
+    const permissions = await Promise.all(
+      scopes.map((c) => rpc<boolean>('write_group_board', { g: group, c, k: kind })),
+    );
+    let items: BoardItem[];
+    if (kind === 'schedule') {
+      try {
+        items = await rpc<BoardItem[]>('schedule_catalog', {
+          p_group: group,
+          p_from: from || new Date(Date.now() - 86400000).toISOString(),
+          p_to: to || new Date(Date.now() + 30 * 86400000).toISOString(),
+          p_offset: offset,
+        });
+      } catch (e) {
+        if ((e as { code?: string }).code !== 'PGRST202') throw e;
+        items = await rpc<BoardItem[]>('board_catalog', {
+          p_group: group,
+          p_kind: kind,
+          p_from: from,
+          p_to: to,
+          p_offset: offset,
+        });
+      }
+    } else
+      items = await rpc<BoardItem[]>('board_catalog', {
+        p_group: group,
+        p_kind: kind,
+        p_from: from,
+        p_to: to,
+        p_offset: offset,
+      });
+    if (kind === 'announcement' && items.length) {
+      try {
+        const unread = await rpc<string[]>('unread_announcements', {
+          p_ids: items.map((i) => i.id),
+        });
+        for (const item of items) item.unread = unread.includes(item.id);
+      } catch (e) {
+        if ((e as { code?: string }).code !== 'PGRST202') throw e;
+      }
+    }
+    return { items, canRead: true, writeScopes: scopes.filter((_, i) => permissions[i]) };
+  },
+  async saveBoard(i) {
+    if (i.repeatWeeks && i.repeatWeeks > 1) {
+      await rpc('save_board_series', {
+        p_group: i.group,
+        p_course: i.course,
+        p_title: i.title,
+        p_body: i.body,
+        p_location: i.location,
+        p_start: i.start,
+        p_end: i.end,
+        p_weeks: i.repeatWeeks,
+      });
+      return;
+    }
+    await rpc('save_group_board', {
+      p_group: i.group,
+      p_course: i.course,
+      p_kind: i.kind,
+      p_title: i.title,
+      p_body: i.body,
+      p_location: i.location,
+      p_start: i.start,
+      p_end: i.end,
+      p_id: i.id,
+    });
+  },
+  async deleteBoard(id) {
+    await rpc('delete_group_board', { p_id: id });
+  },
+  async assignments(course) {
+    const [items, canGrade] = await Promise.all([
+      rpc<Assignment[]>('assignment_catalog', { p_course: course }),
+      rpc<boolean>('can_grade_course', { c: course }),
+    ]);
+    const user = await db().auth.getUser();
+    const members = await rows<Membership>('group_memberships'),
+      courses = await rows<Course>('courses');
+    const group = courses.find((c) => c.id === course)?.group_id;
+    const canSubmit = members.some(
+      (m) =>
+        m.user_id === user.data.user?.id &&
+        m.group_id === group &&
+        m.active &&
+        m.role !== 'teacher',
+    );
+    return { items, canGrade, canSubmit, userId: user.data.user?.id || '' };
+  },
+  async createAssignment(course, title, description, due, max, late) {
+    await rpc('create_assignment', {
+      p_course: course,
+      p_title: title,
+      p_description: description,
+      p_due: due,
+      p_max: max,
+      p_late: late,
+    });
+  },
+  async works(assignment, offset) {
+    return rpc<Work[]>('work_catalog', { p_assignment: assignment, p_offset: offset });
+  },
+  async submit(assignment, text, file) {
+    const mime = file ? validateFile(file) : null;
+    const [r] = await rpc<{ submission_id: string; storage_path: string | null }[]>('submit_work', {
+      p_assignment: assignment,
+      p_text: text,
+      p_name: file?.name || null,
+      p_mime: mime,
+      p_size: file?.size || null,
+    });
+    if (file && r.storage_path) {
+      const { error } = await db()
+        .storage.from('studyhub-submissions')
+        .upload(r.storage_path, file, { contentType: mime!, upsert: false });
+      if (error)
+        throw Error(
+          'Загрузка не завершена. Отмените незавершённую загрузку перед повторной попыткой. ' +
+            error.message,
+        );
+      await rpc('publish_submission', { p_id: r.submission_id });
+    }
+  },
+  async grade(work, score, feedback, publish) {
+    const detail = await this.teacherDetail(work);
+    await this.teacherReview(
+      work,
+      detail.work.review_version,
+      publish ? 'publish' : 'draft',
+      score,
+      feedback,
+    );
+  },
+  async returnWork(work, feedback) {
+    const detail = await this.teacherDetail(work);
+    await this.teacherReview(work, detail.work.review_version, 'return', null, feedback);
+  },
+  async cancelUpload(work) {
+    const path = await rpc<string>('begin_submission_cancel', { p_id: work });
+    const { error } = await db().storage.from('studyhub-submissions').remove([path]);
+    if (error) throw Error(error.message);
+    await rpc('finish_submission_cancel', { p_id: work });
+  },
+  async downloadWork(work) {
+    if (!work.storage_path) throw Error('У работы нет файла.');
+    const { data, error } = await db()
+      .storage.from('studyhub-submissions')
+      .download(work.storage_path);
+    if (error || !data) throw Error(error?.message || 'Файл недоступен.');
+    return data;
+  },
+  async courseMaterials(course, kind, offset) {
+    const [items, canManage] = await Promise.all([
+      rpc<CourseMaterial[]>('course_catalog', { p_course: course, p_kind: kind, p_offset: offset }),
+      rpc<boolean>('manage_course_material', { c: course, k: kind }),
+    ]);
+    return { items, canManage };
+  },
+  async saveMaterial(course, kind, title, body, file, id) {
+    if (!file) {
+      await rpc('save_course_text', {
+        p_course: course,
+        p_kind: kind,
+        p_title: title,
+        p_body: body,
+        p_id: id,
+      });
+      return;
+    }
+    if (id) throw Error('Замена файла пока не поддерживается. Создайте новый материал.');
+    await publishRecoverable(
+      this,
+      {
+        request: crypto.randomUUID(),
+        kind,
+        course,
+        group: (await this.snapshot()).courses.find((c) => c.id === course)?.group_id || null,
+        title: title.trim(),
+        description: body,
+        due: null,
+        max: 100,
+        late: false,
+      },
+      file,
+    );
+  },
+  async deleteMaterial(id) {
+    const path = await rpc<string | null>('begin_course_delete', { p_id: id });
+    if (path) {
+      const { error } = await db().storage.from('studyhub-courses').remove([path]);
+      if (error) throw Error(error.message);
+      await rpc('finish_course_delete', { p_id: id });
+    }
+  },
+  async downloadMaterial(item) {
+    if (!item.storage_path) throw Error('У материала нет файла.');
+    const { data, error } = await db().storage.from('studyhub-courses').download(item.storage_path);
+    if (error || !data) throw Error(error?.message || 'Файл недоступен.');
+    return data;
+  },
+  async library(search, offset, favorites = false) {
+    const canRead = await rpc<boolean>('has_section_access', { s: 'library' });
+    if (!canRead) return { items: [], canRead: false, quota: null };
+    const [items, quotas] = await Promise.all([
+      rpc<LibraryItem[]>('reader_library_catalog', {
+        p_search: search,
+        p_offset: offset,
+        p_favorites: favorites,
+      }),
+      rpc<{ used_bytes: number; budget_bytes: number; file_limit_bytes: number }[]>(
+        'library_quota',
+      ),
+    ]);
+    return { items, canRead: true, quota: quotas[0] || null };
+  },
+  async uploadLibrary(group, title, file) {
+    await publishRecoverable(
+      this,
+      {
+        request: crypto.randomUUID(),
+        kind: 'book',
+        course: null,
+        group,
+        title: title.trim(),
+        description: '',
+        due: null,
+        max: 100,
+        late: false,
+      },
+      file,
+    );
+  },
+  async renameLibrary(id, title) {
+    await rpc('rename_library_item', { p_id: id, p_title: title });
+  },
+  async deleteLibrary(id) {
+    const path = await rpc<string>('begin_library_delete', { p_id: id });
+    const { error } = await db().storage.from('studyhub-library').remove([path]);
+    if (error) throw Error(error.message);
+    await rpc('finish_library_delete', { p_id: id });
+  },
+  async downloadLibrary(item) {
+    const { data, error } = await db().storage.from('studyhub-library').download(item.storage_path);
+    if (error || !data) throw Error(error?.message || 'Файл недоступен.');
+    return data;
+  },
+  async session() {
+    const { data } = await db().auth.getSession();
+    return !!data.session;
+  },
+  async signup(name, email, password, group, details) {
+    const profile = accountInput(details || {});
+    const { data, error } = await db().auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: profileName(name),
+          studyhub_profile: profile,
+          studyhub_requested_group: group,
+        },
+        emailRedirectTo: location.origin + location.pathname + location.hash,
+      },
+    });
+    if (error) throw Error(error.message);
+    if (data.session) {
+      await ensureProfile(name);
+      if (group) await this.joinGroup(group);
+    }
+  },
+  async login(email, password) {
+    const { error } = await db().auth.signInWithPassword({ email, password });
+    if (error) throw Error(error.message);
+    const { data } = await db().auth.getUser();
+    await ensureProfile(String(data.user?.user_metadata.full_name || 'Пользователь'));
+  },
+  async logout() {
+    const { error } = await db().auth.signOut();
+    if (error) throw Error(error.message);
+  },
+  async groups() {
+    return rpc<{ id: string; name: string }[]>('signup_groups');
+  },
+  async snapshot() {
+    const { data, error } = await db().auth.getUser();
+    if (error || !data.user) throw Error('Войдите в аккаунт.');
+    await ensureProfile(String(data.user.user_metadata.full_name || 'Пользователь'));
+    if (!(await rpc<boolean>('is_active_user')))
+      throw Error('Доступ к аккаунту закрыт. Обратитесь к владельцу.');
+    if (data.user.user_metadata.studyhub_requested_group) {
+      const memberships = await rows<Membership>('group_memberships');
+      const requests = await this.groupRequests(null, 0);
+      if (!memberships.some((m) => m.user_id === data.user!.id && m.active) && !requests.length)
+        await this.joinGroup(data.user.user_metadata.studyhub_requested_group);
+    }
+    const [owner, profiles, groups, courses, memberships, denials, entitlements] =
+      await Promise.all([
+        rpc<boolean>('is_owner'),
+        rows<Profile>('profiles'),
+        rows<Group>('study_groups'),
+        rows<Course>('courses'),
+        rows<Membership>('group_memberships'),
+        rows<Denial>('access_denials'),
+        rows<{ user_id: string; available_groups: number }>('leader_entitlements'),
+      ]);
+    const me = profiles.find((p) => p.id === data.user!.id);
+    if (!me)
+      throw Error('Профиль отсутствует. Выйдите и войдите снова для завершения регистрации.');
+    return {
+      me,
+      owner,
+      profiles,
+      groups,
+      courses,
+      memberships,
+      denials,
+      availableGroups: entitlements.find((e) => e.user_id === me.id)?.available_groups || 0,
+    } satisfies Snapshot;
+  },
+  async joinGroup(group) {
+    try {
+      await rpc('request_group_access', { p_group: group });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'PGRST202')
+        throw Error('Для заявок требуется обновление базы v0.26. Аккаунт сохранён.');
+      throw e;
+    }
+  },
+  async manageCourse(course, action, title) {
+    try {
+      await rpc('manage_course', {
+        p_course: course.id,
+        p_action: action,
+        p_title: title || null,
+        p_expected_title: course.title,
+        p_expected_archived: course.archived,
+      });
+    } catch (e) {
+      const error = e as Error & { code?: string };
+      let message = error.message;
+      if (error.code === 'PGRST202') message = 'Для управления дисциплинами примените SQL v0.42.';
+      else if (error.code === '23503' || message.includes('not empty'))
+        message = 'В дисциплине есть связанные данные. Вместо удаления отправьте её в архив.';
+      else if (message.includes('changed'))
+        message = 'Дисциплина изменилась. Обновите список и выберите действие заново.';
+      else if (message.includes('denied')) message = 'Недостаточно прав или дисциплина недоступна.';
+      else if (message.includes('Invalid course title'))
+        message = 'Название должно содержать от 1 до 200 символов.';
+      throw Object.assign(Error(message), { code: error.code });
+    }
+  },
+  async createGroup(name) {
+    await rpc('create_group', { p_name: name });
+  },
+  async createCourse(group, title) {
+    await rpc('create_course', { p_group: group, p_title: title });
+  },
+  async invite(role, group, courses, max) {
+    return rpc<string>('create_invitation', {
+      p_role: role,
+      p_group: group,
+      p_courses: courses,
+      p_max_uses: max,
+    });
+  },
+  async redeem(token) {
+    await rpc('redeem_invitation', { p_token: token });
+  },
+  async block(user, group, blocked) {
+    await rpc('set_block', { p_user: user, p_group: group, p_blocked: blocked });
+  },
+  async deny(section, user, group, course) {
+    await rpc('deny_section', {
+      p_section: section,
+      p_user: user,
+      p_group: group,
+      p_course: course,
+    });
+  },
+  async restore(id) {
+    await rpc('remove_denial', { p_id: id });
+  },
 };

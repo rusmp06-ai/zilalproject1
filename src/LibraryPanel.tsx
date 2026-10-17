@@ -1,67 +1,839 @@
-import {useViewState,shortText,oneOf} from './view-state';
-import {CloseButton} from './CloseButton';
-import {publishRecoverable} from './intake-recovery';
-import {registerNavigationGuard} from './drafts';
-import {MaterialIntake} from './MaterialIntake';
-import {PdfOptimization} from './PdfOptimization';
-import {BookCover} from './BookCover';
-import {bookFormat,libraryCatalog,libraryShelf} from './library-world';
-import {StudyIcon} from './StudyIcon';
-import {enableOffline,saveOffline} from './offline-files';
-import {useEffect,useState,useRef} from 'react';
-import type {Gateway,Snapshot,LibraryPage,LibraryItem} from './types';
-import {ReaderPanel} from './ReaderPanel';
-import {canReadDocument} from './reader-tools';
-import {FILE_ACCEPT,sizeLabel} from './files';
-type Preview={item:LibraryItem;url?:string};
-export function LibraryPanel({api,snapshot,initialItem=null,initialBook,onLocation,allowManagement=true}:{api:Gateway;snapshot:Snapshot;initialItem?:LibraryItem|null;initialBook?:string;onLocation?:(id?:string)=>void;allowManagement?:boolean}){
- const [optimizing,setOptimizing]=useState(false),[routeError,setRouteError]=useState(''),[bookRevision,setBookRevision]=useState(0),[openingBook,setOpeningBook]=useState(false);
- const [favoriteChoice,setFavoriteChoice]=useViewState<string>('library','favorites','',oneOf('','1')),[page,setPage]=useState<LibraryPage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[search,setSearch]=useState(()=>new URLSearchParams(location.search).get('ui_query')?.slice(0,200)||''),[query,setQuery]=useViewState<string>('library','query','',shortText),[offset,setOffset]=useState(0),[title,setTitle]=useState(''),[file,setFile]=useState<File|null>(null),[source,setSource]=useState(''),[fileKey,setFileKey]=useState(0),[editing,setEditing]=useState<string|null>(null),[editTitle,setEditTitle]=useState(''),[confirm,setConfirm]=useState<string|null>(null),[preview,setPreview]=useState<Preview|null>(initialItem?{item:initialItem}:null);
- const [shelf,setShelf]=useViewState<'all'|'reading'>('library','shelf','all',oneOf('all','reading')),[format,setFormat]=useViewState<string>('library','format','',oneOf('','PDF','EPUB','DOCX','TXT','Презентация','Таблица','Изображение','Другой')),[sort,setSort]=useViewState<'new'|'title'>('library','sort','new',oneOf('new','title'));
- const favorites=favoriteChoice==='1',setFavorites=(v:boolean)=>setFavoriteChoice(v?'1':'');
- useEffect(()=>setSearch(query),[query]);
- const uploadRegion=useRef<HTMLElement>(null);const readerDirty=useRef(false);
- function closePreview(){if(readerDirty.current&&!window.confirm('В читалке есть несохранённая заметка. Закрыть документ?'))return;readerDirty.current=false;if(onLocation){onLocation();return;}setPreview(null);}
- useEffect(()=>registerNavigationGuard(()=>!readerDirty.current||window.confirm('В читалке есть несохранённая заметка. Перейти?')),[snapshot.me.id]);
- useEffect(()=>{
-  if(!onLocation)return;
-  setRouteError('');setPreview(null);setOpeningBook(!!initialBook);
-  if(!initialBook)return;
-  let active=true;
-  void libraryCatalog(api,'',false).then(async p=>{
-   if(!active)return;
-   const item=p.canRead?p.items.find(i=>i.id===initialBook&&i.status==='published'):null;
-   if(!item){setRouteError('Книга недоступна: она удалена или у вас нет доступа.');return;}
-   if(item.mime_type.startsWith('image/')){const blob=await api.downloadLibrary(item);if(active)setPreview({item,url:URL.createObjectURL(blob)});}
-   else setPreview({item});
-  }).catch(()=>{if(active)setRouteError('Не удалось открыть книгу. Проверьте соединение и попробуйте снова.');})
-   .finally(()=>{if(active)setOpeningBook(false);});
-  return()=>{active=false;};
- },[api,initialBook,onLocation?true:false,snapshot.me.id,bookRevision]);
- const manageable=allowManagement?snapshot.groups.filter(g=>!g.blocked&&(snapshot.owner||snapshot.memberships.some(m=>m.user_id===snapshot.me.id&&m.role==='leader'&&m.active&&m.group_id===g.id))):[];
- async function load(){const next=await libraryCatalog(api,query,favorites);setPage(next);if(!next.canRead)setPreview(null);}
- useEffect(()=>{let alive=true;setBusy(true);libraryCatalog(api,query,favorites).then(p=>{if(alive){setPage(p);setError('');if(!p.canRead)setPreview(null);}}).catch(e=>{if(alive){setPage(null);setError(e.message);}}).finally(()=>{if(alive)setBusy(false);});return()=>{alive=false;};},[api,query,favorites,snapshot]);
- useEffect(()=>{setSource(old=>manageable.some(g=>g.id===old)?old:manageable[0]?.id||'');},[snapshot]);
- useEffect(()=>{if(!preview)return;const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;document.body.style.overflow='hidden';const handler=(event:KeyboardEvent)=>{if(event.defaultPrevented)return;if(event.key==='Escape'&&!document.fullscreenElement)closePreview();if(event.key==='Tab'){const elements=[...document.querySelectorAll<HTMLElement>('.preview-modal button,.preview-modal iframe,.preview-modal input,.preview-modal select,.preview-modal textarea,.preview-modal summary,.preview-modal [tabindex]')].filter(x=>x.getClientRects().length>0&&!x.hasAttribute('disabled')&&x.getAttribute('tabindex')!=='-1');const first=elements[0],last=elements[elements.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}};document.addEventListener('keydown',handler);return()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',handler);previous?.focus();};},[preview]);
- useEffect(()=>()=>{if(preview?.url)URL.revokeObjectURL(preview.url);},[preview]);
- async function action(fn:()=>Promise<void>,ok:string){setBusy(true);setError('');setMessage('');try{await fn();await load();setMessage(ok);}catch(e){setError(e instanceof Error?e.message:'Действие не выполнено.');try{await load();}catch{/* Keep the original error visible. */}}finally{setBusy(false);}}
- async function open(item:LibraryItem,download:boolean){await action(async()=>{if(!download&&onLocation){if(!readerDirty.current||window.confirm('В читалке есть несохранённая заметка. Перейти?'))onLocation(item.id);return;}if(!download&&canReadDocument(item.mime_type)){setPreview({item});return;}const blob=await api.downloadLibrary(item);if(download){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=item.original_name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}else if(canReadDocument(item.mime_type)){setPreview({item});}else if(item.mime_type.startsWith('image/')){setPreview({item,url:URL.createObjectURL(blob)});}else{setPreview({item});}},download?'Файл передан браузеру для скачивания.':'');}
- const filtered=libraryShelf((page?.items||[]).filter(i=>allowManagement||i.status==='published'),shelf,format,sort),visible=filtered.slice(offset,offset+24);
- const formats=[...new Set([...(page?.items||[]).map(bookFormat),...(format?[format]:[])])].sort();
- useEffect(()=>{setOffset(n=>Math.min(n,Math.max(0,Math.floor((filtered.length-1)/24)*24)));},[filtered.length]);
- const readingCount=(page?.items||[]).filter(i=>i.status==='published'&&(i.total_pages||0)>1&&(i.page||1)<(i.total_pages||0)).length;
- return <div className="library-world"><section className="library-world-hero"><div className="library-world-intro"><span className="library-world-number">Мир 01 · Библиотека</span><h2>Ваша учебная библиотека</h2></div><div className="library-world-books" aria-hidden="true"><span/><span/><span/></div></section>{error&&<div className="notice error" role="alert">{error}</div>}{message&&<div className="notice success" role="status">{message}</div>}{openingBook&&<p role="status">Открываем книгу по ссылке…</p>}{routeError&&<div className="notice error" role="alert">{routeError}<button onClick={()=>setBookRevision(n=>n+1)}>Повторить открытие</button><button onClick={()=>onLocation?.()}>К библиотеке</button></div>}
- {page&&!page.canRead?<section className="card empty"><h3>Доступ к библиотеке закрыт</h3><p>Обратитесь к владельцу платформы. Доступ к остальным разрешённым разделам сохраняется.</p></section>:<>
- <div className="library-world-tools"><form className="library-search" onSubmit={e=>{e.preventDefault();setQuery(search.trim());setOffset(0);}}><label>Поиск по библиотеке<input value={search} onChange={e=>setSearch(e.target.value)} maxLength={200} placeholder="Какую книгу или материал ищете?"/></label><button className="primary" disabled={busy}>Найти</button>{query&&<button type="button" disabled={busy} onClick={()=>{setSearch('');setQuery('');setOffset(0);}}>Сбросить поиск</button>}</form><div className="library-shelves" aria-label="Книжные полки"><button aria-pressed={!favorites&&shelf==='all'} onClick={()=>{setFavorites(false);setShelf('all');setOffset(0);}}>Все материалы</button><button aria-pressed={!favorites&&shelf==='reading'} onClick={()=>{setFavorites(false);setShelf('reading');setOffset(0);}}>Читаю{readingCount>0&&<span>{readingCount}</span>}</button><label className="check"><input type="checkbox" checked={favorites} onChange={e=>{setFavorites(e.target.checked);setShelf('all');setOffset(0);}}/>Только избранное</label></div><div className="library-catalog-controls"><label>Формат<select aria-label="Формат" value={format} onChange={e=>{setFormat(e.target.value);setOffset(0);}}><option value="">Все форматы</option>{formats.map(f=><option key={f}>{f}</option>)}</select></label><label>Порядок<select aria-label="Порядок" value={sort} onChange={e=>{setSort(e.target.value as 'new'|'title');setOffset(0);}}><option value="new">Недавно добавленные</option><option value="title">По названию</option></select></label><button disabled={busy} onClick={()=>void action(async()=>{},'Библиотека обновлена.')}>Обновить библиотеку</button>{manageable.length>0&&<button onClick={()=>uploadRegion.current?.scrollIntoView({block:'start'})}>Добавить материал</button>}</div></div>
- <div className="library-shelf-heading"><h3>{favorites?'Избранное':shelf==='reading'?'Продолжить чтение':query?'Результаты поиска':'Книжная полка'}</h3>{page&&<span>{filtered.length} материалов</span>}</div>
- <div className="library-grid">{visible.map(item=><article className="card library-card" key={item.id}><BookCover item={item} disabled={busy} onOpen={()=>void open(item,false)}/><div className="book-card-content"><div className="file-heading"><span className="file-kind">{bookFormat(item)}</span><span>{sizeLabel(Number(item.size_bytes))}</span></div>{editing===item.id?<form onSubmit={e=>{e.preventDefault();void action(async()=>{await api.renameLibrary(item.id,editTitle);setEditing(null);},'Название изменено.');}}><label>Новое название<input value={editTitle} onChange={e=>setEditTitle(e.target.value)} required maxLength={200}/></label><div className="card-actions"><button className="primary" disabled={busy}>Сохранить</button><button type="button" onClick={()=>setEditing(null)}>Отмена</button></div></form>:<h3>{item.title}</h3>}<p className="filename" title={item.original_name}>{item.original_name}</p>{!!item.total_pages&&<div className="book-progress"><span>Прогресс: {Math.round((item.page||1)/item.total_pages*100)}%</span><progress aria-label={'Прогресс: '+item.title} max={item.total_pages} value={item.page||1}/></div>}<div className="library-author"><span>Добавил: {item.author_name}</span><span>{item.group_name} · {new Date(item.created_at).toLocaleDateString('ru-RU')}</span></div>{item.status!=='published'&&<div className="notice error">{item.status==='deleting'?'Удаление не завершено. Повторите удаление.':'Загрузка не завершена. Удалите её перед новой попыткой.'}</div>}<div className="card-actions book-card-actions">{item.status==='published'&&<><button className="primary" disabled={busy} onClick={()=>void open(item,false)}>Открыть</button><details className="book-actions-more"><summary>Действия</summary><div className="book-actions-menu"><button disabled={busy} onClick={()=>void open(item,true)}>Скачать</button>{canReadDocument(item.mime_type)&&<button disabled={busy} onClick={()=>void action(async()=>{const [blob,reading]=await Promise.all([api.downloadLibrary(item),api.readingState(item.id)]);await enableOffline();await saveOffline({user:(api.demo?'demo:':'live:')+snapshot.me.id,item,blob,reading});},'Материал сохранён для автономного чтения.')}>Сохранить без интернета</button>}<button disabled={busy} aria-pressed={!!item.favorite} onClick={()=>void action(async()=>{const r=await api.readingState(item.id);await api.saveReading({...r,favorite:!r.favorite});},item.favorite?'Материал убран из избранного.':'Материал добавлен в избранное.')}>{item.favorite?'Убрать из избранного':'В избранное'}</button></div></details></>}{allowManagement&&item.can_manage&&<>{item.status==='published'&&<button disabled={busy} onClick={()=>{setEditing(item.id);setEditTitle(item.title);}}>Изменить</button>}<button className="danger" disabled={busy} onClick={()=>setConfirm(item.id)}>Удалить</button></>}</div>{confirm===item.id&&<div className="delete-confirm"><p>Удалить «{item.title}» вместе с файлом?</p><div className="card-actions"><button className="danger" disabled={busy} onClick={()=>void action(async()=>{await api.deleteLibrary(item.id);setConfirm(null);if(preview?.item.id===item.id)setPreview(null);},'Материал удалён.')}>Подтвердить удаление</button><button disabled={busy} onClick={()=>setConfirm(null)}>Отмена</button></div></div>}</div></article>)}</div>
- {page&&filtered.length===0&&<div className="card empty library-world-empty"><StudyIcon name="book"/><h3>{query?'По этому запросу ничего не найдено.':favorites?'В избранном пока нет материалов.':shelf==='reading'?'Здесь появятся книги, которые вы читаете.':format?'Материалов этого формата пока нет.':'В библиотеке пока нет материалов.'}</h3><p>{shelf==='reading'?'Откройте книгу на общей полке — мы сохраним вашу страницу.':favorites?'Добавляйте полезные книги в избранное через меню действий.':'Попробуйте другое название или формат.'}</p>{(format||shelf==='reading')&&<button onClick={()=>{setFormat('');setShelf('all');setFavorites(false);setQuery('');setSearch('');setOffset(0);}}>Показать все материалы</button>}</div>}{!page&&busy&&<p role="status">Загружаем библиотеку…</p>}
- {page&&filtered.length>24&&<div className="pagination"><button disabled={busy||offset===0} onClick={()=>setOffset(n=>Math.max(0,n-24))}>Назад</button><span>Страница {Math.floor(offset/24)+1} из {Math.ceil(filtered.length/24)}</span><button disabled={busy||offset+24>=filtered.length} onClick={()=>setOffset(n=>n+24)}>Далее</button></div>}
- {page&&allowManagement&&manageable.length>0&&<MaterialIntake api={api} initialGroup={manageable.length===1?manageable[0].id:undefined} onPublished={()=>void load().catch(e=>setError(e.message))}/>}
- {page&&manageable.length>0&&<section ref={uploadRegion} className="card upload-panel"><div><h3>Добавить материал</h3><p>PDF, EPUB, DOCX, PPTX, XLSX, TXT и изображения. До 10 МБ.</p></div><form onSubmit={e=>{e.preventDefault();void action(async()=>{if(optimizing)throw Error('Дождитесь завершения оптимизации.');if(!file)throw Error('Выберите файл.');await publishRecoverable(api,{request:crypto.randomUUID(),kind:'book',course:null,group:source,title:title.trim(),description:'',due:null,max:100,late:false},file,snapshot.me.id);setTitle('');setFile(null);setFileKey(k=>k+1);},'Материал опубликован в общей библиотеке.');}}><div className="form-row"><label>Название материала<input value={title} onChange={e=>setTitle(e.target.value)} required maxLength={200} placeholder="Например, основы корпоративных финансов"/></label><label>Группа автора<select value={source} onChange={e=>setSource(e.target.value)} required>{manageable.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></label></div><label className="file-input">Файл<input key={fileKey} type="file" accept={FILE_ACCEPT} required onChange={e=>setFile(e.target.files?.[0]||null)}/></label><PdfOptimization file={file} onChange={setFile} onBusy={setOptimizing} disabled={busy}/><button className="primary" disabled={busy||optimizing||!file||!source}>{busy?'Подождите…':'Загрузить материал'}</button></form></section>}
- {page?.quota&&<div className="card quota"><div><b>Файловое хранилище</b><span>{sizeLabel(Number(page.quota.used_bytes))} из {sizeLabel(Number(page.quota.budget_bytes))}</span></div><progress max={Number(page.quota.budget_bytes)} value={Number(page.quota.used_bytes)}/><p>Незавершённые загрузки также резервируют место. Максимум одного файла — 10 МБ.</p></div>}
-
- </>}
- {preview&&<section className="preview-modal" role="dialog" aria-modal="true" aria-label={preview.item.title}><div className="preview-content"><header><h2>{preview.item.title}</h2><CloseButton autoFocus label="Закрыть просмотр" onClick={closePreview}/></header>{canReadDocument(preview.item.mime_type)?<ReaderPanel key={snapshot.me.id+preview.item.id} api={api} item={preview.item} onDirtyChange={dirty=>{readerDirty.current=dirty;}} onChanged={()=>void load().catch(e=>setError(e.message))}/>:preview.url?<img alt={preview.item.title} src={preview.url}/>:<div className="empty"><p>Просмотр этого формата пока не встроен. Скачайте файл и откройте его в подходящем приложении.</p><button disabled={busy} onClick={()=>void open(preview.item,true)}>Скачать документ</button></div>}</div></section>}
- </div>;
+import { useViewState, shortText, oneOf } from './view-state';
+import { CloseButton } from './CloseButton';
+import { publishRecoverable } from './intake-recovery';
+import { registerNavigationGuard } from './drafts';
+import { MaterialIntake } from './MaterialIntake';
+import { PdfOptimization } from './PdfOptimization';
+import { BookCover } from './BookCover';
+import { bookFormat, libraryCatalog, libraryShelf } from './library-world';
+import { StudyIcon } from './StudyIcon';
+import { enableOffline, saveOffline } from './offline-files';
+import { useEffect, useState, useRef } from 'react';
+import type { Gateway, Snapshot, LibraryPage, LibraryItem } from './types';
+import { ReaderPanel } from './ReaderPanel';
+import { canReadDocument } from './reader-tools';
+import { FILE_ACCEPT, sizeLabel } from './files';
+type Preview = { item: LibraryItem; url?: string };
+export function LibraryPanel({
+  api,
+  snapshot,
+  initialItem = null,
+  initialBook,
+  onLocation,
+  allowManagement = true,
+}: {
+  api: Gateway;
+  snapshot: Snapshot;
+  initialItem?: LibraryItem | null;
+  initialBook?: string;
+  onLocation?: (id?: string) => void;
+  allowManagement?: boolean;
+}) {
+  const [optimizing, setOptimizing] = useState(false),
+    [routeError, setRouteError] = useState(''),
+    [bookRevision, setBookRevision] = useState(0),
+    [openingBook, setOpeningBook] = useState(false);
+  const [favoriteChoice, setFavoriteChoice] = useViewState<string>(
+      'library',
+      'favorites',
+      '',
+      oneOf('', '1'),
+    ),
+    [page, setPage] = useState<LibraryPage | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [message, setMessage] = useState(''),
+    [search, setSearch] = useState(
+      () => new URLSearchParams(location.search).get('ui_query')?.slice(0, 200) || '',
+    ),
+    [query, setQuery] = useViewState<string>('library', 'query', '', shortText),
+    [offset, setOffset] = useState(0),
+    [title, setTitle] = useState(''),
+    [file, setFile] = useState<File | null>(null),
+    [source, setSource] = useState(''),
+    [fileKey, setFileKey] = useState(0),
+    [editing, setEditing] = useState<string | null>(null),
+    [editTitle, setEditTitle] = useState(''),
+    [confirm, setConfirm] = useState<string | null>(null),
+    [preview, setPreview] = useState<Preview | null>(initialItem ? { item: initialItem } : null);
+  const [shelf, setShelf] = useViewState<'all' | 'reading'>(
+      'library',
+      'shelf',
+      'all',
+      oneOf('all', 'reading'),
+    ),
+    [format, setFormat] = useViewState<string>(
+      'library',
+      'format',
+      '',
+      oneOf('', 'PDF', 'EPUB', 'DOCX', 'TXT', 'Презентация', 'Таблица', 'Изображение', 'Другой'),
+    ),
+    [sort, setSort] = useViewState<'new' | 'title'>(
+      'library',
+      'sort',
+      'new',
+      oneOf('new', 'title'),
+    );
+  const favorites = favoriteChoice === '1',
+    setFavorites = (v: boolean) => setFavoriteChoice(v ? '1' : '');
+  useEffect(() => setSearch(query), [query]);
+  const uploadRegion = useRef<HTMLElement>(null);
+  const readerDirty = useRef(false);
+  function closePreview() {
+    if (
+      readerDirty.current &&
+      !window.confirm('В читалке есть несохранённая заметка. Закрыть документ?')
+    )
+      return;
+    readerDirty.current = false;
+    if (onLocation) {
+      onLocation();
+      return;
+    }
+    setPreview(null);
+  }
+  useEffect(
+    () =>
+      registerNavigationGuard(
+        () =>
+          !readerDirty.current || window.confirm('В читалке есть несохранённая заметка. Перейти?'),
+      ),
+    [snapshot.me.id],
+  );
+  useEffect(() => {
+    if (!onLocation) return;
+    setRouteError('');
+    setPreview(null);
+    setOpeningBook(!!initialBook);
+    if (!initialBook) return;
+    let active = true;
+    void libraryCatalog(api, '', false)
+      .then(async (p) => {
+        if (!active) return;
+        const item = p.canRead
+          ? p.items.find((i) => i.id === initialBook && i.status === 'published')
+          : null;
+        if (!item) {
+          setRouteError('Книга недоступна: она удалена или у вас нет доступа.');
+          return;
+        }
+        if (item.mime_type.startsWith('image/')) {
+          const blob = await api.downloadLibrary(item);
+          if (active) setPreview({ item, url: URL.createObjectURL(blob) });
+        } else setPreview({ item });
+      })
+      .catch(() => {
+        if (active)
+          setRouteError('Не удалось открыть книгу. Проверьте соединение и попробуйте снова.');
+      })
+      .finally(() => {
+        if (active) setOpeningBook(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, initialBook, onLocation ? true : false, snapshot.me.id, bookRevision]);
+  const manageable = allowManagement
+    ? snapshot.groups.filter(
+        (g) =>
+          !g.blocked &&
+          (snapshot.owner ||
+            snapshot.memberships.some(
+              (m) =>
+                m.user_id === snapshot.me.id &&
+                m.role === 'leader' &&
+                m.active &&
+                m.group_id === g.id,
+            )),
+      )
+    : [];
+  async function load() {
+    const next = await libraryCatalog(api, query, favorites);
+    setPage(next);
+    if (!next.canRead) setPreview(null);
+  }
+  useEffect(() => {
+    let alive = true;
+    setBusy(true);
+    libraryCatalog(api, query, favorites)
+      .then((p) => {
+        if (alive) {
+          setPage(p);
+          setError('');
+          if (!p.canRead) setPreview(null);
+        }
+      })
+      .catch((e) => {
+        if (alive) {
+          setPage(null);
+          setError(e.message);
+        }
+      })
+      .finally(() => {
+        if (alive) setBusy(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [api, query, favorites, snapshot]);
+  useEffect(() => {
+    setSource((old) => (manageable.some((g) => g.id === old) ? old : manageable[0]?.id || ''));
+  }, [snapshot]);
+  useEffect(() => {
+    if (!preview) return;
+    const previous = document.activeElement as HTMLElement | null,
+      overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.key === 'Escape' && !document.fullscreenElement) closePreview();
+      if (event.key === 'Tab') {
+        const elements = [
+          ...document.querySelectorAll<HTMLElement>(
+            '.preview-modal button,.preview-modal iframe,.preview-modal input,.preview-modal select,.preview-modal textarea,.preview-modal summary,.preview-modal [tabindex]',
+          ),
+        ].filter(
+          (x) =>
+            x.getClientRects().length > 0 &&
+            !x.hasAttribute('disabled') &&
+            x.getAttribute('tabindex') !== '-1',
+        );
+        const first = elements[0],
+          last = elements[elements.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener('keydown', handler);
+      previous?.focus();
+    };
+  }, [preview]);
+  useEffect(
+    () => () => {
+      if (preview?.url) URL.revokeObjectURL(preview.url);
+    },
+    [preview],
+  );
+  async function action(fn: () => Promise<void>, ok: string) {
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await fn();
+      await load();
+      setMessage(ok);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Действие не выполнено.');
+      try {
+        await load();
+      } catch {
+        /* Keep the original error visible. */
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function open(item: LibraryItem, download: boolean) {
+    await action(
+      async () => {
+        if (!download && onLocation) {
+          if (
+            !readerDirty.current ||
+            window.confirm('В читалке есть несохранённая заметка. Перейти?')
+          )
+            onLocation(item.id);
+          return;
+        }
+        if (!download && canReadDocument(item.mime_type)) {
+          setPreview({ item });
+          return;
+        }
+        const blob = await api.downloadLibrary(item);
+        if (download) {
+          const url = URL.createObjectURL(blob),
+            a = document.createElement('a');
+          a.href = url;
+          a.download = item.original_name;
+          document.body.append(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } else if (canReadDocument(item.mime_type)) {
+          setPreview({ item });
+        } else if (item.mime_type.startsWith('image/')) {
+          setPreview({ item, url: URL.createObjectURL(blob) });
+        } else {
+          setPreview({ item });
+        }
+      },
+      download ? 'Файл передан браузеру для скачивания.' : '',
+    );
+  }
+  const filtered = libraryShelf(
+      (page?.items || []).filter((i) => allowManagement || i.status === 'published'),
+      shelf,
+      format,
+      sort,
+    ),
+    visible = filtered.slice(offset, offset + 24);
+  const formats = [
+    ...new Set([...(page?.items || []).map(bookFormat), ...(format ? [format] : [])]),
+  ].sort();
+  useEffect(() => {
+    setOffset((n) => Math.min(n, Math.max(0, Math.floor((filtered.length - 1) / 24) * 24)));
+  }, [filtered.length]);
+  const readingCount = (page?.items || []).filter(
+    (i) =>
+      i.status === 'published' && (i.total_pages || 0) > 1 && (i.page || 1) < (i.total_pages || 0),
+  ).length;
+  return (
+    <div className="library-world">
+      <section className="library-world-hero">
+        <div className="library-world-intro">
+          <span className="library-world-number">Мир 01 · Библиотека</span>
+          <h2>Ваша учебная библиотека</h2>
+        </div>
+        <div className="library-world-books" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      </section>
+      {error && (
+        <div className="notice error" role="alert">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div className="notice success" role="status">
+          {message}
+        </div>
+      )}
+      {openingBook && <p role="status">Открываем книгу по ссылке…</p>}
+      {routeError && (
+        <div className="notice error" role="alert">
+          {routeError}
+          <button onClick={() => setBookRevision((n) => n + 1)}>Повторить открытие</button>
+          <button onClick={() => onLocation?.()}>К библиотеке</button>
+        </div>
+      )}
+      {page && !page.canRead ? (
+        <section className="card empty">
+          <h3>Доступ к библиотеке закрыт</h3>
+          <p>
+            Обратитесь к владельцу платформы. Доступ к остальным разрешённым разделам сохраняется.
+          </p>
+        </section>
+      ) : (
+        <>
+          <div className="library-world-tools">
+            <form
+              className="library-search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setQuery(search.trim());
+                setOffset(0);
+              }}
+            >
+              <label>
+                Поиск по библиотеке
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  maxLength={200}
+                  placeholder="Какую книгу или материал ищете?"
+                />
+              </label>
+              <button className="primary" disabled={busy}>
+                Найти
+              </button>
+              {query && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setSearch('');
+                    setQuery('');
+                    setOffset(0);
+                  }}
+                >
+                  Сбросить поиск
+                </button>
+              )}
+            </form>
+            <div className="library-shelves" aria-label="Книжные полки">
+              <button
+                aria-pressed={!favorites && shelf === 'all'}
+                onClick={() => {
+                  setFavorites(false);
+                  setShelf('all');
+                  setOffset(0);
+                }}
+              >
+                Все материалы
+              </button>
+              <button
+                aria-pressed={!favorites && shelf === 'reading'}
+                onClick={() => {
+                  setFavorites(false);
+                  setShelf('reading');
+                  setOffset(0);
+                }}
+              >
+                Читаю{readingCount > 0 && <span>{readingCount}</span>}
+              </button>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={favorites}
+                  onChange={(e) => {
+                    setFavorites(e.target.checked);
+                    setShelf('all');
+                    setOffset(0);
+                  }}
+                />
+                Только избранное
+              </label>
+            </div>
+            <div className="library-catalog-controls">
+              <label>
+                Формат
+                <select
+                  aria-label="Формат"
+                  value={format}
+                  onChange={(e) => {
+                    setFormat(e.target.value);
+                    setOffset(0);
+                  }}
+                >
+                  <option value="">Все форматы</option>
+                  {formats.map((f) => (
+                    <option key={f}>{f}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Порядок
+                <select
+                  aria-label="Порядок"
+                  value={sort}
+                  onChange={(e) => {
+                    setSort(e.target.value as 'new' | 'title');
+                    setOffset(0);
+                  }}
+                >
+                  <option value="new">Недавно добавленные</option>
+                  <option value="title">По названию</option>
+                </select>
+              </label>
+              <button
+                disabled={busy}
+                onClick={() => void action(async () => {}, 'Библиотека обновлена.')}
+              >
+                Обновить библиотеку
+              </button>
+              {manageable.length > 0 && (
+                <button onClick={() => uploadRegion.current?.scrollIntoView({ block: 'start' })}>
+                  Добавить материал
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="library-shelf-heading">
+            <h3>
+              {favorites
+                ? 'Избранное'
+                : shelf === 'reading'
+                  ? 'Продолжить чтение'
+                  : query
+                    ? 'Результаты поиска'
+                    : 'Книжная полка'}
+            </h3>
+            {page && <span>{filtered.length} материалов</span>}
+          </div>
+          <div className="library-grid">
+            {visible.map((item) => (
+              <article className="card library-card" key={item.id}>
+                <BookCover item={item} disabled={busy} onOpen={() => void open(item, false)} />
+                <div className="book-card-content">
+                  <div className="file-heading">
+                    <span className="file-kind">{bookFormat(item)}</span>
+                    <span>{sizeLabel(Number(item.size_bytes))}</span>
+                  </div>
+                  {editing === item.id ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void action(async () => {
+                          await api.renameLibrary(item.id, editTitle);
+                          setEditing(null);
+                        }, 'Название изменено.');
+                      }}
+                    >
+                      <label>
+                        Новое название
+                        <input
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          required
+                          maxLength={200}
+                        />
+                      </label>
+                      <div className="card-actions">
+                        <button className="primary" disabled={busy}>
+                          Сохранить
+                        </button>
+                        <button type="button" onClick={() => setEditing(null)}>
+                          Отмена
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <h3>{item.title}</h3>
+                  )}
+                  <p className="filename" title={item.original_name}>
+                    {item.original_name}
+                  </p>
+                  {!!item.total_pages && (
+                    <div className="book-progress">
+                      <span>
+                        Прогресс: {Math.round(((item.page || 1) / item.total_pages) * 100)}%
+                      </span>
+                      <progress
+                        aria-label={'Прогресс: ' + item.title}
+                        max={item.total_pages}
+                        value={item.page || 1}
+                      />
+                    </div>
+                  )}
+                  <div className="library-author">
+                    <span>Добавил: {item.author_name}</span>
+                    <span>
+                      {item.group_name} · {new Date(item.created_at).toLocaleDateString('ru-RU')}
+                    </span>
+                  </div>
+                  {item.status !== 'published' && (
+                    <div className="notice error">
+                      {item.status === 'deleting'
+                        ? 'Удаление не завершено. Повторите удаление.'
+                        : 'Загрузка не завершена. Удалите её перед новой попыткой.'}
+                    </div>
+                  )}
+                  <div className="card-actions book-card-actions">
+                    {item.status === 'published' && (
+                      <>
+                        <button
+                          className="primary"
+                          disabled={busy}
+                          onClick={() => void open(item, false)}
+                        >
+                          Открыть
+                        </button>
+                        <details className="book-actions-more">
+                          <summary>Действия</summary>
+                          <div className="book-actions-menu">
+                            <button disabled={busy} onClick={() => void open(item, true)}>
+                              Скачать
+                            </button>
+                            {canReadDocument(item.mime_type) && (
+                              <button
+                                disabled={busy}
+                                onClick={() =>
+                                  void action(async () => {
+                                    const [blob, reading] = await Promise.all([
+                                      api.downloadLibrary(item),
+                                      api.readingState(item.id),
+                                    ]);
+                                    await enableOffline();
+                                    await saveOffline({
+                                      user: (api.demo ? 'demo:' : 'live:') + snapshot.me.id,
+                                      item,
+                                      blob,
+                                      reading,
+                                    });
+                                  }, 'Материал сохранён для автономного чтения.')
+                                }
+                              >
+                                Сохранить без интернета
+                              </button>
+                            )}
+                            <button
+                              disabled={busy}
+                              aria-pressed={!!item.favorite}
+                              onClick={() =>
+                                void action(
+                                  async () => {
+                                    const r = await api.readingState(item.id);
+                                    await api.saveReading({ ...r, favorite: !r.favorite });
+                                  },
+                                  item.favorite
+                                    ? 'Материал убран из избранного.'
+                                    : 'Материал добавлен в избранное.',
+                                )
+                              }
+                            >
+                              {item.favorite ? 'Убрать из избранного' : 'В избранное'}
+                            </button>
+                          </div>
+                        </details>
+                      </>
+                    )}
+                    {allowManagement && item.can_manage && (
+                      <>
+                        {item.status === 'published' && (
+                          <button
+                            disabled={busy}
+                            onClick={() => {
+                              setEditing(item.id);
+                              setEditTitle(item.title);
+                            }}
+                          >
+                            Изменить
+                          </button>
+                        )}
+                        <button
+                          className="danger"
+                          disabled={busy}
+                          onClick={() => setConfirm(item.id)}
+                        >
+                          Удалить
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {confirm === item.id && (
+                    <div className="delete-confirm">
+                      <p>Удалить «{item.title}» вместе с файлом?</p>
+                      <div className="card-actions">
+                        <button
+                          className="danger"
+                          disabled={busy}
+                          onClick={() =>
+                            void action(async () => {
+                              await api.deleteLibrary(item.id);
+                              setConfirm(null);
+                              if (preview?.item.id === item.id) setPreview(null);
+                            }, 'Материал удалён.')
+                          }
+                        >
+                          Подтвердить удаление
+                        </button>
+                        <button disabled={busy} onClick={() => setConfirm(null)}>
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+          {page && filtered.length === 0 && (
+            <div className="card empty library-world-empty">
+              <StudyIcon name="book" />
+              <h3>
+                {query
+                  ? 'По этому запросу ничего не найдено.'
+                  : favorites
+                    ? 'В избранном пока нет материалов.'
+                    : shelf === 'reading'
+                      ? 'Здесь появятся книги, которые вы читаете.'
+                      : format
+                        ? 'Материалов этого формата пока нет.'
+                        : 'В библиотеке пока нет материалов.'}
+              </h3>
+              <p>
+                {shelf === 'reading'
+                  ? 'Откройте книгу на общей полке — мы сохраним вашу страницу.'
+                  : favorites
+                    ? 'Добавляйте полезные книги в избранное через меню действий.'
+                    : 'Попробуйте другое название или формат.'}
+              </p>
+              {(format || shelf === 'reading') && (
+                <button
+                  onClick={() => {
+                    setFormat('');
+                    setShelf('all');
+                    setFavorites(false);
+                    setQuery('');
+                    setSearch('');
+                    setOffset(0);
+                  }}
+                >
+                  Показать все материалы
+                </button>
+              )}
+            </div>
+          )}
+          {!page && busy && <p role="status">Загружаем библиотеку…</p>}
+          {page && filtered.length > 24 && (
+            <div className="pagination">
+              <button
+                disabled={busy || offset === 0}
+                onClick={() => setOffset((n) => Math.max(0, n - 24))}
+              >
+                Назад
+              </button>
+              <span>
+                Страница {Math.floor(offset / 24) + 1} из {Math.ceil(filtered.length / 24)}
+              </span>
+              <button
+                disabled={busy || offset + 24 >= filtered.length}
+                onClick={() => setOffset((n) => n + 24)}
+              >
+                Далее
+              </button>
+            </div>
+          )}
+          {page && allowManagement && manageable.length > 0 && (
+            <MaterialIntake
+              api={api}
+              initialGroup={manageable.length === 1 ? manageable[0].id : undefined}
+              onPublished={() => void load().catch((e) => setError(e.message))}
+            />
+          )}
+          {page && manageable.length > 0 && (
+            <section ref={uploadRegion} className="card upload-panel">
+              <div>
+                <h3>Добавить материал</h3>
+                <p>PDF, EPUB, DOCX, PPTX, XLSX, TXT и изображения. До 10 МБ.</p>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void action(async () => {
+                    if (optimizing) throw Error('Дождитесь завершения оптимизации.');
+                    if (!file) throw Error('Выберите файл.');
+                    await publishRecoverable(
+                      api,
+                      {
+                        request: crypto.randomUUID(),
+                        kind: 'book',
+                        course: null,
+                        group: source,
+                        title: title.trim(),
+                        description: '',
+                        due: null,
+                        max: 100,
+                        late: false,
+                      },
+                      file,
+                      snapshot.me.id,
+                    );
+                    setTitle('');
+                    setFile(null);
+                    setFileKey((k) => k + 1);
+                  }, 'Материал опубликован в общей библиотеке.');
+                }}
+              >
+                <div className="form-row">
+                  <label>
+                    Название материала
+                    <input
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      required
+                      maxLength={200}
+                      placeholder="Например, основы корпоративных финансов"
+                    />
+                  </label>
+                  <label>
+                    Группа автора
+                    <select value={source} onChange={(e) => setSource(e.target.value)} required>
+                      {manageable.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="file-input">
+                  Файл
+                  <input
+                    key={fileKey}
+                    type="file"
+                    accept={FILE_ACCEPT}
+                    required
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                </label>
+                <PdfOptimization
+                  file={file}
+                  onChange={setFile}
+                  onBusy={setOptimizing}
+                  disabled={busy}
+                />
+                <button className="primary" disabled={busy || optimizing || !file || !source}>
+                  {busy ? 'Подождите…' : 'Загрузить материал'}
+                </button>
+              </form>
+            </section>
+          )}
+          {page?.quota && (
+            <div className="card quota">
+              <div>
+                <b>Файловое хранилище</b>
+                <span>
+                  {sizeLabel(Number(page.quota.used_bytes))} из{' '}
+                  {sizeLabel(Number(page.quota.budget_bytes))}
+                </span>
+              </div>
+              <progress
+                max={Number(page.quota.budget_bytes)}
+                value={Number(page.quota.used_bytes)}
+              />
+              <p>Незавершённые загрузки также резервируют место. Максимум одного файла — 10 МБ.</p>
+            </div>
+          )}
+        </>
+      )}
+      {preview && (
+        <section
+          className="preview-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={preview.item.title}
+        >
+          <div className="preview-content">
+            <header>
+              <h2>{preview.item.title}</h2>
+              <CloseButton autoFocus label="Закрыть просмотр" onClick={closePreview} />
+            </header>
+            {canReadDocument(preview.item.mime_type) ? (
+              <ReaderPanel
+                key={snapshot.me.id + preview.item.id}
+                api={api}
+                item={preview.item}
+                onDirtyChange={(dirty) => {
+                  readerDirty.current = dirty;
+                }}
+                onChanged={() => void load().catch((e) => setError(e.message))}
+              />
+            ) : preview.url ? (
+              <img alt={preview.item.title} src={preview.url} />
+            ) : (
+              <div className="empty">
+                <p>
+                  Просмотр этого формата пока не встроен. Скачайте файл и откройте его в подходящем
+                  приложении.
+                </p>
+                <button disabled={busy} onClick={() => void open(preview.item, true)}>
+                  Скачать документ
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+    </div>
+  );
 }

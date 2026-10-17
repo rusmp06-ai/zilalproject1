@@ -43,7 +43,9 @@
     "test:course:management:browser": "node tests/course-management.browser.mjs",
     "test:search:browser": "node tests/search.browser.mjs",
     "test:course:world:browser": "node tests/course-world.browser.mjs",
-    "test:weekly:schedule:browser": "node tests/weekly-schedule.browser.mjs"
+    "test:weekly:schedule:browser": "node tests/weekly-schedule.browser.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
@@ -53,6 +55,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "jsdom": "^30.1.2",
     "playwright-core": "1.64.0",
+    "prettier": "3.8.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"

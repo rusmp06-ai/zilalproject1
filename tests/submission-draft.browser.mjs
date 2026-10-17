@@ -1,16 +1,159 @@
-import {chromium} from 'playwright-core';
+import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
-try{
- const page=await browser.newPage({viewport:{width:390,height:844}});page.setDefaultTimeout(20000);const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());await page.goto(process.env.SUBMISSION_DRAFT_TEST_URL||'http://127.0.0.1:5260/?demo=1');await page.locator('.demo-roles').waitFor();
- const tasks=await page.evaluate(async()=>{const {demoGateway:a,resetDemo,selectDemo}=await import('/src/demo.ts');resetDemo();selectDemo('teacher');const input={course:'g0c0',title:'Ответ с черновиком',description:'Объясните решение',due:null,max:100,late:true,id:null,revision:null};const first=await a.teacherSaveAssignment(input),second=await a.teacherSaveAssignment({...input,title:'Второе задание'});selectDemo('student');return {first,second};});
- const roles=page.locator('.demo-roles'),nav=page.locator('.sidebar');async function open(id){await nav.getByRole('button',{name:'Группы и дисциплины',exact:true}).click();await page.getByRole('button',{name:'Открыть дисциплину',exact:true}).first().click();await page.locator('.course-tabs').getByRole('button',{name:'Задания',exact:true}).click();await page.getByRole('option',{name:'Ответ с черновиком',exact:true}).waitFor({state:'attached'});await page.getByLabel('Выберите задание').selectOption(id);await page.getByLabel('Ваш ответ').waitFor();}
- await roles.getByRole('button',{name:'Студент',exact:true}).click();await open(tasks.first);await page.getByLabel('Ваш ответ').fill('Последний символ не должен потеряться: 12345');await page.getByLabel('Файл работы — необязательно').setInputFiles({name:'answer.txt',mimeType:'text/plain',buffer:Buffer.from('Исходный файл работы')});await nav.getByRole('button',{name:'Расписание',exact:true}).click();await open(tasks.first);assert.equal(await page.getByLabel('Ваш ответ').inputValue(),'Последний символ не должен потеряться: 12345');await page.getByText(/Прикреплён: answer.txt/).waitFor();
- await page.getByLabel('Выберите задание').selectOption(tasks.second);assert.equal(await page.getByLabel('Ваш ответ').inputValue(),'');await page.getByLabel('Ваш ответ').fill('Другой ответ');await page.getByLabel('Выберите задание').selectOption(tasks.first);assert.equal(await page.getByLabel('Ваш ответ').inputValue(),'Последний символ не должен потеряться: 12345');
- await page.reload();await page.locator('.demo-roles').waitFor();await open(tasks.first);assert.equal(await page.getByLabel('Ваш ответ').inputValue(),'Последний символ не должен потеряться: 12345');await page.getByText(/Прикрепите файл повторно:/).waitFor();assert.equal(await page.getByRole('button',{name:'Отправить работу',exact:true}).isEnabled(),false);
- await page.getByLabel('Файл работы — необязательно').setInputFiles({name:'answer.txt',mimeType:'text/plain',buffer:Buffer.from('Исходный файл работы')});await page.context().setOffline(true);await page.getByText(/Нет интернета. Продолжайте писать/).waitFor();await page.getByLabel('Ваш ответ').fill('Ответ дописан без сети');await page.getByText(/Черновик сохранён на этом устройстве/).waitFor();assert.equal(await page.getByRole('button',{name:'Отправить работу',exact:true}).isEnabled(),false);await page.context().setOffline(false);
- await page.evaluate(async()=>{const {demoGateway:a}=await import('/src/demo.ts');window.__draftSubmit=a.submit;a.submit=async()=>{throw Error('Тестовая ошибка отправки');};});await page.getByRole('button',{name:'Отправить работу',exact:true}).click();await page.getByText('Тестовая ошибка отправки',{exact:true}).first().waitFor();assert.equal(await page.getByLabel('Ваш ответ').inputValue(),'Ответ дописан без сети');await page.evaluate(async()=>{const {demoGateway:a}=await import('/src/demo.ts');a.submit=window.__draftSubmit;});
- await page.getByRole('button',{name:'Отправить работу',exact:true}).click();await page.getByText('Работа отправлена на проверку.',{exact:true}).waitFor();const work=await page.evaluate(async id=>{const {demoGateway:a}=await import('/src/demo.ts');return (await a.works(id,0))[0];},tasks.first);assert.equal(work.text_answer,'Ответ дописан без сети');assert.equal(work.original_name,'answer.txt');assert.equal(await page.evaluate(id=>localStorage.getItem('studyhub-submission-v1:demo:student:'+id+':1'),tasks.first),null);
- await page.evaluate(async id=>{const {demoGateway:a,selectDemo}=await import('/src/demo.ts');selectDemo('teacher');await a.returnWork(id,'Дополните решение');selectDemo('student');},work.id);await page.getByRole('button',{name:'Обновить задания',exact:true}).click();await page.getByLabel('Ваш ответ').waitFor();assert.equal(await page.getByLabel('Ваш ответ').inputValue(),'');await page.getByLabel('Ваш ответ').fill('Новая попытка, отдельный черновик');await roles.getByRole('button',{name:'Староста',exact:true}).click();await open(tasks.first);assert.equal(await page.getByLabel('Ваш ответ').inputValue(),'');await roles.getByRole('button',{name:'Студент',exact:true}).click();await open(tasks.first);assert.equal(await page.getByLabel('Ваш ответ').inputValue(),'Новая попытка, отдельный черновик');await page.getByText(/Черновик сохранён на этом устройстве/).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'/tmp/studyhub-submission-draft-mobile.png',fullPage:true});assert.deepEqual(errors,[]);
- console.log('PASS student draft: immediate navigation, separate tasks/accounts/attempts, reload and reattach, offline writing, failed send, confirmed clearing and original file delivery, return and mobile');
-}finally{await browser.close();}
+const browser = await chromium.launch({
+  executablePath: '/usr/bin/chromium',
+  args: ['--no-sandbox'],
+});
+try {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.setDefaultTimeout(20000);
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('dialog', (d) => d.accept());
+  await page.goto(process.env.SUBMISSION_DRAFT_TEST_URL || 'http://127.0.0.1:5260/?demo=1');
+  await page.locator('.demo-roles').waitFor();
+  const tasks = await page.evaluate(async () => {
+    const { demoGateway: a, resetDemo, selectDemo } = await import('/src/demo.ts');
+    resetDemo();
+    selectDemo('teacher');
+    const input = {
+      course: 'g0c0',
+      title: 'Ответ с черновиком',
+      description: 'Объясните решение',
+      due: null,
+      max: 100,
+      late: true,
+      id: null,
+      revision: null,
+    };
+    const first = await a.teacherSaveAssignment(input),
+      second = await a.teacherSaveAssignment({ ...input, title: 'Второе задание' });
+    selectDemo('student');
+    return { first, second };
+  });
+  const roles = page.locator('.demo-roles'),
+    nav = page.locator('.sidebar');
+  async function open(id) {
+    await nav.getByRole('button', { name: 'Группы и дисциплины', exact: true }).click();
+    await page.getByRole('button', { name: 'Открыть дисциплину', exact: true }).first().click();
+    await page
+      .locator('.course-tabs')
+      .getByRole('button', { name: 'Задания', exact: true })
+      .click();
+    await page
+      .getByRole('option', { name: 'Ответ с черновиком', exact: true })
+      .waitFor({ state: 'attached' });
+    await page.getByLabel('Выберите задание').selectOption(id);
+    await page.getByLabel('Ваш ответ').waitFor();
+  }
+  await roles.getByRole('button', { name: 'Студент', exact: true }).click();
+  await open(tasks.first);
+  await page.getByLabel('Ваш ответ').fill('Последний символ не должен потеряться: 12345');
+  await page
+    .getByLabel('Файл работы — необязательно')
+    .setInputFiles({
+      name: 'answer.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Исходный файл работы'),
+    });
+  await nav.getByRole('button', { name: 'Расписание', exact: true }).click();
+  await open(tasks.first);
+  assert.equal(
+    await page.getByLabel('Ваш ответ').inputValue(),
+    'Последний символ не должен потеряться: 12345',
+  );
+  await page.getByText(/Прикреплён: answer.txt/).waitFor();
+  await page.getByLabel('Выберите задание').selectOption(tasks.second);
+  assert.equal(await page.getByLabel('Ваш ответ').inputValue(), '');
+  await page.getByLabel('Ваш ответ').fill('Другой ответ');
+  await page.getByLabel('Выберите задание').selectOption(tasks.first);
+  assert.equal(
+    await page.getByLabel('Ваш ответ').inputValue(),
+    'Последний символ не должен потеряться: 12345',
+  );
+  await page.reload();
+  await page.locator('.demo-roles').waitFor();
+  await open(tasks.first);
+  assert.equal(
+    await page.getByLabel('Ваш ответ').inputValue(),
+    'Последний символ не должен потеряться: 12345',
+  );
+  await page.getByText(/Прикрепите файл повторно:/).waitFor();
+  assert.equal(
+    await page.getByRole('button', { name: 'Отправить работу', exact: true }).isEnabled(),
+    false,
+  );
+  await page
+    .getByLabel('Файл работы — необязательно')
+    .setInputFiles({
+      name: 'answer.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Исходный файл работы'),
+    });
+  await page.context().setOffline(true);
+  await page.getByText(/Нет интернета. Продолжайте писать/).waitFor();
+  await page.getByLabel('Ваш ответ').fill('Ответ дописан без сети');
+  await page.getByText(/Черновик сохранён на этом устройстве/).waitFor();
+  assert.equal(
+    await page.getByRole('button', { name: 'Отправить работу', exact: true }).isEnabled(),
+    false,
+  );
+  await page.context().setOffline(false);
+  await page.evaluate(async () => {
+    const { demoGateway: a } = await import('/src/demo.ts');
+    window.__draftSubmit = a.submit;
+    a.submit = async () => {
+      throw Error('Тестовая ошибка отправки');
+    };
+  });
+  await page.getByRole('button', { name: 'Отправить работу', exact: true }).click();
+  await page.getByText('Тестовая ошибка отправки', { exact: true }).first().waitFor();
+  assert.equal(await page.getByLabel('Ваш ответ').inputValue(), 'Ответ дописан без сети');
+  await page.evaluate(async () => {
+    const { demoGateway: a } = await import('/src/demo.ts');
+    a.submit = window.__draftSubmit;
+  });
+  await page.getByRole('button', { name: 'Отправить работу', exact: true }).click();
+  await page.getByText('Работа отправлена на проверку.', { exact: true }).waitFor();
+  const work = await page.evaluate(async (id) => {
+    const { demoGateway: a } = await import('/src/demo.ts');
+    return (await a.works(id, 0))[0];
+  }, tasks.first);
+  assert.equal(work.text_answer, 'Ответ дописан без сети');
+  assert.equal(work.original_name, 'answer.txt');
+  assert.equal(
+    await page.evaluate(
+      (id) => localStorage.getItem('studyhub-submission-v1:demo:student:' + id + ':1'),
+      tasks.first,
+    ),
+    null,
+  );
+  await page.evaluate(async (id) => {
+    const { demoGateway: a, selectDemo } = await import('/src/demo.ts');
+    selectDemo('teacher');
+    await a.returnWork(id, 'Дополните решение');
+    selectDemo('student');
+  }, work.id);
+  await page.getByRole('button', { name: 'Обновить задания', exact: true }).click();
+  await page.getByLabel('Ваш ответ').waitFor();
+  assert.equal(await page.getByLabel('Ваш ответ').inputValue(), '');
+  await page.getByLabel('Ваш ответ').fill('Новая попытка, отдельный черновик');
+  await roles.getByRole('button', { name: 'Староста', exact: true }).click();
+  await open(tasks.first);
+  assert.equal(await page.getByLabel('Ваш ответ').inputValue(), '');
+  await roles.getByRole('button', { name: 'Студент', exact: true }).click();
+  await open(tasks.first);
+  assert.equal(
+    await page.getByLabel('Ваш ответ').inputValue(),
+    'Новая попытка, отдельный черновик',
+  );
+  await page.getByText(/Черновик сохранён на этом устройстве/).waitFor();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: '/tmp/studyhub-submission-draft-mobile.png', fullPage: true });
+  assert.deepEqual(errors, []);
+  console.log(
+    'PASS student draft: immediate navigation, separate tasks/accounts/attempts, reload and reattach, offline writing, failed send, confirmed clearing and original file delivery, return and mobile',
+  );
+} finally {
+  await browser.close();
+}

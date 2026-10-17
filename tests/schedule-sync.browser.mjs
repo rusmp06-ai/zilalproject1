@@ -1,18 +1,133 @@
-import {chromium} from 'playwright-core';
+import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
-try{
- const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(10000);
- await page.clock.install({time:new Date('2026-10-15T03:12:00Z')});await page.goto(process.env.SCHEDULE_TEST_URL||'http://127.0.0.1:5262/?demo=1');await page.locator('.demo-roles').waitFor();
- await page.evaluate(async()=>{const {demoGateway:api,resetDemo,selectDemo}=await import('/src/demo.ts');resetDemo();selectDemo('owner');await api.saveBoard({group:'g0',course:'g0c0',kind:'schedule',title:'Проверка синхронизации',body:'',location:'204',start:'2026-10-15T03:00:00Z',end:'2026-10-15T04:20:00Z',id:null});});
- await page.getByRole('button',{name:'Студент',exact:true}).click();const hero=page.getByRole('region',{name:'Сейчас и следующая пара'});await hero.getByText('204',{exact:true}).waitFor();
- async function change(location,remove=false){await page.evaluate(async({location,remove})=>{const {demoGateway:api,selectDemo}=await import('/src/demo.ts');selectDemo('owner');const p=await api.board('g0','schedule',null,null,0),e=p.items.find(e=>e.title==='Проверка синхронизации');if(remove)await api.deleteBoard(e.id);else await api.saveBoard({group:e.group_id,course:e.course_id,kind:e.kind,title:e.title,body:e.body,location,start:e.starts_at,end:e.ends_at,id:e.id});selectDemo('student');},{location,remove});}
- await change('508');await page.clock.fastForward(60000);await hero.getByText('508',{exact:true}).waitFor();assert.equal(await hero.getByText('204',{exact:true}).count(),0);
- await context.setOffline(true);await hero.getByText('Сохранённое расписание · изменения не проверены',{exact:true}).waitFor();assert.equal(await hero.getByRole('button',{name:'Материалы пары',exact:true}).isDisabled(),true);
- await context.setOffline(false);await page.waitForFunction(()=>document.querySelector('.lesson-now')?.dataset.state==='fresh');await change('608');await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await hero.getByText('608',{exact:true}).waitFor();
- await page.locator('.sidebar [data-section="schedule"]').click();await page.locator('.schedule-world').getByRole('button',{name:/Проверка синхронизации/}).waitFor();await change('',true);await page.clock.fastForward(60000);await page.locator('.schedule-world').getByRole('button',{name:/Проверка синхронизации/}).waitFor({state:'hidden'});await page.locator('.schedule-world').getByText('В этот день пар нет.',{exact:true}).waitFor();
- await page.evaluate(async()=>{const {demoGateway:api,selectDemo}=await import('/src/demo.ts');selectDemo('owner');await api.saveBoard({group:'g0',course:'g0c0',kind:'schedule',title:'Пара через полночь',body:'',location:'Ночная 101',start:'2026-10-15T17:30:00Z',end:'2026-10-15T18:30:00Z',id:null});selectDemo('student');});
- await page.clock.fastForward(Date.parse('2026-10-15T18:05:00Z')-await page.evaluate(()=>Date.now()));await page.waitForFunction(()=>document.querySelector('.schedule-date-picker input[type=date]')?.value==='2026-10-16');await page.locator('.schedule-lesson.current').filter({hasText:'Пара через полночь'}).waitFor();
- await page.locator('.schedule-date-picker input[type=date]').fill('2026-10-14');await page.clock.fastForward(86400000);assert.equal(await page.locator('.schedule-date-picker input[type=date]').inputValue(),'2026-10-14');
- assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);console.log('PASS schedule sync: remote room edit detected by minute polling and focus, offline copy labelled, reconnect fresh, deletion reflected in schedule, mobile layout');
-}finally{await browser.close();}
+const browser = await chromium.launch({
+  executablePath: '/usr/bin/chromium',
+  args: ['--no-sandbox'],
+});
+try {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } }),
+    page = await context.newPage(),
+    errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.setDefaultTimeout(10000);
+  await page.clock.install({ time: new Date('2026-10-15T03:12:00Z') });
+  await page.goto(process.env.SCHEDULE_TEST_URL || 'http://127.0.0.1:5262/?demo=1');
+  await page.locator('.demo-roles').waitFor();
+  await page.evaluate(async () => {
+    const { demoGateway: api, resetDemo, selectDemo } = await import('/src/demo.ts');
+    resetDemo();
+    selectDemo('owner');
+    await api.saveBoard({
+      group: 'g0',
+      course: 'g0c0',
+      kind: 'schedule',
+      title: 'Проверка синхронизации',
+      body: '',
+      location: '204',
+      start: '2026-10-15T03:00:00Z',
+      end: '2026-10-15T04:20:00Z',
+      id: null,
+    });
+  });
+  await page.getByRole('button', { name: 'Студент', exact: true }).click();
+  const hero = page.getByRole('region', { name: 'Сейчас и следующая пара' });
+  await hero.getByText('204', { exact: true }).waitFor();
+  async function change(location, remove = false) {
+    await page.evaluate(
+      async ({ location, remove }) => {
+        const { demoGateway: api, selectDemo } = await import('/src/demo.ts');
+        selectDemo('owner');
+        const p = await api.board('g0', 'schedule', null, null, 0),
+          e = p.items.find((e) => e.title === 'Проверка синхронизации');
+        if (remove) await api.deleteBoard(e.id);
+        else
+          await api.saveBoard({
+            group: e.group_id,
+            course: e.course_id,
+            kind: e.kind,
+            title: e.title,
+            body: e.body,
+            location,
+            start: e.starts_at,
+            end: e.ends_at,
+            id: e.id,
+          });
+        selectDemo('student');
+      },
+      { location, remove },
+    );
+  }
+  await change('508');
+  await page.clock.fastForward(60000);
+  await hero.getByText('508', { exact: true }).waitFor();
+  assert.equal(await hero.getByText('204', { exact: true }).count(), 0);
+  await context.setOffline(true);
+  await hero
+    .getByText('Сохранённое расписание · изменения не проверены', { exact: true })
+    .waitFor();
+  assert.equal(
+    await hero.getByRole('button', { name: 'Материалы пары', exact: true }).isDisabled(),
+    true,
+  );
+  await context.setOffline(false);
+  await page.waitForFunction(
+    () => document.querySelector('.lesson-now')?.dataset.state === 'fresh',
+  );
+  await change('608');
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await hero.getByText('608', { exact: true }).waitFor();
+  await page.locator('.sidebar [data-section="schedule"]').click();
+  await page
+    .locator('.schedule-world')
+    .getByRole('button', { name: /Проверка синхронизации/ })
+    .waitFor();
+  await change('', true);
+  await page.clock.fastForward(60000);
+  await page
+    .locator('.schedule-world')
+    .getByRole('button', { name: /Проверка синхронизации/ })
+    .waitFor({ state: 'hidden' });
+  await page
+    .locator('.schedule-world')
+    .getByText('В этот день пар нет.', { exact: true })
+    .waitFor();
+  await page.evaluate(async () => {
+    const { demoGateway: api, selectDemo } = await import('/src/demo.ts');
+    selectDemo('owner');
+    await api.saveBoard({
+      group: 'g0',
+      course: 'g0c0',
+      kind: 'schedule',
+      title: 'Пара через полночь',
+      body: '',
+      location: 'Ночная 101',
+      start: '2026-10-15T17:30:00Z',
+      end: '2026-10-15T18:30:00Z',
+      id: null,
+    });
+    selectDemo('student');
+  });
+  await page.clock.fastForward(
+    Date.parse('2026-10-15T18:05:00Z') - (await page.evaluate(() => Date.now())),
+  );
+  await page.waitForFunction(
+    () => document.querySelector('.schedule-date-picker input[type=date]')?.value === '2026-10-16',
+  );
+  await page
+    .locator('.schedule-lesson.current')
+    .filter({ hasText: 'Пара через полночь' })
+    .waitFor();
+  await page.locator('.schedule-date-picker input[type=date]').fill('2026-10-14');
+  await page.clock.fastForward(86400000);
+  assert.equal(
+    await page.locator('.schedule-date-picker input[type=date]').inputValue(),
+    '2026-10-14',
+  );
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  assert.deepEqual(errors, []);
+  console.log(
+    'PASS schedule sync: remote room edit detected by minute polling and focus, offline copy labelled, reconnect fresh, deletion reflected in schedule, mobile layout',
+  );
+} finally {
+  await browser.close();
+}

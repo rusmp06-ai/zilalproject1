@@ -1,26 +1,282 @@
-import {useEffect,useRef,useState} from 'react';
-import {mayLeaveDrafts,useDraft,registerNavigationGuard} from './drafts';
-import type {Gateway,Snapshot,Course} from './types';
-export function CourseManager({api,snapshot,group,onOpen,onChanged}:{api:Gateway;snapshot:Snapshot;group:string;onOpen:(id:string)=>void;onChanged:()=>Promise<void>}){
- const [archived,setArchived]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[confirm,setConfirm]=useState<{course:Course;action:'archive'|'restore'|'delete'}|null>(null);const inFlight=useRef(false);
- const name=useDraft((api.demo?'demo:':'live:')+snapshot.me.id+':course-name:'+group,{title:'',course:null as Course|null});
- const editing=name.value.course,setEditing=(course:Course|null)=>name.setValue(v=>({...v,course}));
- const confirmRef=useRef<HTMLDivElement>(null);
- useEffect(()=>{confirmRef.current?.scrollIntoView?.({block:'nearest',behavior:'smooth'});},[confirm]);
- useEffect(()=>registerNavigationGuard(()=>{if(!inFlight.current)return true;window.alert('Дождитесь завершения изменения дисциплины.');return false;}),[]);
- const allowed=!snapshot.me.blocked&&(snapshot.owner||snapshot.memberships.some(m=>m.user_id===snapshot.me.id&&m.active&&m.role==='leader'&&m.group_id===group)&&!snapshot.groups.find(g=>g.id===group)?.blocked);
- useEffect(()=>{setConfirm(null);setError('');setMessage('');},[group]);
- const courses=snapshot.courses.filter(c=>c.group_id===group&&c.archived===archived);
- async function refresh(){if(inFlight.current)return;inFlight.current=true;setBusy(true);setError('');try{await onChanged();}catch{setError('Не удалось обновить список дисциплин.');}finally{inFlight.current=false;setBusy(false);}}
- async function act(course:Course,action:'rename'|'archive'|'restore'|'delete'){
-  if(inFlight.current)return;inFlight.current=true;setBusy(true);setError('');setMessage('');
-  try{await api.manageCourse(course,action,name.value.title);setMessage(({rename:'Название изменено.',archive:'Дисциплина в архиве.',restore:'Дисциплина восстановлена.',delete:'Пустая дисциплина удалена.'})[action]);setConfirm(null);name.clear();try{await onChanged();}catch{setError('Изменение сохранено. Список не обновился — обновите страницу; повторять действие не нужно.');}}
-  catch(e){setError(e instanceof Error?e.message:'Действие не выполнено.');}finally{inFlight.current=false;setBusy(false);}
- }
- if(!allowed)return null;
- return <div className="course-manager"><div className="card-actions" aria-label="Список дисциплин"><button disabled={busy} aria-pressed={!archived} onClick={()=>{if(mayLeaveDrafts()){setArchived(false);name.clear();setConfirm(null);}}}>Текущие</button><button disabled={busy} aria-pressed={archived} onClick={()=>{if(mayLeaveDrafts()){setArchived(true);name.clear();setConfirm(null);}}}>Архив</button><button disabled={busy} onClick={()=>void refresh()}>Обновить список дисциплин</button></div>{error&&<p className="notice error" role="alert">{error}</p>}{message&&<p className="notice success" role="status">{message}</p>}
- <div className="course-list">{courses.map(course=><div className="managed-course" key={course.id}><b>{course.title}</b><div className="card-actions">{!course.archived&&<button disabled={busy} onClick={()=>{if(mayLeaveDrafts())onOpen(course.id);}}>Управлять дисциплиной</button>}<details><summary aria-label={'Действия: '+course.title}>⋯</summary><div className="course-menu" onClick={e=>{if((e.target as HTMLElement).closest('button'))(e.currentTarget.parentElement as HTMLDetailsElement).open=false;}}><button disabled={busy} onClick={()=>{if(!mayLeaveDrafts())return;name.setValue({title:course.title,course});setConfirm(null);}}>Переименовать</button><button disabled={busy} onClick={()=>{if(mayLeaveDrafts())setConfirm({course,action:course.archived?'restore':'archive'});}}>{course.archived?'Восстановить':'Архивировать'}</button><button disabled={busy} className="danger" onClick={()=>{if(mayLeaveDrafts())setConfirm({course,action:'delete'});}}>Удалить пустую дисциплину</button></div></details></div></div>)}</div>{!courses.length&&<p>{archived?'В архиве нет дисциплин.':'Текущих дисциплин пока нет.'}</p>}
- {editing&&<form className="course-name-editor" onSubmit={e=>{e.preventDefault();void act(editing,'rename');}}><h3>Переименовать дисциплину</h3><label>Новое название дисциплины<input autoFocus value={name.value.title} onChange={e=>name.setValue(v=>({...v,title:e.target.value}))} maxLength={200} required disabled={busy}/></label><div className="card-actions"><button className="primary" disabled={busy}>Сохранить название</button><button type="button" disabled={busy} onClick={()=>{name.clear();setEditing(null);}}>Отмена переименования</button></div></form>}
- {confirm&&<div ref={confirmRef} className="delete-confirm" role="group" aria-label="Подтверждение действия с дисциплиной"><h3>{confirm.course.title}</h3><p>{confirm.action==='delete'?'Удалить дисциплину безвозвратно? Это возможно, только если в ней нет связанных данных.':confirm.action==='archive'?'Убрать дисциплину из текущей учёбы? Материалы и результаты сохранятся.':'Вернуть дисциплину в текущую учёбу с прежними материалами и назначениями?'}</p><div className="card-actions"><button disabled={busy} className={confirm.action==='delete'?'danger':'primary'} onClick={()=>void act(confirm.course,confirm.action)}>{confirm.action==='delete'?'Подтвердить удаление дисциплины':confirm.action==='archive'?'Подтвердить архивирование':'Подтвердить восстановление дисциплины'}</button><button disabled={busy} onClick={()=>setConfirm(null)}>Отменить действие</button></div></div>}
- </div>;
+import { useEffect, useRef, useState } from 'react';
+import { mayLeaveDrafts, useDraft, registerNavigationGuard } from './drafts';
+import type { Gateway, Snapshot, Course } from './types';
+export function CourseManager({
+  api,
+  snapshot,
+  group,
+  onOpen,
+  onChanged,
+}: {
+  api: Gateway;
+  snapshot: Snapshot;
+  group: string;
+  onOpen: (id: string) => void;
+  onChanged: () => Promise<void>;
+}) {
+  const [archived, setArchived] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [message, setMessage] = useState(''),
+    [confirm, setConfirm] = useState<{
+      course: Course;
+      action: 'archive' | 'restore' | 'delete';
+    } | null>(null);
+  const inFlight = useRef(false);
+  const name = useDraft((api.demo ? 'demo:' : 'live:') + snapshot.me.id + ':course-name:' + group, {
+    title: '',
+    course: null as Course | null,
+  });
+  const editing = name.value.course,
+    setEditing = (course: Course | null) => name.setValue((v) => ({ ...v, course }));
+  const confirmRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    confirmRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [confirm]);
+  useEffect(
+    () =>
+      registerNavigationGuard(() => {
+        if (!inFlight.current) return true;
+        window.alert('Дождитесь завершения изменения дисциплины.');
+        return false;
+      }),
+    [],
+  );
+  const allowed =
+    !snapshot.me.blocked &&
+    (snapshot.owner ||
+      (snapshot.memberships.some(
+        (m) =>
+          m.user_id === snapshot.me.id && m.active && m.role === 'leader' && m.group_id === group,
+      ) &&
+        !snapshot.groups.find((g) => g.id === group)?.blocked));
+  useEffect(() => {
+    setConfirm(null);
+    setError('');
+    setMessage('');
+  }, [group]);
+  const courses = snapshot.courses.filter((c) => c.group_id === group && c.archived === archived);
+  async function refresh() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      await onChanged();
+    } catch {
+      setError('Не удалось обновить список дисциплин.');
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+  async function act(course: Course, action: 'rename' | 'archive' | 'restore' | 'delete') {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.manageCourse(course, action, name.value.title);
+      setMessage(
+        {
+          rename: 'Название изменено.',
+          archive: 'Дисциплина в архиве.',
+          restore: 'Дисциплина восстановлена.',
+          delete: 'Пустая дисциплина удалена.',
+        }[action],
+      );
+      setConfirm(null);
+      name.clear();
+      try {
+        await onChanged();
+      } catch {
+        setError(
+          'Изменение сохранено. Список не обновился — обновите страницу; повторять действие не нужно.',
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Действие не выполнено.');
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+  if (!allowed) return null;
+  return (
+    <div className="course-manager">
+      <div className="card-actions" aria-label="Список дисциплин">
+        <button
+          disabled={busy}
+          aria-pressed={!archived}
+          onClick={() => {
+            if (mayLeaveDrafts()) {
+              setArchived(false);
+              name.clear();
+              setConfirm(null);
+            }
+          }}
+        >
+          Текущие
+        </button>
+        <button
+          disabled={busy}
+          aria-pressed={archived}
+          onClick={() => {
+            if (mayLeaveDrafts()) {
+              setArchived(true);
+              name.clear();
+              setConfirm(null);
+            }
+          }}
+        >
+          Архив
+        </button>
+        <button disabled={busy} onClick={() => void refresh()}>
+          Обновить список дисциплин
+        </button>
+      </div>
+      {error && (
+        <p className="notice error" role="alert">
+          {error}
+        </p>
+      )}
+      {message && (
+        <p className="notice success" role="status">
+          {message}
+        </p>
+      )}
+      <div className="course-list">
+        {courses.map((course) => (
+          <div className="managed-course" key={course.id}>
+            <b>{course.title}</b>
+            <div className="card-actions">
+              {!course.archived && (
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    if (mayLeaveDrafts()) onOpen(course.id);
+                  }}
+                >
+                  Управлять дисциплиной
+                </button>
+              )}
+              <details>
+                <summary aria-label={'Действия: ' + course.title}>⋯</summary>
+                <div
+                  className="course-menu"
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest('button'))
+                      (e.currentTarget.parentElement as HTMLDetailsElement).open = false;
+                  }}
+                >
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      if (!mayLeaveDrafts()) return;
+                      name.setValue({ title: course.title, course });
+                      setConfirm(null);
+                    }}
+                  >
+                    Переименовать
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      if (mayLeaveDrafts())
+                        setConfirm({ course, action: course.archived ? 'restore' : 'archive' });
+                    }}
+                  >
+                    {course.archived ? 'Восстановить' : 'Архивировать'}
+                  </button>
+                  <button
+                    disabled={busy}
+                    className="danger"
+                    onClick={() => {
+                      if (mayLeaveDrafts()) setConfirm({ course, action: 'delete' });
+                    }}
+                  >
+                    Удалить пустую дисциплину
+                  </button>
+                </div>
+              </details>
+            </div>
+          </div>
+        ))}
+      </div>
+      {!courses.length && (
+        <p>{archived ? 'В архиве нет дисциплин.' : 'Текущих дисциплин пока нет.'}</p>
+      )}
+      {editing && (
+        <form
+          className="course-name-editor"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void act(editing, 'rename');
+          }}
+        >
+          <h3>Переименовать дисциплину</h3>
+          <label>
+            Новое название дисциплины
+            <input
+              autoFocus
+              value={name.value.title}
+              onChange={(e) => name.setValue((v) => ({ ...v, title: e.target.value }))}
+              maxLength={200}
+              required
+              disabled={busy}
+            />
+          </label>
+          <div className="card-actions">
+            <button className="primary" disabled={busy}>
+              Сохранить название
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                name.clear();
+                setEditing(null);
+              }}
+            >
+              Отмена переименования
+            </button>
+          </div>
+        </form>
+      )}
+      {confirm && (
+        <div
+          ref={confirmRef}
+          className="delete-confirm"
+          role="group"
+          aria-label="Подтверждение действия с дисциплиной"
+        >
+          <h3>{confirm.course.title}</h3>
+          <p>
+            {confirm.action === 'delete'
+              ? 'Удалить дисциплину безвозвратно? Это возможно, только если в ней нет связанных данных.'
+              : confirm.action === 'archive'
+                ? 'Убрать дисциплину из текущей учёбы? Материалы и результаты сохранятся.'
+                : 'Вернуть дисциплину в текущую учёбу с прежними материалами и назначениями?'}
+          </p>
+          <div className="card-actions">
+            <button
+              disabled={busy}
+              className={confirm.action === 'delete' ? 'danger' : 'primary'}
+              onClick={() => void act(confirm.course, confirm.action)}
+            >
+              {confirm.action === 'delete'
+                ? 'Подтвердить удаление дисциплины'
+                : confirm.action === 'archive'
+                  ? 'Подтвердить архивирование'
+                  : 'Подтвердить восстановление дисциплины'}
+            </button>
+            <button disabled={busy} onClick={() => setConfirm(null)}>
+              Отменить действие
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

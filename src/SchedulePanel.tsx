@@ -1,26 +1,203 @@
-import {useViewState,validDate} from './view-state';
-import {useEffect,useState} from 'react';
-import type {Gateway,Snapshot} from './types';
-import {groupContext} from './group-context';
-import {boardInstant,boardDate} from './board-time';
-import {studyDate,lessonTime} from './lesson-day';
-import {useSchedule} from './useSchedule';
-import {StudyIcon} from './StudyIcon';
-import {weekdayShort} from './weekly-schedule';
-import {calendarFile,downloadCalendar} from './calendar-export';
-export function moveScheduleDate(date:string,days:number){return studyDate(Date.parse(boardInstant(date+'T12:00'))+days*86400000);}
-export function weekStart(date:string){const d=new Date(date+'T12:00:00+06:00');const day=new Date(d.getTime()+6*3600000).getUTCDay();return moveScheduleDate(date,-((day+6)%7));}
-export function SchedulePanel({api,snapshot,onCourse}:{api:Gateway;snapshot:Snapshot;onCourse:(id:string,task?:string,start?:'materials'|'notes')=>void;allowManagement?:boolean}){
- const [now,setNow]=useState(Date.now()),[date,setDate]=useViewState<string>('schedule','date',studyDate(Date.now()),validDate),[revision,setRevision]=useState(0);
- const context=groupContext(snapshot),start=weekStart(date),schedule=useSchedule(api,(api.demo?'demo:':'live:')+snapshot.me.id,context.id,context.name,boardInstant(date+'T00:00'),boardInstant(moveScheduleDate(date,1)+'T00:00'),revision);
- useEffect(()=>{let previous=Date.now();const tick=()=>{const time=Date.now(),oldDay=studyDate(previous);setNow(time);setDate(old=>old===oldDay?studyDate(time):old);previous=time;};const id=setInterval(tick,15000);window.addEventListener('focus',tick);document.addEventListener('visibilitychange',tick);return()=>{clearInterval(id);window.removeEventListener('focus',tick);document.removeEventListener('visibilitychange',tick);};},[]);
- const days=Array.from({length:7},(_,i)=>moveScheduleDate(start,i)),busy=schedule.scheduleStatus==='loading',read=schedule.scheduleAllowed&&['fresh','saved'].includes(schedule.scheduleStatus),from=boardInstant(date+'T00:00'),to=boardInstant(moveScheduleDate(date,1)+'T00:00'),events=schedule.events.filter(e=>e.starts_at!<to&&e.ends_at!>from).sort((a,b)=>a.starts_at!.localeCompare(b.starts_at!)||a.id.localeCompare(b.id));
- const next=date===studyDate(now)?events.find(e=>!e.cancelled&&Date.parse(e.starts_at!)>now)?.id:null;
- return <section className="schedule-world simple-schedule"><div className="schedule-day-heading"><div><p className="eyebrow"><span>{context.name}</span> · Бишкек</p><h2>{new Date(date+'T12:00:00+06:00').toLocaleDateString('ru-RU',{timeZone:'Asia/Bishkek',weekday:'long',day:'numeric',month:'long'})}</h2></div><button onClick={()=>setDate(studyDate(Date.now()))}>Сегодня</button></div>
- <div className="schedule-week-picker"><button aria-label="Предыдущая неделя" onClick={()=>setDate(moveScheduleDate(date,-7))}><StudyIcon name="back"/></button><nav className="weekday-strip" aria-label="Дни недели">{days.map((day,i)=><button key={day} aria-label={new Date(day+'T12:00:00+06:00').toLocaleDateString('ru-RU',{timeZone:'Asia/Bishkek',weekday:'long',day:'numeric',month:'long'})} aria-pressed={day===date} onClick={()=>setDate(day)}><span>{weekdayShort[i]}</span><b>{Number(day.slice(8))}</b></button>)}</nav><button aria-label="Следующая неделя" onClick={()=>setDate(moveScheduleDate(date,7))}><StudyIcon name="next"/></button></div>
- <label className="schedule-date-picker"><span className="visually-hidden">Дата</span><input type="date" value={date} onChange={e=>{if(e.target.value&&validDate(e.target.value))setDate(e.target.value);}}/></label>
- {busy&&<p role="status">Загружаем расписание…</p>}{schedule.scheduleStatus==='error'&&<p className="notice error" role="alert">Не удалось загрузить расписание. <button onClick={()=>setRevision(n=>n+1)}>Повторить</button></p>}{!busy&&!schedule.scheduleAllowed&&<p>Расписание недоступно для этой группы.</p>}{schedule.scheduleStatus==='saved'&&<p className="lesson-stale" role="status">Сохранённая копия от {schedule.scheduleSavedAt&&boardDate(schedule.scheduleSavedAt)}. Изменения пока не проверены.</p>}
- {read&&<section className="schedule-day" aria-label="Пары выбранного дня">{!events.length&&<p className="card empty">В этот день пар нет.</p>}{events.map((e,i)=>{const current=!e.cancelled&&Date.parse(e.starts_at!)<=now&&Date.parse(e.ends_at!)>now,previous=events.slice(0,i).filter(e=>!e.cancelled).at(-1),gap=!e.cancelled&&previous?Date.parse(e.starts_at!)-Date.parse(previous.ends_at!):0,course=e.course_id&&snapshot.courses.some(c=>c.id===e.course_id);return <div key={e.id}>{gap>0&&<p className="schedule-gap">Перерыв · {Math.round(gap/60000)} мин</p>}{gap<0&&<p className="schedule-gap">Время занятий пересекается</p>}<button className={'schedule-lesson'+(current?' current':'')+(e.cancelled?' cancelled':Date.parse(e.ends_at!)<=now?' finished':'')} disabled={!course||e.cancelled} onClick={()=>onCourse(e.course_id!,undefined,'materials')}><span className="schedule-lesson-time">{lessonTime(e.starts_at!)} — {lessonTime(e.ends_at!)}</span><span className="schedule-lesson-copy"><b>{e.title}</b>{e.location&&<small>Аудитория {e.location}</small>}{e.body&&!e.cancelled&&<small>{e.body}</small>}</span>{(current||next===e.id||e.cancelled)&&<strong className="schedule-state">{e.cancelled?'Отменено':current?'Идёт сейчас':'Следующая'}</strong>}</button></div>;})}</section>}
- <details className="schedule-tools"><summary>Дополнительно</summary><div className="card-actions"><button disabled={busy} onClick={()=>setRevision(n=>n+1)}>Обновить расписание</button>{read&&schedule.scheduleStatus==='fresh'&&<button onClick={()=>downloadCalendar(calendarFile(schedule.events,[],[]))}>Скачать календарь дня</button>}</div></details>
- </section>;
+import { useViewState, validDate } from './view-state';
+import { useEffect, useState } from 'react';
+import type { Gateway, Snapshot } from './types';
+import { groupContext } from './group-context';
+import { boardInstant, boardDate } from './board-time';
+import { studyDate, lessonTime } from './lesson-day';
+import { useSchedule } from './useSchedule';
+import { StudyIcon } from './StudyIcon';
+import { weekdayShort } from './weekly-schedule';
+import { calendarFile, downloadCalendar } from './calendar-export';
+export function moveScheduleDate(date: string, days: number) {
+  return studyDate(Date.parse(boardInstant(date + 'T12:00')) + days * 86400000);
+}
+export function weekStart(date: string) {
+  const d = new Date(date + 'T12:00:00+06:00');
+  const day = new Date(d.getTime() + 6 * 3600000).getUTCDay();
+  return moveScheduleDate(date, -((day + 6) % 7));
+}
+export function SchedulePanel({
+  api,
+  snapshot,
+  onCourse,
+}: {
+  api: Gateway;
+  snapshot: Snapshot;
+  onCourse: (id: string, task?: string, start?: 'materials' | 'notes') => void;
+  allowManagement?: boolean;
+}) {
+  const [now, setNow] = useState(Date.now()),
+    [date, setDate] = useViewState<string>('schedule', 'date', studyDate(Date.now()), validDate),
+    [revision, setRevision] = useState(0);
+  const context = groupContext(snapshot),
+    start = weekStart(date),
+    schedule = useSchedule(
+      api,
+      (api.demo ? 'demo:' : 'live:') + snapshot.me.id,
+      context.id,
+      context.name,
+      boardInstant(date + 'T00:00'),
+      boardInstant(moveScheduleDate(date, 1) + 'T00:00'),
+      revision,
+    );
+  useEffect(() => {
+    let previous = Date.now();
+    const tick = () => {
+      const time = Date.now(),
+        oldDay = studyDate(previous);
+      setNow(time);
+      setDate((old) => (old === oldDay ? studyDate(time) : old));
+      previous = time;
+    };
+    const id = setInterval(tick, 15000);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, []);
+  const days = Array.from({ length: 7 }, (_, i) => moveScheduleDate(start, i)),
+    busy = schedule.scheduleStatus === 'loading',
+    read = schedule.scheduleAllowed && ['fresh', 'saved'].includes(schedule.scheduleStatus),
+    from = boardInstant(date + 'T00:00'),
+    to = boardInstant(moveScheduleDate(date, 1) + 'T00:00'),
+    events = schedule.events
+      .filter((e) => e.starts_at! < to && e.ends_at! > from)
+      .sort((a, b) => a.starts_at!.localeCompare(b.starts_at!) || a.id.localeCompare(b.id));
+  const next =
+    date === studyDate(now)
+      ? events.find((e) => !e.cancelled && Date.parse(e.starts_at!) > now)?.id
+      : null;
+  return (
+    <section className="schedule-world simple-schedule">
+      <div className="schedule-day-heading">
+        <div>
+          <p className="eyebrow">
+            <span>{context.name}</span> · Бишкек
+          </p>
+          <h2>
+            {new Date(date + 'T12:00:00+06:00').toLocaleDateString('ru-RU', {
+              timeZone: 'Asia/Bishkek',
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+            })}
+          </h2>
+        </div>
+        <button onClick={() => setDate(studyDate(Date.now()))}>Сегодня</button>
+      </div>
+      <div className="schedule-week-picker">
+        <button aria-label="Предыдущая неделя" onClick={() => setDate(moveScheduleDate(date, -7))}>
+          <StudyIcon name="back" />
+        </button>
+        <nav className="weekday-strip" aria-label="Дни недели">
+          {days.map((day, i) => (
+            <button
+              key={day}
+              aria-label={new Date(day + 'T12:00:00+06:00').toLocaleDateString('ru-RU', {
+                timeZone: 'Asia/Bishkek',
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
+              aria-pressed={day === date}
+              onClick={() => setDate(day)}
+            >
+              <span>{weekdayShort[i]}</span>
+              <b>{Number(day.slice(8))}</b>
+            </button>
+          ))}
+        </nav>
+        <button aria-label="Следующая неделя" onClick={() => setDate(moveScheduleDate(date, 7))}>
+          <StudyIcon name="next" />
+        </button>
+      </div>
+      <label className="schedule-date-picker">
+        <span className="visually-hidden">Дата</span>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => {
+            if (e.target.value && validDate(e.target.value)) setDate(e.target.value);
+          }}
+        />
+      </label>
+      {busy && <p role="status">Загружаем расписание…</p>}
+      {schedule.scheduleStatus === 'error' && (
+        <p className="notice error" role="alert">
+          Не удалось загрузить расписание.{' '}
+          <button onClick={() => setRevision((n) => n + 1)}>Повторить</button>
+        </p>
+      )}
+      {!busy && !schedule.scheduleAllowed && <p>Расписание недоступно для этой группы.</p>}
+      {schedule.scheduleStatus === 'saved' && (
+        <p className="lesson-stale" role="status">
+          Сохранённая копия от {schedule.scheduleSavedAt && boardDate(schedule.scheduleSavedAt)}.
+          Изменения пока не проверены.
+        </p>
+      )}
+      {read && (
+        <section className="schedule-day" aria-label="Пары выбранного дня">
+          {!events.length && <p className="card empty">В этот день пар нет.</p>}
+          {events.map((e, i) => {
+            const current =
+                !e.cancelled && Date.parse(e.starts_at!) <= now && Date.parse(e.ends_at!) > now,
+              previous = events
+                .slice(0, i)
+                .filter((e) => !e.cancelled)
+                .at(-1),
+              gap =
+                !e.cancelled && previous
+                  ? Date.parse(e.starts_at!) - Date.parse(previous.ends_at!)
+                  : 0,
+              course = e.course_id && snapshot.courses.some((c) => c.id === e.course_id);
+            return (
+              <div key={e.id}>
+                {gap > 0 && <p className="schedule-gap">Перерыв · {Math.round(gap / 60000)} мин</p>}
+                {gap < 0 && <p className="schedule-gap">Время занятий пересекается</p>}
+                <button
+                  className={
+                    'schedule-lesson' +
+                    (current ? ' current' : '') +
+                    (e.cancelled ? ' cancelled' : Date.parse(e.ends_at!) <= now ? ' finished' : '')
+                  }
+                  disabled={!course || e.cancelled}
+                  onClick={() => onCourse(e.course_id!, undefined, 'materials')}
+                >
+                  <span className="schedule-lesson-time">
+                    {lessonTime(e.starts_at!)} — {lessonTime(e.ends_at!)}
+                  </span>
+                  <span className="schedule-lesson-copy">
+                    <b>{e.title}</b>
+                    {e.location && <small>Аудитория {e.location}</small>}
+                    {e.body && !e.cancelled && <small>{e.body}</small>}
+                  </span>
+                  {(current || next === e.id || e.cancelled) && (
+                    <strong className="schedule-state">
+                      {e.cancelled ? 'Отменено' : current ? 'Идёт сейчас' : 'Следующая'}
+                    </strong>
+                  )}
+                </button>
+              </div>
+            );
+          })}
+        </section>
+      )}
+      <details className="schedule-tools">
+        <summary>Дополнительно</summary>
+        <div className="card-actions">
+          <button disabled={busy} onClick={() => setRevision((n) => n + 1)}>
+            Обновить расписание
+          </button>
+          {read && schedule.scheduleStatus === 'fresh' && (
+            <button onClick={() => downloadCalendar(calendarFile(schedule.events, [], []))}>
+              Скачать календарь дня
+            </button>
+          )}
+        </div>
+      </details>
+    </section>
+  );
 }

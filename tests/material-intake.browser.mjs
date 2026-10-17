@@ -1,18 +1,133 @@
-import {chromium} from 'playwright-core';
+import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
-try{
- const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(20000);const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());await page.goto(process.env.INTAKE_TEST_URL||'http://127.0.0.1:5230/?demo=1');await page.locator('.demo-roles').waitFor();
- const roles=page.locator('.demo-roles'),sidebar=page.locator('.sidebar');await roles.getByRole('button',{name:'Староста',exact:true}).click();await sidebar.getByRole('button',{name:'Админ',exact:true}).click();await page.locator('.leader-admin-tabs').getByRole('button',{name:'Дисциплины и преподаватели',exact:true}).click();await page.getByRole('button',{name:'Добавить документ с ИИ',exact:true}).click();const wizard=page.getByRole('region',{name:'Добавление документа с ИИ'});
- async function choose(text,name='lecture.txt'){await wizard.getByLabel('Документ для распознавания').setInputFiles({name,mimeType:'text/plain',buffer:Buffer.from(text)});}
- async function analyze(){await wizard.getByRole('checkbox',{name:/Разрешаю отправить/}).check();await wizard.getByRole('button',{name:'Распознать документ',exact:true}).click();await wizard.getByText('Проверьте предложенные поля. Ничего ещё не опубликовано.',{exact:true}).waitFor();}
- await choose('Лекция 3. Корпоративные финансы\nТема: стоимость капитала');assert.equal(await wizard.getByRole('button',{name:'Распознать документ',exact:true}).isEnabled(),false);await wizard.getByRole('button',{name:'Посмотреть оригинал'}).click();await page.getByRole('dialog',{name:'Проверка исходного документа'}).waitFor();await page.getByRole('button',{name:'Закрыть оригинал'}).click();await analyze();assert.equal(await wizard.getByLabel('Тип документа',{exact:true}).inputValue(),'lecture');assert.equal(await wizard.getByLabel('Дисциплина для публикации').inputValue(),'g0c0');
- await wizard.getByLabel('Название документа').fill('Стоимость капитала');await page.screenshot({path:'/tmp/studyhub-material-intake.png',fullPage:true});await wizard.getByRole('button',{name:'Утвердить и опубликовать',exact:true}).click();await wizard.getByText('Материал опубликован. Оригинальный файл сохранён.',{exact:true}).waitFor();
- await wizard.getByRole('button',{name:'Добавить следующий документ'}).click();await choose('Учебник. Корпоративные финансы\nГлава 1. Инвестиции','book.txt');await analyze();assert.equal(await wizard.getByLabel('Тип документа',{exact:true}).inputValue(),'book');assert.equal(await wizard.getByLabel('Группа автора').inputValue(),'g0');await wizard.getByRole('button',{name:'Утвердить и опубликовать',exact:true}).click();await wizard.getByText('Материал опубликован. Оригинальный файл сохранён.',{exact:true}).waitFor();
- await wizard.getByRole('button',{name:'Добавить следующий документ'}).click();await choose('Практическое задание. Корпоративные финансы\nРассчитайте стоимость капитала');await analyze();await wizard.getByText(/Назначать задания может преподаватель/).waitFor();assert.equal(await wizard.getByLabel('Дисциплина для публикации').locator('option').count(),1);await wizard.getByRole('button',{name:'Закрыть помощника'}).click();
- await roles.getByRole('button',{name:'Преподаватель',exact:true}).click();await sidebar.getByRole('button',{name:'Мои дисциплины',exact:true}).click();await page.getByRole('button',{name:'Добавить документ с ИИ',exact:true}).click();await choose('Практическое задание. Корпоративные финансы\nРассчитайте стоимость капитала','practice.txt');await analyze();assert.equal(await wizard.getByLabel('Дисциплина для публикации').inputValue(),'');await wizard.getByLabel('Дисциплина для публикации').selectOption('g0c0');await wizard.getByLabel('Название документа').fill('Расчёт стоимости капитала');await wizard.getByLabel('Условия задания',{exact:true}).fill('Рассчитайте стоимость капитала по данным в приложенном документе.');await wizard.getByRole('button',{name:'Утвердить и опубликовать',exact:true}).click();await wizard.getByText('Материал опубликован. Оригинальный файл сохранён.',{exact:true}).waitFor();
+const browser = await chromium.launch({
+  executablePath: '/usr/bin/chromium',
+  args: ['--no-sandbox'],
+});
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.setDefaultTimeout(20000);
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('dialog', (d) => d.accept());
+  await page.goto(process.env.INTAKE_TEST_URL || 'http://127.0.0.1:5230/?demo=1');
+  await page.locator('.demo-roles').waitFor();
+  const roles = page.locator('.demo-roles'),
+    sidebar = page.locator('.sidebar');
+  await roles.getByRole('button', { name: 'Староста', exact: true }).click();
+  await sidebar.getByRole('button', { name: 'Админ', exact: true }).click();
+  await page
+    .locator('.leader-admin-tabs')
+    .getByRole('button', { name: 'Дисциплины и преподаватели', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Добавить документ с ИИ', exact: true }).click();
+  const wizard = page.getByRole('region', { name: 'Добавление документа с ИИ' });
+  async function choose(text, name = 'lecture.txt') {
+    await wizard
+      .getByLabel('Документ для распознавания')
+      .setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(text) });
+  }
+  async function analyze() {
+    await wizard.getByRole('checkbox', { name: /Разрешаю отправить/ }).check();
+    await wizard.getByRole('button', { name: 'Распознать документ', exact: true }).click();
+    await wizard
+      .getByText('Проверьте предложенные поля. Ничего ещё не опубликовано.', { exact: true })
+      .waitFor();
+  }
+  await choose('Лекция 3. Корпоративные финансы\nТема: стоимость капитала');
+  assert.equal(
+    await wizard.getByRole('button', { name: 'Распознать документ', exact: true }).isEnabled(),
+    false,
+  );
+  await wizard.getByRole('button', { name: 'Посмотреть оригинал' }).click();
+  await page.getByRole('dialog', { name: 'Проверка исходного документа' }).waitFor();
+  await page.getByRole('button', { name: 'Закрыть оригинал' }).click();
+  await analyze();
+  assert.equal(await wizard.getByLabel('Тип документа', { exact: true }).inputValue(), 'lecture');
+  assert.equal(await wizard.getByLabel('Дисциплина для публикации').inputValue(), 'g0c0');
+  await wizard.getByLabel('Название документа').fill('Стоимость капитала');
+  await page.screenshot({ path: '/tmp/studyhub-material-intake.png', fullPage: true });
+  await wizard.getByRole('button', { name: 'Утвердить и опубликовать', exact: true }).click();
+  await wizard
+    .getByText('Материал опубликован. Оригинальный файл сохранён.', { exact: true })
+    .waitFor();
+  await wizard.getByRole('button', { name: 'Добавить следующий документ' }).click();
+  await choose('Учебник. Корпоративные финансы\nГлава 1. Инвестиции', 'book.txt');
+  await analyze();
+  assert.equal(await wizard.getByLabel('Тип документа', { exact: true }).inputValue(), 'book');
+  assert.equal(await wizard.getByLabel('Группа автора').inputValue(), 'g0');
+  await wizard.getByRole('button', { name: 'Утвердить и опубликовать', exact: true }).click();
+  await wizard
+    .getByText('Материал опубликован. Оригинальный файл сохранён.', { exact: true })
+    .waitFor();
+  await wizard.getByRole('button', { name: 'Добавить следующий документ' }).click();
+  await choose('Практическое задание. Корпоративные финансы\nРассчитайте стоимость капитала');
+  await analyze();
+  await wizard.getByText(/Назначать задания может преподаватель/).waitFor();
+  assert.equal(await wizard.getByLabel('Дисциплина для публикации').locator('option').count(), 1);
+  await wizard.getByRole('button', { name: 'Закрыть помощника' }).click();
+  await roles.getByRole('button', { name: 'Преподаватель', exact: true }).click();
+  await sidebar.getByRole('button', { name: 'Мои дисциплины', exact: true }).click();
+  await page.getByRole('button', { name: 'Добавить документ с ИИ', exact: true }).click();
+  await choose(
+    'Практическое задание. Корпоративные финансы\nРассчитайте стоимость капитала',
+    'practice.txt',
+  );
+  await analyze();
+  assert.equal(await wizard.getByLabel('Дисциплина для публикации').inputValue(), '');
+  await wizard.getByLabel('Дисциплина для публикации').selectOption('g0c0');
+  await wizard.getByLabel('Название документа').fill('Расчёт стоимости капитала');
+  await wizard
+    .getByLabel('Условия задания', { exact: true })
+    .fill('Рассчитайте стоимость капитала по данным в приложенном документе.');
+  await wizard.getByRole('button', { name: 'Утвердить и опубликовать', exact: true }).click();
+  await wizard
+    .getByText('Материал опубликован. Оригинальный файл сохранён.', { exact: true })
+    .waitFor();
 
- await roles.getByRole('button',{name:'Студент',exact:true}).click();await sidebar.getByRole('button',{name:'Группы и дисциплины',exact:true}).click();await page.getByRole('button',{name:'Открыть дисциплину',exact:true}).first().click();await page.locator('.course-tabs').getByRole('button',{name:'Задания',exact:true}).click();await page.getByRole('option',{name:'Расчёт стоимости капитала',exact:true}).waitFor({state:'attached'});const option=await page.getByRole('option',{name:'Расчёт стоимости капитала',exact:true}).getAttribute('value');await page.getByLabel('Выберите задание').selectOption(option);await page.getByRole('button',{name:'Открыть исходный документ задания'}).click();await page.getByRole('dialog').waitFor();await page.getByRole('dialog').getByText(/Рассчитайте стоимость капитала/).first().waitFor();await page.getByRole('button',{name:'Закрыть просмотр',exact:true}).click();
- await roles.getByRole('button',{name:'Староста',exact:true}).click();await sidebar.getByRole('button',{name:'Админ',exact:true}).click();await page.locator('.leader-admin-tabs').getByRole('button',{name:'Дисциплины и преподаватели',exact:true}).click();await page.getByRole('button',{name:'Добавить документ с ИИ',exact:true}).click();await choose('Непонятный документ');await analyze();assert.equal(await wizard.getByLabel('Дисциплина для публикации').inputValue(),'');await page.setViewportSize({width:320,height:850});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'/tmp/studyhub-material-intake-mobile.png',fullPage:true});assert.deepEqual(errors,[]);
- console.log('PASS intake consent, scoped lecture recognition, human correction/approval, library book routing, leader authority boundary, ambiguous teacher group, original assignment attachment for student, unknown course and mobile');
-}catch(e){for(const c of browser.contexts())for(const p of c.pages())try{console.log((await p.locator('.material-intake').allTextContents()).join('\n'));}catch{}throw e;}finally{await browser.close();}
+  await roles.getByRole('button', { name: 'Студент', exact: true }).click();
+  await sidebar.getByRole('button', { name: 'Группы и дисциплины', exact: true }).click();
+  await page.getByRole('button', { name: 'Открыть дисциплину', exact: true }).first().click();
+  await page.locator('.course-tabs').getByRole('button', { name: 'Задания', exact: true }).click();
+  await page
+    .getByRole('option', { name: 'Расчёт стоимости капитала', exact: true })
+    .waitFor({ state: 'attached' });
+  const option = await page
+    .getByRole('option', { name: 'Расчёт стоимости капитала', exact: true })
+    .getAttribute('value');
+  await page.getByLabel('Выберите задание').selectOption(option);
+  await page.getByRole('button', { name: 'Открыть исходный документ задания' }).click();
+  await page.getByRole('dialog').waitFor();
+  await page
+    .getByRole('dialog')
+    .getByText(/Рассчитайте стоимость капитала/)
+    .first()
+    .waitFor();
+  await page.getByRole('button', { name: 'Закрыть просмотр', exact: true }).click();
+  await roles.getByRole('button', { name: 'Староста', exact: true }).click();
+  await sidebar.getByRole('button', { name: 'Админ', exact: true }).click();
+  await page
+    .locator('.leader-admin-tabs')
+    .getByRole('button', { name: 'Дисциплины и преподаватели', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Добавить документ с ИИ', exact: true }).click();
+  await choose('Непонятный документ');
+  await analyze();
+  assert.equal(await wizard.getByLabel('Дисциплина для публикации').inputValue(), '');
+  await page.setViewportSize({ width: 320, height: 850 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: '/tmp/studyhub-material-intake-mobile.png', fullPage: true });
+  assert.deepEqual(errors, []);
+  console.log(
+    'PASS intake consent, scoped lecture recognition, human correction/approval, library book routing, leader authority boundary, ambiguous teacher group, original assignment attachment for student, unknown course and mobile',
+  );
+} catch (e) {
+  for (const c of browser.contexts())
+    for (const p of c.pages())
+      try {
+        console.log((await p.locator('.material-intake').allTextContents()).join('\n'));
+      } catch {}
+  throw e;
+} finally {
+  await browser.close();
+}

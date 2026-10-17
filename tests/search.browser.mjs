@@ -1,16 +1,87 @@
-import {chromium} from 'playwright-core';
+import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
-try{
- const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.STUDY_TEST_URL||'http://127.0.0.1:5184/?demo=1');await page.locator('.demo-roles').waitFor();
- await page.evaluate(async()=>{const {demoGateway:d,resetDemo,selectDemo}=await import('/src/demo.ts');resetDemo();selectDemo('owner');await d.saveNote('Поиск чужая запись','Личные данные',null,null);await d.saveMaterial('g0c0','lecture','Поиск лекция','Текст важной лекции',null,null);await d.createAssignment('g0c0','Поиск задание','Условия задания',null,10,true);await d.uploadLibrary('g0','Поиск книга',new File(['Текст книги'],'search.txt',{type:'text/plain'}));selectDemo('student');for(let i=0;i<28;i++)await d.saveNote('Поиск запись '+i,'Полезный текст',null,null);});
- await page.getByRole('button',{name:'Студент',exact:true}).click();await page.getByRole('button',{name:'Открыть поиск',exact:true}).waitFor();await page.keyboard.press('Control+k');
- const input=page.getByLabel('Поиск по учебному пространству',{exact:true});await input.fill('Поиск');await page.getByRole('heading',{name:'Поиск запись 0',exact:true}).waitFor();assert.equal(await page.getByText('Поиск чужая запись',{exact:true}).count(),0);
- await page.getByRole('button',{name:'Показать ещё',exact:true}).click();await page.getByRole('heading',{name:'Поиск лекция',exact:true}).waitFor();
- await page.getByRole('button',{name:'Материалы',exact:true}).click();const result=page.locator('.search-result').filter({has:page.getByRole('heading',{name:'Поиск лекция',exact:true})});await result.getByRole('button',{name:'Открыть',exact:true}).click();await page.getByText('Текст важной лекции',{exact:true}).first().waitFor();assert.match(page.url(),/material=/);
- await page.goBack();await input.waitFor();assert.equal(await input.inputValue(),'Поиск');assert.equal(await page.getByRole('button',{name:'Материалы',exact:true}).getAttribute('aria-pressed'),'true');
- await page.reload();await input.waitFor();assert.equal(await input.inputValue(),'Поиск');await page.getByRole('button',{name:'Задания',exact:true}).click();await page.locator('.search-result').first().getByRole('button',{name:'Открыть'}).click();await page.getByText('Условия задания',{exact:true}).first().waitFor();assert.match(page.url(),/task=/);await page.goBack();await input.waitFor();await page.getByRole('button',{name:'Книги',exact:true}).click();await page.locator('.search-result').first().getByRole('button',{name:'Открыть'}).click();await page.getByRole('dialog').waitFor();assert.match(page.url(),/book=/);await page.goBack();await input.waitFor();await page.getByRole('button',{name:'Заметки',exact:true}).click();await page.locator('.search-result').first().getByRole('button',{name:'Открыть'}).click();await page.getByRole('dialog').waitFor();await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),0);
- for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`overflow at ${width}`);}
- assert.deepEqual(errors,[]);console.log('PASS search shortcut, debounce, private records, paging, filters, text material deep link, history/reload and mobile layout');
-}finally{await browser.close();}
+const browser = await chromium.launch({
+  executablePath: '/usr/bin/chromium',
+  headless: true,
+  args: ['--no-sandbox'],
+});
+try {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } }),
+    errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(process.env.STUDY_TEST_URL || 'http://127.0.0.1:5184/?demo=1');
+  await page.locator('.demo-roles').waitFor();
+  await page.evaluate(async () => {
+    const { demoGateway: d, resetDemo, selectDemo } = await import('/src/demo.ts');
+    resetDemo();
+    selectDemo('owner');
+    await d.saveNote('Поиск чужая запись', 'Личные данные', null, null);
+    await d.saveMaterial('g0c0', 'lecture', 'Поиск лекция', 'Текст важной лекции', null, null);
+    await d.createAssignment('g0c0', 'Поиск задание', 'Условия задания', null, 10, true);
+    await d.uploadLibrary(
+      'g0',
+      'Поиск книга',
+      new File(['Текст книги'], 'search.txt', { type: 'text/plain' }),
+    );
+    selectDemo('student');
+    for (let i = 0; i < 28; i++)
+      await d.saveNote('Поиск запись ' + i, 'Полезный текст', null, null);
+  });
+  await page.getByRole('button', { name: 'Студент', exact: true }).click();
+  await page.getByRole('button', { name: 'Открыть поиск', exact: true }).waitFor();
+  await page.keyboard.press('Control+k');
+  const input = page.getByLabel('Поиск по учебному пространству', { exact: true });
+  await input.fill('Поиск');
+  await page.getByRole('heading', { name: 'Поиск запись 0', exact: true }).waitFor();
+  assert.equal(await page.getByText('Поиск чужая запись', { exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Показать ещё', exact: true }).click();
+  await page.getByRole('heading', { name: 'Поиск лекция', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Материалы', exact: true }).click();
+  const result = page
+    .locator('.search-result')
+    .filter({ has: page.getByRole('heading', { name: 'Поиск лекция', exact: true }) });
+  await result.getByRole('button', { name: 'Открыть', exact: true }).click();
+  await page.getByText('Текст важной лекции', { exact: true }).first().waitFor();
+  assert.match(page.url(), /material=/);
+  await page.goBack();
+  await input.waitFor();
+  assert.equal(await input.inputValue(), 'Поиск');
+  assert.equal(
+    await page.getByRole('button', { name: 'Материалы', exact: true }).getAttribute('aria-pressed'),
+    'true',
+  );
+  await page.reload();
+  await input.waitFor();
+  assert.equal(await input.inputValue(), 'Поиск');
+  await page.getByRole('button', { name: 'Задания', exact: true }).click();
+  await page.locator('.search-result').first().getByRole('button', { name: 'Открыть' }).click();
+  await page.getByText('Условия задания', { exact: true }).first().waitFor();
+  assert.match(page.url(), /task=/);
+  await page.goBack();
+  await input.waitFor();
+  await page.getByRole('button', { name: 'Книги', exact: true }).click();
+  await page.locator('.search-result').first().getByRole('button', { name: 'Открыть' }).click();
+  await page.getByRole('dialog').waitFor();
+  assert.match(page.url(), /book=/);
+  await page.goBack();
+  await input.waitFor();
+  await page.getByRole('button', { name: 'Заметки', exact: true }).click();
+  await page.locator('.search-result').first().getByRole('button', { name: 'Открыть' }).click();
+  await page.getByRole('dialog').waitFor();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('dialog').count(), 0);
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+      `overflow at ${width}`,
+    );
+  }
+  assert.deepEqual(errors, []);
+  console.log(
+    'PASS search shortcut, debounce, private records, paging, filters, text material deep link, history/reload and mobile layout',
+  );
+} finally {
+  await browser.close();
+}

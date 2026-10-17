@@ -1,122 +1,394 @@
-export type Role='student'|'leader'|'teacher';
-export type Profile={id:string;full_name:string;blocked:boolean};
-export type Group={id:string;name:string;blocked:boolean;created_by:string};
-export type Course={id:string;group_id:string;title:string;archived:boolean};
-export type Membership={user_id:string;group_id:string;role:Role;active:boolean};
-export type Denial={id:string;user_id:string|null;group_id:string|null;section:string;course_id:string|null};
-export type Snapshot={me:Profile;owner:boolean;groups:Group[];courses:Course[];profiles:Profile[];memberships:Membership[];denials:Denial[];availableGroups:number};
-export type AuditEvent={id:string|number;actor_id:string|null;action:string;entity_id:string|null;details:Record<string,unknown>;created_at:string};
-export type GroupMember={user_id:string;full_name:string;role:Role;active:boolean};
-export type ManagedInvitation={id:string;role:Role;group_id:string|null;expires_at:string;max_uses:number;used_count:number;revoked:boolean};
-export type TeachingAssignment={course_id:string;teacher_id:string;teacher_name:string};
-export type Invitation={id?:string;revoked?:boolean;token:string;role:Role;group:string|null;courses:string[];uses:number;max:number;creator:string;expires:number;redeemed:string[]};
-export type ReadingState={item_id:string;page:number;total_pages:number;favorite:boolean;bookmarks:number[];version:number};
-export type LibraryItem={favorite?:boolean;page?:number;total_pages?:number;id:string;title:string;author_id:string;author_name:string;source_group_id:string;group_name:string;created_at:string;status:'pending'|'published'|'deleting';storage_path:string;original_name:string;mime_type:string;size_bytes:number;can_manage:boolean};
-export type LibraryPage={items:LibraryItem[];canRead:boolean;quota:{used_bytes:number;budget_bytes:number;file_limit_bytes:number}|null};
-export type MaterialKind='lecture'|'presentation'|'material';
-export type CourseMaterial={id:string;course_id:string;kind:MaterialKind;title:string;body:string;author_name:string;created_at:string;file_id:string|null;storage_path:string|null;original_name:string|null;mime_type:string|null;size_bytes:number|null;status:string;can_manage:boolean};
-export type Assignment={source_material_id?:string|null;revision?:number;id:string;course_id:string;title:string;description:string;due_at:string|null;max_score:number;allow_late:boolean;created_at:string};
-export type Work={current_member?:boolean;review_version?:number;id:string;student_id:string;student_name:string;text_answer:string;attempt_no:number;status:string;submitted_at:string|null;is_late:boolean;return_feedback:string|null;storage_path:string|null;original_name:string|null;mime_type:string|null;size_bytes:number|null;score:number|null;feedback:string|null;released_at:string|null};
-export type BoardKind='schedule'|'announcement';
-export type BoardItem={template_id?:string|null;occurrence_date?:string|null;cancelled?:boolean;version?:number;unread?:boolean;id:string;group_id:string;course_id:string|null;kind:BoardKind;title:string;body:string;location:string;starts_at:string|null;ends_at:string|null;author_name:string;created_at:string;can_manage:boolean};
-export type BoardInput={repeatWeeks?:number;group:string;course:string|null;kind:BoardKind;title:string;body:string;location:string;start:string|null;end:string|null;id:string|null};
-export type Note={id:string;title:string;body:string;version:number;created_at:string;updated_at:string};
-export type ReaderSource={kind:'library';item:LibraryItem}|{kind:'course';item:CourseMaterial};
-export type CourseTopic={id:string;course_id:string;title:string;description:string;position:number;version:number};
-export type CourseLink={topic_id:string;source_id:string;source_kind:'material'|'assignment'};
-export type CourseWorkspace={topics:CourseTopic[];links:CourseLink[];completed:string[];canManage:boolean;resume:{item_id:string;page:number;total_pages:number}|null};
-export type AssignmentProgress={assignment_id:string;status:string;attempt_no:number};
-export type GroupRequest={user_id:string;group_id:string;full_name:string;status:string;created_at:string};
+export type Role = 'student' | 'leader' | 'teacher';
+export type Profile = { id: string; full_name: string; blocked: boolean };
+export type Group = { id: string; name: string; blocked: boolean; created_by: string };
+export type Course = { id: string; group_id: string; title: string; archived: boolean };
+export type Membership = { user_id: string; group_id: string; role: Role; active: boolean };
+export type Denial = {
+  id: string;
+  user_id: string | null;
+  group_id: string | null;
+  section: string;
+  course_id: string | null;
+};
+export type Snapshot = {
+  me: Profile;
+  owner: boolean;
+  groups: Group[];
+  courses: Course[];
+  profiles: Profile[];
+  memberships: Membership[];
+  denials: Denial[];
+  availableGroups: number;
+};
+export type AuditEvent = {
+  id: string | number;
+  actor_id: string | null;
+  action: string;
+  entity_id: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+};
+export type GroupMember = { user_id: string; full_name: string; role: Role; active: boolean };
+export type ManagedInvitation = {
+  id: string;
+  role: Role;
+  group_id: string | null;
+  expires_at: string;
+  max_uses: number;
+  used_count: number;
+  revoked: boolean;
+};
+export type TeachingAssignment = { course_id: string; teacher_id: string; teacher_name: string };
+export type Invitation = {
+  id?: string;
+  revoked?: boolean;
+  token: string;
+  role: Role;
+  group: string | null;
+  courses: string[];
+  uses: number;
+  max: number;
+  creator: string;
+  expires: number;
+  redeemed: string[];
+};
+export type ReadingState = {
+  item_id: string;
+  page: number;
+  total_pages: number;
+  favorite: boolean;
+  bookmarks: number[];
+  version: number;
+};
+export type LibraryItem = {
+  favorite?: boolean;
+  page?: number;
+  total_pages?: number;
+  id: string;
+  title: string;
+  author_id: string;
+  author_name: string;
+  source_group_id: string;
+  group_name: string;
+  created_at: string;
+  status: 'pending' | 'published' | 'deleting';
+  storage_path: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  can_manage: boolean;
+};
+export type LibraryPage = {
+  items: LibraryItem[];
+  canRead: boolean;
+  quota: { used_bytes: number; budget_bytes: number; file_limit_bytes: number } | null;
+};
+export type MaterialKind = 'lecture' | 'presentation' | 'material';
+export type CourseMaterial = {
+  id: string;
+  course_id: string;
+  kind: MaterialKind;
+  title: string;
+  body: string;
+  author_name: string;
+  created_at: string;
+  file_id: string | null;
+  storage_path: string | null;
+  original_name: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  status: string;
+  can_manage: boolean;
+};
+export type Assignment = {
+  source_material_id?: string | null;
+  revision?: number;
+  id: string;
+  course_id: string;
+  title: string;
+  description: string;
+  due_at: string | null;
+  max_score: number;
+  allow_late: boolean;
+  created_at: string;
+};
+export type Work = {
+  current_member?: boolean;
+  review_version?: number;
+  id: string;
+  student_id: string;
+  student_name: string;
+  text_answer: string;
+  attempt_no: number;
+  status: string;
+  submitted_at: string | null;
+  is_late: boolean;
+  return_feedback: string | null;
+  storage_path: string | null;
+  original_name: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  score: number | null;
+  feedback: string | null;
+  released_at: string | null;
+};
+export type BoardKind = 'schedule' | 'announcement';
+export type BoardItem = {
+  template_id?: string | null;
+  occurrence_date?: string | null;
+  cancelled?: boolean;
+  version?: number;
+  unread?: boolean;
+  id: string;
+  group_id: string;
+  course_id: string | null;
+  kind: BoardKind;
+  title: string;
+  body: string;
+  location: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  author_name: string;
+  created_at: string;
+  can_manage: boolean;
+};
+export type BoardInput = {
+  repeatWeeks?: number;
+  group: string;
+  course: string | null;
+  kind: BoardKind;
+  title: string;
+  body: string;
+  location: string;
+  start: string | null;
+  end: string | null;
+  id: string | null;
+};
+export type Note = {
+  id: string;
+  title: string;
+  body: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+export type ReaderSource =
+  | { kind: 'library'; item: LibraryItem }
+  | { kind: 'course'; item: CourseMaterial };
+export type CourseTopic = {
+  id: string;
+  course_id: string;
+  title: string;
+  description: string;
+  position: number;
+  version: number;
+};
+export type CourseLink = {
+  topic_id: string;
+  source_id: string;
+  source_kind: 'material' | 'assignment';
+};
+export type CourseWorkspace = {
+  topics: CourseTopic[];
+  links: CourseLink[];
+  completed: string[];
+  canManage: boolean;
+  resume: { item_id: string; page: number; total_pages: number } | null;
+};
+export type AssignmentProgress = { assignment_id: string; status: string; attempt_no: number };
+export type GroupRequest = {
+  user_id: string;
+  group_id: string;
+  full_name: string;
+  status: string;
+  created_at: string;
+};
 export interface Gateway {
- studySearch(query:string,filter:import('./study-search').SearchFilter,offset:number,signal?:AbortSignal):Promise<import('./study-search').SearchPage>;
- searchNote(id:string):Promise<Note>;
- materialAiQuota():Promise<import('./material-intake-types').MaterialAiQuota>;
- materialIntakeContext():Promise<import('./material-intake-types').IntakeContext>;
- analyzeMaterial(input:import('./material-intake-types').AnalysisInput,signal:AbortSignal):Promise<import('./material-intake-types').MaterialAnalysis>;
- intakeStatus(request:string):Promise<import('./material-intake-types').IntakeStatus>;
- cancelIntake(request:string):Promise<import('./material-intake-types').IntakeStatus>;
- publishIntake(input:import('./material-intake-types').IntakePublication,file:File):Promise<string>;
+  studySearch(
+    query: string,
+    filter: import('./study-search').SearchFilter,
+    offset: number,
+    signal?: AbortSignal,
+  ): Promise<import('./study-search').SearchPage>;
+  searchNote(id: string): Promise<Note>;
+  materialAiQuota(): Promise<import('./material-intake-types').MaterialAiQuota>;
+  materialIntakeContext(): Promise<import('./material-intake-types').IntakeContext>;
+  analyzeMaterial(
+    input: import('./material-intake-types').AnalysisInput,
+    signal: AbortSignal,
+  ): Promise<import('./material-intake-types').MaterialAnalysis>;
+  intakeStatus(request: string): Promise<import('./material-intake-types').IntakeStatus>;
+  cancelIntake(request: string): Promise<import('./material-intake-types').IntakeStatus>;
+  publishIntake(
+    input: import('./material-intake-types').IntakePublication,
+    file: File,
+  ): Promise<string>;
 
- teacherCatalog():Promise<import('./teacher-types').TeacherCourse[]>;
- teacherQueue(course:string|null,assignment:string|null,status:import('./teacher-types').ReviewStatus,search:string,offset:number):Promise<{items:import('./teacher-types').ReviewRow[];total:number}>;
- teacherReviewHistory(work:string,offset:number):Promise<{items:import('./teacher-types').ReviewEvent[];total:number}>;
- teacherHistory(work:string,offset:number):Promise<{items:import('./teacher-types').TeacherDetail['history'];total:number}>;
- teacherDetail(work:string):Promise<import('./teacher-types').TeacherDetail>;
- teacherRoster(assignment:string,search:string,status:string,offset:number):Promise<{items:import('./teacher-types').RosterRow[];total:number}>;
- teacherSaveAssignment(input:import('./teacher-types').AssignmentInput):Promise<string>;
- teacherReview(work:string,version:number,action:'draft'|'publish'|'return',score:number|null,feedback:string):Promise<void>;
+  teacherCatalog(): Promise<import('./teacher-types').TeacherCourse[]>;
+  teacherQueue(
+    course: string | null,
+    assignment: string | null,
+    status: import('./teacher-types').ReviewStatus,
+    search: string,
+    offset: number,
+  ): Promise<{ items: import('./teacher-types').ReviewRow[]; total: number }>;
+  teacherReviewHistory(
+    work: string,
+    offset: number,
+  ): Promise<{ items: import('./teacher-types').ReviewEvent[]; total: number }>;
+  teacherHistory(
+    work: string,
+    offset: number,
+  ): Promise<{ items: import('./teacher-types').TeacherDetail['history']; total: number }>;
+  teacherDetail(work: string): Promise<import('./teacher-types').TeacherDetail>;
+  teacherRoster(
+    assignment: string,
+    search: string,
+    status: string,
+    offset: number,
+  ): Promise<{ items: import('./teacher-types').RosterRow[]; total: number }>;
+  teacherSaveAssignment(input: import('./teacher-types').AssignmentInput): Promise<string>;
+  teacherReview(
+    work: string,
+    version: number,
+    action: 'draft' | 'publish' | 'return',
+    score: number | null,
+    feedback: string,
+  ): Promise<void>;
 
- notificationCounts():Promise<import('./notifications').NotificationCounts>;
- markAnnouncementRead(id:string):Promise<void>;
- cancelGroupRequest():Promise<void>;
- groupRequests(group:string|null,offset:number):Promise<GroupRequest[]>;
- resolveGroupRequest(user:string,group:string,approve:boolean):Promise<void>;
- finishPasswordReset(password:string):Promise<void>;
- resetPassword(email:string):Promise<void>;
- account():Promise<import('./account').AccountDetails>;
- saveAccount(name:string,details:import('./account').AccountInput):Promise<void>;
- changePassword(current:string,next:string):Promise<void>;
- auditEvents(offset:number):Promise<AuditEvent[]>;
- groupMembers(group:string,offset:number):Promise<GroupMember[]>;
- courseWorkspace(course:string):Promise<CourseWorkspace>;
- saveCourseTopic(course:string,title:string,description:string,position:number,id:string|null,version:number|null):Promise<void>;
- deleteCourseTopic(id:string,version:number):Promise<void>;
- linkCourseTopic(course:string,source:string,kind:'material'|'assignment',topic:string|null):Promise<void>;
- completeCourseTopic(topic:string,done:boolean):Promise<void>;
- taskRecords(offset:number):Promise<Note[]>;
- saveTask(title:string,body:string,id:string|null,version:number|null):Promise<void>;
- deleteTask(id:string,version:number):Promise<void>;
- assignmentProgress(ids:string[]):Promise<AssignmentProgress[]>;
- readerSource(id:string):Promise<ReaderSource>;
- transferStudent(user:string,from:string,to:string):Promise<void>;
- teachingCatalog(group:string,offset:number):Promise<TeachingAssignment[]>;
- removeTeaching(course:string,teacher:string):Promise<void>;
- invitationCatalog(offset:number):Promise<ManagedInvitation[]>;
- revokeInvitation(id:string):Promise<void>;
- courseReadingState(item:string):Promise<ReadingState>;
- saveCourseReading(state:ReadingState):Promise<ReadingState>;
- readingState(item:string):Promise<ReadingState>;
- saveReading(state:ReadingState):Promise<ReadingState>;
- notes(search:string,offset:number):Promise<Note[]>;
- saveNote(title:string,body:string,id:string|null,version:number|null):Promise<void>;
- deleteNote(id:string,version:number):Promise<void>;
- weeklyDay(group:string,day:number):Promise<import('./weekly-schedule').WeeklyDay>;
- saveWeeklyDay(group:string,day:number,items:import('./weekly-schedule').WeeklySlot[],version:number,request:string):Promise<void>;
- saveScheduleException(input:import('./weekly-schedule').ScheduleException,reset?:boolean):Promise<void>;
- board(group:string,kind:BoardKind,from:string|null,to:string|null,offset:number):Promise<{items:BoardItem[];canRead:boolean;writeScopes:(string|null)[]}>;
- saveBoard(input:BoardInput):Promise<void>;
- deleteBoard(id:string):Promise<void>;
- demo:boolean;
- assignments(course:string):Promise<{items:Assignment[];canGrade:boolean;canSubmit:boolean;userId:string}>;
- createAssignment(course:string,title:string,description:string,due:string|null,max:number,late:boolean):Promise<void>;
- works(assignment:string,offset:number):Promise<Work[]>;
- submit(assignment:string,text:string,file:File|null):Promise<void>;
- grade(work:string,score:number,feedback:string,publish:boolean):Promise<void>;
- returnWork(work:string,feedback:string):Promise<void>;
- cancelUpload(work:string):Promise<void>;
- downloadWork(work:Work):Promise<Blob>;
- courseMaterials(course:string,kind:MaterialKind,offset:number):Promise<{items:CourseMaterial[];canManage:boolean}>;
- saveMaterial(course:string,kind:MaterialKind,title:string,body:string,file:File|null,id:string|null):Promise<void>;
- deleteMaterial(id:string):Promise<void>;
- downloadMaterial(item:CourseMaterial):Promise<Blob>;
- library(search:string,offset:number,favorites?:boolean):Promise<LibraryPage>;
- uploadLibrary(group:string,title:string,file:File):Promise<void>;
- renameLibrary(id:string,title:string):Promise<void>;
- deleteLibrary(id:string):Promise<void>;
- downloadLibrary(item:LibraryItem):Promise<Blob>;
- session():Promise<boolean>;
- signup(name:string,email:string,password:string,group:string|null,details?:import('./account').AccountInput):Promise<void>;
- login(email:string,password:string):Promise<void>;
- logout():Promise<void>;
- groups():Promise<{id:string;name:string}[]>;
- snapshot():Promise<Snapshot>;
- joinGroup(group:string):Promise<void>;
- createGroup(name:string):Promise<void>;
- createCourse(group:string,title:string):Promise<void>;
- manageCourse(course:Course,action:'rename'|'archive'|'restore'|'delete',title?:string):Promise<void>;
- invite(role:Role,group:string|null,courses:string[],max:number):Promise<string>;
- redeem(token:string):Promise<void>;
- block(user:string|null,group:string|null,blocked:boolean):Promise<void>;
- deny(section:string,user:string|null,group:string|null,course:string|null):Promise<void>;
- restore(id:string):Promise<void>;
+  notificationCounts(): Promise<import('./notifications').NotificationCounts>;
+  markAnnouncementRead(id: string): Promise<void>;
+  cancelGroupRequest(): Promise<void>;
+  groupRequests(group: string | null, offset: number): Promise<GroupRequest[]>;
+  resolveGroupRequest(user: string, group: string, approve: boolean): Promise<void>;
+  finishPasswordReset(password: string): Promise<void>;
+  resetPassword(email: string): Promise<void>;
+  account(): Promise<import('./account').AccountDetails>;
+  saveAccount(name: string, details: import('./account').AccountInput): Promise<void>;
+  changePassword(current: string, next: string): Promise<void>;
+  auditEvents(offset: number): Promise<AuditEvent[]>;
+  groupMembers(group: string, offset: number): Promise<GroupMember[]>;
+  courseWorkspace(course: string): Promise<CourseWorkspace>;
+  saveCourseTopic(
+    course: string,
+    title: string,
+    description: string,
+    position: number,
+    id: string | null,
+    version: number | null,
+  ): Promise<void>;
+  deleteCourseTopic(id: string, version: number): Promise<void>;
+  linkCourseTopic(
+    course: string,
+    source: string,
+    kind: 'material' | 'assignment',
+    topic: string | null,
+  ): Promise<void>;
+  completeCourseTopic(topic: string, done: boolean): Promise<void>;
+  taskRecords(offset: number): Promise<Note[]>;
+  saveTask(title: string, body: string, id: string | null, version: number | null): Promise<void>;
+  deleteTask(id: string, version: number): Promise<void>;
+  assignmentProgress(ids: string[]): Promise<AssignmentProgress[]>;
+  readerSource(id: string): Promise<ReaderSource>;
+  transferStudent(user: string, from: string, to: string): Promise<void>;
+  teachingCatalog(group: string, offset: number): Promise<TeachingAssignment[]>;
+  removeTeaching(course: string, teacher: string): Promise<void>;
+  invitationCatalog(offset: number): Promise<ManagedInvitation[]>;
+  revokeInvitation(id: string): Promise<void>;
+  courseReadingState(item: string): Promise<ReadingState>;
+  saveCourseReading(state: ReadingState): Promise<ReadingState>;
+  readingState(item: string): Promise<ReadingState>;
+  saveReading(state: ReadingState): Promise<ReadingState>;
+  notes(search: string, offset: number): Promise<Note[]>;
+  saveNote(title: string, body: string, id: string | null, version: number | null): Promise<void>;
+  deleteNote(id: string, version: number): Promise<void>;
+  weeklyDay(group: string, day: number): Promise<import('./weekly-schedule').WeeklyDay>;
+  saveWeeklyDay(
+    group: string,
+    day: number,
+    items: import('./weekly-schedule').WeeklySlot[],
+    version: number,
+    request: string,
+  ): Promise<void>;
+  saveScheduleException(
+    input: import('./weekly-schedule').ScheduleException,
+    reset?: boolean,
+  ): Promise<void>;
+  board(
+    group: string,
+    kind: BoardKind,
+    from: string | null,
+    to: string | null,
+    offset: number,
+  ): Promise<{ items: BoardItem[]; canRead: boolean; writeScopes: (string | null)[] }>;
+  saveBoard(input: BoardInput): Promise<void>;
+  deleteBoard(id: string): Promise<void>;
+  demo: boolean;
+  assignments(
+    course: string,
+  ): Promise<{ items: Assignment[]; canGrade: boolean; canSubmit: boolean; userId: string }>;
+  createAssignment(
+    course: string,
+    title: string,
+    description: string,
+    due: string | null,
+    max: number,
+    late: boolean,
+  ): Promise<void>;
+  works(assignment: string, offset: number): Promise<Work[]>;
+  submit(assignment: string, text: string, file: File | null): Promise<void>;
+  grade(work: string, score: number, feedback: string, publish: boolean): Promise<void>;
+  returnWork(work: string, feedback: string): Promise<void>;
+  cancelUpload(work: string): Promise<void>;
+  downloadWork(work: Work): Promise<Blob>;
+  courseMaterials(
+    course: string,
+    kind: MaterialKind,
+    offset: number,
+  ): Promise<{ items: CourseMaterial[]; canManage: boolean }>;
+  saveMaterial(
+    course: string,
+    kind: MaterialKind,
+    title: string,
+    body: string,
+    file: File | null,
+    id: string | null,
+  ): Promise<void>;
+  deleteMaterial(id: string): Promise<void>;
+  downloadMaterial(item: CourseMaterial): Promise<Blob>;
+  library(search: string, offset: number, favorites?: boolean): Promise<LibraryPage>;
+  uploadLibrary(group: string, title: string, file: File): Promise<void>;
+  renameLibrary(id: string, title: string): Promise<void>;
+  deleteLibrary(id: string): Promise<void>;
+  downloadLibrary(item: LibraryItem): Promise<Blob>;
+  session(): Promise<boolean>;
+  signup(
+    name: string,
+    email: string,
+    password: string,
+    group: string | null,
+    details?: import('./account').AccountInput,
+  ): Promise<void>;
+  login(email: string, password: string): Promise<void>;
+  logout(): Promise<void>;
+  groups(): Promise<{ id: string; name: string }[]>;
+  snapshot(): Promise<Snapshot>;
+  joinGroup(group: string): Promise<void>;
+  createGroup(name: string): Promise<void>;
+  createCourse(group: string, title: string): Promise<void>;
+  manageCourse(
+    course: Course,
+    action: 'rename' | 'archive' | 'restore' | 'delete',
+    title?: string,
+  ): Promise<void>;
+  invite(role: Role, group: string | null, courses: string[], max: number): Promise<string>;
+  redeem(token: string): Promise<void>;
+  block(user: string | null, group: string | null, blocked: boolean): Promise<void>;
+  deny(
+    section: string,
+    user: string | null,
+    group: string | null,
+    course: string | null,
+  ): Promise<void>;
+  restore(id: string): Promise<void>;
 }

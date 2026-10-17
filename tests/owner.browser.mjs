@@ -1,25 +1,190 @@
-import {chromium} from 'playwright-core';
+import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
-try{
- const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.OWNER_TEST_URL||'http://127.0.0.1:5204/?demo=1');await page.locator('.demo-roles').waitFor();await page.evaluate(async()=>{const {resetDemo}=await import('/src/demo.ts');resetDemo();});await page.locator('.demo-roles').getByRole('button',{name:'Владелец',exact:true}).click();await page.getByRole('heading',{name:'Обзор проекта',exact:true}).waitFor();
- const sidebar=page.locator('.sidebar');assert.equal(await sidebar.getByRole('button',{name:'Приглашения',exact:true}).count(),0);assert.equal(await page.getByLabel('Название группы').count(),0);
+const browser = await chromium.launch({
+  executablePath: '/usr/bin/chromium',
+  args: ['--no-sandbox'],
+});
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }),
+    errors = [];
+  page.setDefaultTimeout(15000);
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(process.env.OWNER_TEST_URL || 'http://127.0.0.1:5204/?demo=1');
+  await page.locator('.demo-roles').waitFor();
+  await page.evaluate(async () => {
+    const { resetDemo } = await import('/src/demo.ts');
+    resetDemo();
+  });
+  await page.locator('.demo-roles').getByRole('button', { name: 'Владелец', exact: true }).click();
+  await page.getByRole('heading', { name: 'Обзор проекта', exact: true }).waitFor();
+  const sidebar = page.locator('.sidebar');
+  assert.equal(await sidebar.getByRole('button', { name: 'Приглашения', exact: true }).count(), 0);
+  assert.equal(await page.getByLabel('Название группы').count(), 0);
 
- const newcomer=await page.evaluate(async()=>{const {demoGateway:a,selectDemo}=await import('/src/demo.ts');await a.signup('Заявитель без группы','demo@example.test','unused-demo-password','g2');const id=(await a.snapshot()).me.id;selectDemo('owner');return id;});await page.reload();await page.getByRole('button',{name:'Пользователи проекта',exact:true}).click();await page.getByLabel('Доступ аккаунта').selectOption('ungrouped');await page.getByRole('heading',{name:'Заявитель без группы',exact:true}).waitFor();assert.equal(await page.locator('.owner-account-list article').count(),1);await page.getByRole('button',{name:'Подробнее об аккаунте',exact:true}).click();await page.reload();assert.equal(await page.getByLabel('Доступ аккаунта').inputValue(),'ungrouped');assert.equal(await page.getByRole('button',{name:'Подробнее об аккаунте',exact:true}).getAttribute('aria-expanded'),'true');await page.getByRole('button',{name:'Обновить пользователей',exact:true}).click();await page.getByText('Список пользователей обновлён.',{exact:true}).waitFor();
- await page.getByRole('button',{name:'Сбросить фильтры',exact:true}).click();await page.getByLabel('Роль участника').selectOption('teacher');await page.getByRole('button',{name:'Подробнее об аккаунте',exact:true}).click();await page.getByRole('heading',{name:'Назначенные дисциплины',exact:true}).waitFor();await page.locator('.owner-person-detail').getByText('Корпоративные финансы · ИФ-1-24',{exact:true}).waitFor();
- await page.getByRole('navigation',{name:'Разделы владельца'}).getByRole('button',{name:'Заявки',exact:true}).click();const queue=page.getByRole('region',{name:'Все заявки в группы'});await queue.getByRole('heading',{name:'Заявитель без группы',exact:true}).waitFor();await queue.getByLabel('Группа заявки').selectOption('g2');page.once('dialog',d=>d.accept());await queue.getByRole('button',{name:'Принять студента',exact:true}).click();await queue.getByText('Студент принят в группу.',{exact:true}).waitFor();await queue.getByText('Ожидающих заявок нет.',{exact:true}).waitFor();assert.equal(await page.evaluate(async id=>{const {demoGateway:a}=await import('/src/demo.ts');return (await a.snapshot()).memberships.some(m=>m.user_id===id&&m.group_id==='g2'&&m.active);},newcomer),true);
- await page.getByRole('button',{name:'К обзору проекта',exact:true}).click();
- await page.getByRole('button',{name:'Открыть админ',exact:true}).click();const admin=page.getByRole('region',{name:'Админ владельца'}),nav=admin.getByRole('navigation',{name:'Разделы владельца'});
- await admin.getByLabel('Название группы').fill('ИФ-новая');await admin.getByRole('button',{name:'Создать группу',exact:true}).click();await admin.getByText('Группа создана.',{exact:true}).waitFor();await admin.getByLabel('Поиск группы').fill('ИФ-новая');const group=admin.locator('.owner-group-grid article');assert.equal(await group.count(),1);await group.getByRole('button',{name:'Заблокировать',exact:true}).click();assert.equal(await page.evaluate(async()=>{const {demoGateway}=await import('/src/demo.ts');return (await demoGateway.snapshot()).groups.find(g=>g.name==='ИФ-новая').blocked;}),false);await group.getByRole('button',{name:'Отмена',exact:true}).click();await group.getByRole('button',{name:'Заблокировать',exact:true}).click();await group.getByRole('button',{name:'Подтвердить блокировку',exact:true}).click();await admin.getByText('Статус группы изменён.',{exact:true}).waitFor();await group.getByRole('button',{name:'Разблокировать',exact:true}).click();await group.getByRole('button',{name:'Подтвердить восстановление',exact:true}).click();await group.getByRole('button',{name:'Заблокировать',exact:true}).waitFor();
- await nav.getByRole('button',{name:'Участники и роли',exact:true}).click();await admin.getByLabel('Роль участника').selectOption('teacher');assert.equal(await admin.locator('.owner-account-list article').count(),1);assert.equal(await admin.locator('.owner-memberships li').count(),2);await admin.getByLabel('Роль участника').selectOption('student');assert.ok(await admin.getByRole('heading',{name:'Айдана · староста',exact:true}).isVisible());await admin.getByLabel('Роль участника').selectOption('');await admin.getByLabel('Поиск участника').fill('Студент');const student=admin.locator('.owner-account-list article');await student.getByRole('button',{name:'Заблокировать',exact:true}).click();await student.getByRole('button',{name:'Подтвердить блокировку',exact:true}).click();await admin.getByText('Статус аккаунта изменён.',{exact:true}).waitFor();await student.getByRole('button',{name:'Разблокировать',exact:true}).click();await student.getByRole('button',{name:'Подтвердить восстановление',exact:true}).click();await student.getByRole('button',{name:'Заблокировать',exact:true}).waitFor();
- await admin.locator('.owner-transfer summary').click();await admin.getByLabel('Новая группа').selectOption('g1');await admin.getByRole('button',{name:'Перенести студента',exact:true}).click();await admin.getByRole('button',{name:'Подтвердить перенос',exact:true}).click();await admin.getByText('Студент перенесён в новую группу.',{exact:true}).waitFor();
- await nav.getByRole('button',{name:'Дисциплины и преподаватели',exact:true}).click();await admin.getByLabel('Рабочая группа').selectOption('g2');await admin.getByLabel('Новая дисциплина').fill('Методы исследования');await admin.getByRole('button',{name:'Добавить дисциплину',exact:true}).click();await admin.getByText('Дисциплина создана.',{exact:true}).waitFor();
- await nav.getByRole('button',{name:'Приглашения',exact:true}).click();await admin.getByLabel('Кого приглашаем').selectOption('leader');assert.equal(await admin.getByLabel('Рабочая группа').count(),0);await admin.getByRole('button',{name:'Создать ссылку',exact:true}).click();await admin.getByLabel('Пригласительная ссылка').waitFor();const invite=await admin.getByLabel('Пригласительная ссылка').inputValue();assert.match(invite,/#invite=/);
- await nav.getByRole('button',{name:'Ограничения доступа',exact:true}).click();await admin.getByLabel('Для кого').selectOption('group:g3');await admin.getByLabel('Ограничиваемый раздел',{exact:true}).selectOption('schedule');await admin.getByRole('button',{name:'Закрыть доступ к разделу',exact:true}).click();await admin.getByText('Ограничение добавлено.',{exact:true}).waitFor();await admin.getByRole('button',{name:'Снять ограничение',exact:true}).click();await admin.getByText('Доступ восстановлен.',{exact:true}).waitFor();
- await nav.getByRole('button',{name:'История действий',exact:true}).click();await admin.getByText('Создана группа',{exact:true}).waitFor();await admin.getByText('Студент переведён в другую группу',{exact:true}).waitFor();assert.equal(await page.evaluate(async()=>{const {demoGateway}=await import('/src/demo.ts');return JSON.stringify(await demoGateway.auditEvents(0));}).then(text=>text.includes(new URL(invite).hash.slice(8))),false);
- await page.screenshot({path:'/tmp/studyhub-owner-admin-desktop.png',fullPage:true});for(const width of [390,320]){await page.setViewportSize({width,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Owner overflow at '+width);}await page.screenshot({path:'/tmp/studyhub-owner-admin-mobile.png',fullPage:true});
- await admin.getByRole('button',{name:'К обзору проекта',exact:true}).click();await page.getByRole('heading',{name:'Обзор проекта',exact:true}).waitFor();await page.screenshot({path:'/tmp/studyhub-owner-overview-mobile.png',fullPage:true});await sidebar.getByRole('button',{name:'Библиотека',exact:true}).click();await page.getByRole('heading',{name:'Как пользоваться общей библиотекой',exact:true}).waitFor();assert.equal(await page.getByLabel('Название материала').count(),0);assert.equal(await page.getByRole('button',{name:'Удалить',exact:true}).count(),0);
- await page.locator('.demo-roles').getByRole('button',{name:'Староста',exact:true}).click();await page.getByRole('button',{name:'Открыть админ',exact:true}).click();await page.getByRole('region',{name:'Админ старосты'}).waitFor();assert.equal(await page.getByRole('navigation',{name:'Разделы владельца'}).count(),0);await page.evaluate(async()=>{const {demoGateway}=await import('/src/demo.ts');try{await demoGateway.auditEvents(0);throw Error('Owner audit accessible');}catch(e){if(e.message==='Owner audit accessible')throw e;}});
- assert.deepEqual(errors,[]);console.log('PASS owner directory reload/filter/details/teacher assignments, global request approval, overview/admin, group and account confirmation/cancellation/restoration, unique role filtering, transfer, selected-group course creation, leader invitation, restrictions, private audit, reading mode and mobile 390/320; leader isolation');
-}finally{await browser.close();}
+  const newcomer = await page.evaluate(async () => {
+    const { demoGateway: a, selectDemo } = await import('/src/demo.ts');
+    await a.signup('Заявитель без группы', 'demo@example.test', 'unused-demo-password', 'g2');
+    const id = (await a.snapshot()).me.id;
+    selectDemo('owner');
+    return id;
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Пользователи проекта', exact: true }).click();
+  await page.getByLabel('Доступ аккаунта').selectOption('ungrouped');
+  await page.getByRole('heading', { name: 'Заявитель без группы', exact: true }).waitFor();
+  assert.equal(await page.locator('.owner-account-list article').count(), 1);
+  await page.getByRole('button', { name: 'Подробнее об аккаунте', exact: true }).click();
+  await page.reload();
+  assert.equal(await page.getByLabel('Доступ аккаунта').inputValue(), 'ungrouped');
+  assert.equal(
+    await page
+      .getByRole('button', { name: 'Подробнее об аккаунте', exact: true })
+      .getAttribute('aria-expanded'),
+    'true',
+  );
+  await page.getByRole('button', { name: 'Обновить пользователей', exact: true }).click();
+  await page.getByText('Список пользователей обновлён.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Сбросить фильтры', exact: true }).click();
+  await page.getByLabel('Роль участника').selectOption('teacher');
+  await page.getByRole('button', { name: 'Подробнее об аккаунте', exact: true }).click();
+  await page.getByRole('heading', { name: 'Назначенные дисциплины', exact: true }).waitFor();
+  await page
+    .locator('.owner-person-detail')
+    .getByText('Корпоративные финансы · ИФ-1-24', { exact: true })
+    .waitFor();
+  await page
+    .getByRole('navigation', { name: 'Разделы владельца' })
+    .getByRole('button', { name: 'Заявки', exact: true })
+    .click();
+  const queue = page.getByRole('region', { name: 'Все заявки в группы' });
+  await queue.getByRole('heading', { name: 'Заявитель без группы', exact: true }).waitFor();
+  await queue.getByLabel('Группа заявки').selectOption('g2');
+  page.once('dialog', (d) => d.accept());
+  await queue.getByRole('button', { name: 'Принять студента', exact: true }).click();
+  await queue.getByText('Студент принят в группу.', { exact: true }).waitFor();
+  await queue.getByText('Ожидающих заявок нет.', { exact: true }).waitFor();
+  assert.equal(
+    await page.evaluate(async (id) => {
+      const { demoGateway: a } = await import('/src/demo.ts');
+      return (await a.snapshot()).memberships.some(
+        (m) => m.user_id === id && m.group_id === 'g2' && m.active,
+      );
+    }, newcomer),
+    true,
+  );
+  await page.getByRole('button', { name: 'К обзору проекта', exact: true }).click();
+  await page.getByRole('button', { name: 'Открыть админ', exact: true }).click();
+  const admin = page.getByRole('region', { name: 'Админ владельца' }),
+    nav = admin.getByRole('navigation', { name: 'Разделы владельца' });
+  await admin.getByLabel('Название группы').fill('ИФ-новая');
+  await admin.getByRole('button', { name: 'Создать группу', exact: true }).click();
+  await admin.getByText('Группа создана.', { exact: true }).waitFor();
+  await admin.getByLabel('Поиск группы').fill('ИФ-новая');
+  const group = admin.locator('.owner-group-grid article');
+  assert.equal(await group.count(), 1);
+  await group.getByRole('button', { name: 'Заблокировать', exact: true }).click();
+  assert.equal(
+    await page.evaluate(async () => {
+      const { demoGateway } = await import('/src/demo.ts');
+      return (await demoGateway.snapshot()).groups.find((g) => g.name === 'ИФ-новая').blocked;
+    }),
+    false,
+  );
+  await group.getByRole('button', { name: 'Отмена', exact: true }).click();
+  await group.getByRole('button', { name: 'Заблокировать', exact: true }).click();
+  await group.getByRole('button', { name: 'Подтвердить блокировку', exact: true }).click();
+  await admin.getByText('Статус группы изменён.', { exact: true }).waitFor();
+  await group.getByRole('button', { name: 'Разблокировать', exact: true }).click();
+  await group.getByRole('button', { name: 'Подтвердить восстановление', exact: true }).click();
+  await group.getByRole('button', { name: 'Заблокировать', exact: true }).waitFor();
+  await nav.getByRole('button', { name: 'Участники и роли', exact: true }).click();
+  await admin.getByLabel('Роль участника').selectOption('teacher');
+  assert.equal(await admin.locator('.owner-account-list article').count(), 1);
+  assert.equal(await admin.locator('.owner-memberships li').count(), 2);
+  await admin.getByLabel('Роль участника').selectOption('student');
+  assert.ok(
+    await admin.getByRole('heading', { name: 'Айдана · староста', exact: true }).isVisible(),
+  );
+  await admin.getByLabel('Роль участника').selectOption('');
+  await admin.getByLabel('Поиск участника').fill('Студент');
+  const student = admin.locator('.owner-account-list article');
+  await student.getByRole('button', { name: 'Заблокировать', exact: true }).click();
+  await student.getByRole('button', { name: 'Подтвердить блокировку', exact: true }).click();
+  await admin.getByText('Статус аккаунта изменён.', { exact: true }).waitFor();
+  await student.getByRole('button', { name: 'Разблокировать', exact: true }).click();
+  await student.getByRole('button', { name: 'Подтвердить восстановление', exact: true }).click();
+  await student.getByRole('button', { name: 'Заблокировать', exact: true }).waitFor();
+  await admin.locator('.owner-transfer summary').click();
+  await admin.getByLabel('Новая группа').selectOption('g1');
+  await admin.getByRole('button', { name: 'Перенести студента', exact: true }).click();
+  await admin.getByRole('button', { name: 'Подтвердить перенос', exact: true }).click();
+  await admin.getByText('Студент перенесён в новую группу.', { exact: true }).waitFor();
+  await nav.getByRole('button', { name: 'Дисциплины и преподаватели', exact: true }).click();
+  await admin.getByLabel('Рабочая группа').selectOption('g2');
+  await admin.getByLabel('Новая дисциплина').fill('Методы исследования');
+  await admin.getByRole('button', { name: 'Добавить дисциплину', exact: true }).click();
+  await admin.getByText('Дисциплина создана.', { exact: true }).waitFor();
+  await nav.getByRole('button', { name: 'Приглашения', exact: true }).click();
+  await admin.getByLabel('Кого приглашаем').selectOption('leader');
+  assert.equal(await admin.getByLabel('Рабочая группа').count(), 0);
+  await admin.getByRole('button', { name: 'Создать ссылку', exact: true }).click();
+  await admin.getByLabel('Пригласительная ссылка').waitFor();
+  const invite = await admin.getByLabel('Пригласительная ссылка').inputValue();
+  assert.match(invite, /#invite=/);
+  await nav.getByRole('button', { name: 'Ограничения доступа', exact: true }).click();
+  await admin.getByLabel('Для кого').selectOption('group:g3');
+  await admin.getByLabel('Ограничиваемый раздел', { exact: true }).selectOption('schedule');
+  await admin.getByRole('button', { name: 'Закрыть доступ к разделу', exact: true }).click();
+  await admin.getByText('Ограничение добавлено.', { exact: true }).waitFor();
+  await admin.getByRole('button', { name: 'Снять ограничение', exact: true }).click();
+  await admin.getByText('Доступ восстановлен.', { exact: true }).waitFor();
+  await nav.getByRole('button', { name: 'История действий', exact: true }).click();
+  await admin.getByText('Создана группа', { exact: true }).waitFor();
+  await admin.getByText('Студент переведён в другую группу', { exact: true }).waitFor();
+  assert.equal(
+    await page
+      .evaluate(async () => {
+        const { demoGateway } = await import('/src/demo.ts');
+        return JSON.stringify(await demoGateway.auditEvents(0));
+      })
+      .then((text) => text.includes(new URL(invite).hash.slice(8))),
+    false,
+  );
+  await page.screenshot({ path: '/tmp/studyhub-owner-admin-desktop.png', fullPage: true });
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    assert.ok(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      'Owner overflow at ' + width,
+    );
+  }
+  await page.screenshot({ path: '/tmp/studyhub-owner-admin-mobile.png', fullPage: true });
+  await admin.getByRole('button', { name: 'К обзору проекта', exact: true }).click();
+  await page.getByRole('heading', { name: 'Обзор проекта', exact: true }).waitFor();
+  await page.screenshot({ path: '/tmp/studyhub-owner-overview-mobile.png', fullPage: true });
+  await sidebar.getByRole('button', { name: 'Библиотека', exact: true }).click();
+  await page
+    .getByRole('heading', { name: 'Как пользоваться общей библиотекой', exact: true })
+    .waitFor();
+  assert.equal(await page.getByLabel('Название материала').count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Удалить', exact: true }).count(), 0);
+  await page.locator('.demo-roles').getByRole('button', { name: 'Староста', exact: true }).click();
+  await page.getByRole('button', { name: 'Открыть админ', exact: true }).click();
+  await page.getByRole('region', { name: 'Админ старосты' }).waitFor();
+  assert.equal(await page.getByRole('navigation', { name: 'Разделы владельца' }).count(), 0);
+  await page.evaluate(async () => {
+    const { demoGateway } = await import('/src/demo.ts');
+    try {
+      await demoGateway.auditEvents(0);
+      throw Error('Owner audit accessible');
+    } catch (e) {
+      if (e.message === 'Owner audit accessible') throw e;
+    }
+  });
+  assert.deepEqual(errors, []);
+  console.log(
+    'PASS owner directory reload/filter/details/teacher assignments, global request approval, overview/admin, group and account confirmation/cancellation/restoration, unique role filtering, transfer, selected-group course creation, leader invitation, restrictions, private audit, reading mode and mobile 390/320; leader isolation',
+  );
+} finally {
+  await browser.close();
+}

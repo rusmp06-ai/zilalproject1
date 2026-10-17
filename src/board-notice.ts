@@ -1,2 +1,18 @@
-export function boardNotice(body:string):{text:string;important:boolean}{try{const n=JSON.parse(body);if(n.studyhub_notice===1&&n.priority==='schedule_change'&&typeof n.text==='string')return {text:n.text,important:true};}catch{/* Most announcements are plain text. */}return {text:body,important:false};}
-export function encodeBoardNotice(text:string,important:boolean){const body=important?JSON.stringify({studyhub_notice:1,priority:'schedule_change',text}):text;if(body.length>10000)throw Error('Объявление слишком длинное. Сократите текст до сохранения.');return body;}
+export function boardNotice(body: string): { text: string; important: boolean } {
+  try {
+    const n = JSON.parse(body);
+    if (n.studyhub_notice === 1 && n.priority === 'schedule_change' && typeof n.text === 'string')
+      return { text: n.text, important: true };
+  } catch {
+    /* Most announcements are plain text. */
+  }
+  return { text: body, important: false };
+}
+export function encodeBoardNotice(text: string, important: boolean) {
+  const body = important
+    ? JSON.stringify({ studyhub_notice: 1, priority: 'schedule_change', text })
+    : text;
+  if (body.length > 10000)
+    throw Error('Объявление слишком длинное. Сократите текст до сохранения.');
+  return body;
+}

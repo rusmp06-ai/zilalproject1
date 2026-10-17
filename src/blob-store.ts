@@ -1,7 +1,62 @@
 // Demo files only. Real uploads always go to private Supabase Storage.
-const memory=new Map<string,Blob>();
-async function open(){return new Promise<IDBDatabase>((resolve,reject)=>{const req=indexedDB.open('studyhub-demo-files-v04',1);req.onupgradeneeded=()=>req.result.createObjectStore('blobs');req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
-async function transaction<T>(id:string,action:'read'|'write'|'delete',blob?:Blob){const db=await open();try{return await new Promise<T>((resolve,reject)=>{const tx=db.transaction('blobs',action==='read'?'readonly':'readwrite'),store=tx.objectStore('blobs');const req=action==='read'?store.get(id):action==='write'?store.put(blob,id):store.delete(id);let result:T;req.onsuccess=()=>{result=req.result;};tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}finally{db.close();}}
-export async function saveDemoBlob(id:string,blob:Blob){memory.set(id,blob);try{await transaction(id,'write',blob);}catch{/* Memory fallback for restricted local previews. */}}
-export async function readDemoBlob(id:string){let b=memory.get(id);if(!b){try{b=await transaction<Blob|undefined>(id,'read');}catch{/* Unsupported indexedDB. */}}if(!b)throw Error('Файл недоступен в этом браузере. Загрузите его заново.');return b;}
-export async function deleteDemoBlob(id:string){memory.delete(id);try{await transaction(id,'delete');}catch{/* No persistent store. */}}
+const memory = new Map<string, Blob>();
+async function open() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open('studyhub-demo-files-v04', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('blobs');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function transaction<T>(id: string, action: 'read' | 'write' | 'delete', blob?: Blob) {
+  const db = await open();
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const tx = db.transaction('blobs', action === 'read' ? 'readonly' : 'readwrite'),
+        store = tx.objectStore('blobs');
+      const req =
+        action === 'read'
+          ? store.get(id)
+          : action === 'write'
+            ? store.put(blob, id)
+            : store.delete(id);
+      let result: T;
+      req.onsuccess = () => {
+        result = req.result;
+      };
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+export async function saveDemoBlob(id: string, blob: Blob) {
+  memory.set(id, blob);
+  try {
+    await transaction(id, 'write', blob);
+  } catch {
+    /* Memory fallback for restricted local previews. */
+  }
+}
+export async function readDemoBlob(id: string) {
+  let b = memory.get(id);
+  if (!b) {
+    try {
+      b = await transaction<Blob | undefined>(id, 'read');
+    } catch {
+      /* Unsupported indexedDB. */
+    }
+  }
+  if (!b) throw Error('Файл недоступен в этом браузере. Загрузите его заново.');
+  return b;
+}
+export async function deleteDemoBlob(id: string) {
+  memory.delete(id);
+  try {
+    await transaction(id, 'delete');
+  } catch {
+    /* No persistent store. */
+  }
+}

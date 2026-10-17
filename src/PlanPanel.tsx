@@ -1,24 +1,389 @@
-import {useDraft} from './drafts';
-import {StudyIcon} from './StudyIcon';
-import {useEffect,useState} from 'react';
-import {loadPlan,loadTasks,type PlanTask,type PlanLink} from './personal-plan';
-import {bishkekInput} from './board-time';
-import {noteText,decodeReaderNote} from './reader-tools';
-import {ReaderSourceDialog} from './ReaderSourceDialog';
-import type {Gateway,Snapshot,Note,ReaderSource} from './types';
-export function PlanPanel({api,snapshot,date,compact=false,onCourse,onNotes,onChanged}:{api:Gateway;snapshot:Snapshot;date?:string;compact?:boolean;onCourse:(id:string)=>void;onNotes:()=>void;onChanged?:()=>void}){
- const [tasks,setTasks]=useState<PlanTask[]>([]),[notes,setNotes]=useState<Note[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[revision,setRevision]=useState(0),[form,setForm]=useState(false),[completed,setCompleted]=useState(false),[source,setSource]=useState<ReaderSource|null>(null),[books,setBooks]=useState<PlanLink[]>([]),[deleting,setDeleting]=useState(''),[openedNote,setOpenedNote]=useState<Note|null>(null);
- const draft=useDraft<{edit:PlanTask|null;title:string;due:string;details:string;link:PlanLink|null}>((api.demo?'demo:':'live:')+snapshot.me.id+':plan',{edit:null,title:'',due:'',details:'',link:null});const {edit,title,due,details,link}=draft.value;const setEdit=(edit:PlanTask|null)=>draft.setValue(v=>({...v,edit})),setTitle=(title:string)=>draft.setValue(v=>({...v,title})),setDue=(due:string)=>draft.setValue(v=>({...v,due})),setDetails=(details:string)=>draft.setValue(v=>({...v,details})),setLink=(link:PlanLink|null)=>draft.setValue(v=>({...v,link}));
- useEffect(()=>{if(draft.changed)setForm(true);},[]);
- const today=bishkekInput(new Date().toISOString()).slice(0,10);
- useEffect(()=>{let active=true;setBusy(true);loadTasks(api).then(d=>{if(active){setTasks(d);setError('');}}).catch(()=>{if(active)setError('Не удалось загрузить личный план. Попробуйте обновить.');}).finally(()=>{if(active)setBusy(false);});return()=>{active=false;};},[api,revision]);
- useEffect(()=>{if(!form)return;let active=true;void loadPlan(api).then(p=>{if(active)setNotes(p.notes);}).catch(()=>{if(active)setError('Не удалось загрузить заметки для связи.');});api.library('',0).then(p=>{if(active)setBooks(p.items.filter(b=>b.status==='published').map(b=>({kind:'document',id:b.id,title:b.title})));}).catch(()=>{});return()=>{active=false;};},[api,form]);
- async function action(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn();setRevision(n=>n+1);onChanged?.();}catch(e){setError(e instanceof Error?e.message:'Не удалось сохранить задачу.');}finally{setBusy(false);}}
- function start(t?:PlanTask){setEdit(t||null);setTitle(t?.title||'');setDue(t?.plan.due||date||'');setDetails(t?.plan.details||'');setLink(t?.plan.link||null);setForm(true);}
- const visible=tasks.filter(t=>compact?!t.plan.done&&(!t.plan.due||t.plan.due<=today):date?t.plan.due===date:completed||!t.plan.done);
- const rawChoices:PlanLink[]=[...snapshot.courses.filter(c=>!c.archived).map(c=>({kind:'course' as const,id:c.id,title:c.title})),...books,...notes.map(n=>({kind:'note' as const,id:n.id,title:n.title})),...notes.flatMap(n=>{const r=decodeReaderNote(n.body);return r?[{kind:'document' as const,id:r.sourceId,title:r.sourceTitle}]:[]})];const choices=rawChoices.filter((c,i)=>rawChoices.findIndex(v=>v.kind===c.kind&&v.id===c.id)===i);if(link&&!choices.some(c=>c.kind===link.kind&&c.id===link.id))choices.push(link);
- async function open(l:PlanLink){try{if(l.kind==='course'){onCourse(l.id);return;}if(l.kind==='note'){const current=(await loadPlan(api)).notes.find(n=>n.id===l.id);if(!current){setError('Заметка удалена. Задача сохранена.');return;}setOpenedNote(current);return;}setBusy(true);try{setSource(await api.readerSource(l.id));}catch{setError('Документ удалён или доступ к нему закрыт. Задача сохранена.');}finally{setBusy(false);}}catch{setError('Не удалось открыть связанный материал. Задача сохранена.');}}
- return <section className={'card personal-plan'+(compact&&!form&&!visible.length?' plan-empty':'')} aria-label="Личный учебный план">{openedNote&&<aside className="notice" aria-label="Связанная заметка"><h4>{openedNote.title}</h4><p style={{whiteSpace:'pre-wrap'}}>{noteText(openedNote)}</p><button onClick={()=>setOpenedNote(null)}>Закрыть заметку</button><button onClick={onNotes}>Все заметки</button></aside>}{source&&<ReaderSourceDialog api={api} source={source} page={1} onClose={()=>setSource(null)}/>}<div className="section-heading"><h3>{compact?'Мой план на сегодня':'Личный учебный план'}</h3><button disabled={busy} onClick={()=>start()}><StudyIcon name="plus"/> Добавить задачу</button></div><p className="helper">{compact?'Сегодня, без срока и просроченные задачи.':'Ваши задачи видны только вам. Сроки — по календарю Бишкека.'}</p>{error&&<p className="notice error" role="alert">{error}</p>}
- {form&&draft.changed&&<p className="helper">{draft.storageError?'Черновик только в памяти: хранилище вкладки недоступно.':'Черновик сохраняется в этой вкладке.'}</p>}{form&&<form onSubmit={e=>{e.preventDefault();void action(async()=>{await api.saveTask(title,JSON.stringify({studyhub_plan:1,due:due||null,done:edit?.plan.done||false,details,link}),edit?.id||null,edit?.version||null);draft.clear();setForm(false);});}}><label>Что нужно сделать<input autoFocus required maxLength={200} disabled={busy} value={title} onChange={e=>setTitle(e.target.value)}/></label><label>Срок задачи<input type="date" disabled={busy} value={due} onChange={e=>setDue(e.target.value)}/></label><label>Подробности<textarea aria-label="Подробности" maxLength={20000} disabled={busy} value={details} onChange={e=>setDetails(e.target.value)}/></label><label>Связать с учебным материалом<select disabled={busy} value={link?link.kind+':'+link.id:''} onChange={e=>setLink(choices.find(c=>c.kind+':'+c.id===e.target.value)||null)}><option value="">Без связи</option>{choices.map(c=><option key={c.kind+c.id} value={c.kind+':'+c.id}>{c.kind==='course'?'Дисциплина':c.kind==='note'?'Заметка':'Книга'}: {c.title}</option>)}</select></label><div className="card-actions"><button className="primary" disabled={busy}>Сохранить задачу</button><button type="button" disabled={busy} onClick={()=>{draft.clear();setForm(false);}}>Отмена</button></div></form>}
- {!compact&&!date&&<label className="plan-completed"><input type="checkbox" checked={completed} onChange={e=>setCompleted(e.target.checked)}/>Показать выполненные</label>}{busy&&<p role="status">Обновляем личный план…</p>}{visible.map(t=><article key={t.id} className={'plan-task'+(t.plan.done?' done':'')}><label><input type="checkbox" checked={t.plan.done} disabled={busy} onChange={()=>void action(()=>api.saveTask(t.title,JSON.stringify({...t.plan,done:!t.plan.done}),t.id,t.version))}/><b>{t.title}</b></label><small className={t.plan.due&&t.plan.due<today&&!t.plan.done?'plan-overdue':''}>{t.plan.due?`${t.plan.due.split('-').reverse().join('.')}${t.plan.due<today&&!t.plan.done?' · Просрочено':''}`:'Без срока'}</small>{t.plan.details&&<p>{t.plan.details}</p>}{t.plan.link&&<button disabled={busy} onClick={()=>void open(t.plan.link!)}>Открыть: {t.plan.link.title}</button>}<div className="card-actions"><button disabled={busy} onClick={()=>start(t)}>Изменить задачу</button>{deleting===t.id?<><button className="danger" disabled={busy} onClick={()=>void action(async()=>{await api.deleteTask(t.id,t.version);setDeleting('');})}>Подтвердить удаление задачи</button><button disabled={busy} onClick={()=>setDeleting('')}>Отмена</button></>:<button disabled={busy} onClick={()=>setDeleting(t.id)}>Удалить задачу</button>}</div></article>)}{!busy&&!error&&!visible.length&&<p>{compact?'На сегодня личных задач нет.':date?'На этот день личных задач нет.':'Добавьте первую задачу — например, прочитать главу к семинару.'}</p>}{(!compact||form||visible.length>0||error)&&<button disabled={busy} onClick={()=>setRevision(n=>n+1)}>Обновить план</button>}</section>;
+import { useDraft } from './drafts';
+import { StudyIcon } from './StudyIcon';
+import { useEffect, useState } from 'react';
+import { loadPlan, loadTasks, type PlanTask, type PlanLink } from './personal-plan';
+import { bishkekInput } from './board-time';
+import { noteText, decodeReaderNote } from './reader-tools';
+import { ReaderSourceDialog } from './ReaderSourceDialog';
+import type { Gateway, Snapshot, Note, ReaderSource } from './types';
+export function PlanPanel({
+  api,
+  snapshot,
+  date,
+  compact = false,
+  onCourse,
+  onNotes,
+  onChanged,
+}: {
+  api: Gateway;
+  snapshot: Snapshot;
+  date?: string;
+  compact?: boolean;
+  onCourse: (id: string) => void;
+  onNotes: () => void;
+  onChanged?: () => void;
+}) {
+  const [tasks, setTasks] = useState<PlanTask[]>([]),
+    [notes, setNotes] = useState<Note[]>([]),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [revision, setRevision] = useState(0),
+    [form, setForm] = useState(false),
+    [completed, setCompleted] = useState(false),
+    [source, setSource] = useState<ReaderSource | null>(null),
+    [books, setBooks] = useState<PlanLink[]>([]),
+    [deleting, setDeleting] = useState(''),
+    [openedNote, setOpenedNote] = useState<Note | null>(null);
+  const draft = useDraft<{
+    edit: PlanTask | null;
+    title: string;
+    due: string;
+    details: string;
+    link: PlanLink | null;
+  }>((api.demo ? 'demo:' : 'live:') + snapshot.me.id + ':plan', {
+    edit: null,
+    title: '',
+    due: '',
+    details: '',
+    link: null,
+  });
+  const { edit, title, due, details, link } = draft.value;
+  const setEdit = (edit: PlanTask | null) => draft.setValue((v) => ({ ...v, edit })),
+    setTitle = (title: string) => draft.setValue((v) => ({ ...v, title })),
+    setDue = (due: string) => draft.setValue((v) => ({ ...v, due })),
+    setDetails = (details: string) => draft.setValue((v) => ({ ...v, details })),
+    setLink = (link: PlanLink | null) => draft.setValue((v) => ({ ...v, link }));
+  useEffect(() => {
+    if (draft.changed) setForm(true);
+  }, []);
+  const today = bishkekInput(new Date().toISOString()).slice(0, 10);
+  useEffect(() => {
+    let active = true;
+    setBusy(true);
+    loadTasks(api)
+      .then((d) => {
+        if (active) {
+          setTasks(d);
+          setError('');
+        }
+      })
+      .catch(() => {
+        if (active) setError('Не удалось загрузить личный план. Попробуйте обновить.');
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, revision]);
+  useEffect(() => {
+    if (!form) return;
+    let active = true;
+    void loadPlan(api)
+      .then((p) => {
+        if (active) setNotes(p.notes);
+      })
+      .catch(() => {
+        if (active) setError('Не удалось загрузить заметки для связи.');
+      });
+    api
+      .library('', 0)
+      .then((p) => {
+        if (active)
+          setBooks(
+            p.items
+              .filter((b) => b.status === 'published')
+              .map((b) => ({ kind: 'document', id: b.id, title: b.title })),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [api, form]);
+  async function action(fn: () => Promise<void>) {
+    setBusy(true);
+    setError('');
+    try {
+      await fn();
+      setRevision((n) => n + 1);
+      onChanged?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось сохранить задачу.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  function start(t?: PlanTask) {
+    setEdit(t || null);
+    setTitle(t?.title || '');
+    setDue(t?.plan.due || date || '');
+    setDetails(t?.plan.details || '');
+    setLink(t?.plan.link || null);
+    setForm(true);
+  }
+  const visible = tasks.filter((t) =>
+    compact
+      ? !t.plan.done && (!t.plan.due || t.plan.due <= today)
+      : date
+        ? t.plan.due === date
+        : completed || !t.plan.done,
+  );
+  const rawChoices: PlanLink[] = [
+    ...snapshot.courses
+      .filter((c) => !c.archived)
+      .map((c) => ({ kind: 'course' as const, id: c.id, title: c.title })),
+    ...books,
+    ...notes.map((n) => ({ kind: 'note' as const, id: n.id, title: n.title })),
+    ...notes.flatMap((n) => {
+      const r = decodeReaderNote(n.body);
+      return r ? [{ kind: 'document' as const, id: r.sourceId, title: r.sourceTitle }] : [];
+    }),
+  ];
+  const choices = rawChoices.filter(
+    (c, i) => rawChoices.findIndex((v) => v.kind === c.kind && v.id === c.id) === i,
+  );
+  if (link && !choices.some((c) => c.kind === link.kind && c.id === link.id)) choices.push(link);
+  async function open(l: PlanLink) {
+    try {
+      if (l.kind === 'course') {
+        onCourse(l.id);
+        return;
+      }
+      if (l.kind === 'note') {
+        const current = (await loadPlan(api)).notes.find((n) => n.id === l.id);
+        if (!current) {
+          setError('Заметка удалена. Задача сохранена.');
+          return;
+        }
+        setOpenedNote(current);
+        return;
+      }
+      setBusy(true);
+      try {
+        setSource(await api.readerSource(l.id));
+      } catch {
+        setError('Документ удалён или доступ к нему закрыт. Задача сохранена.');
+      } finally {
+        setBusy(false);
+      }
+    } catch {
+      setError('Не удалось открыть связанный материал. Задача сохранена.');
+    }
+  }
+  return (
+    <section
+      className={'card personal-plan' + (compact && !form && !visible.length ? ' plan-empty' : '')}
+      aria-label="Личный учебный план"
+    >
+      {openedNote && (
+        <aside className="notice" aria-label="Связанная заметка">
+          <h4>{openedNote.title}</h4>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{noteText(openedNote)}</p>
+          <button onClick={() => setOpenedNote(null)}>Закрыть заметку</button>
+          <button onClick={onNotes}>Все заметки</button>
+        </aside>
+      )}
+      {source && (
+        <ReaderSourceDialog api={api} source={source} page={1} onClose={() => setSource(null)} />
+      )}
+      <div className="section-heading">
+        <h3>{compact ? 'Мой план на сегодня' : 'Личный учебный план'}</h3>
+        <button disabled={busy} onClick={() => start()}>
+          <StudyIcon name="plus" /> Добавить задачу
+        </button>
+      </div>
+      <p className="helper">
+        {compact
+          ? 'Сегодня, без срока и просроченные задачи.'
+          : 'Ваши задачи видны только вам. Сроки — по календарю Бишкека.'}
+      </p>
+      {error && (
+        <p className="notice error" role="alert">
+          {error}
+        </p>
+      )}
+      {form && draft.changed && (
+        <p className="helper">
+          {draft.storageError
+            ? 'Черновик только в памяти: хранилище вкладки недоступно.'
+            : 'Черновик сохраняется в этой вкладке.'}
+        </p>
+      )}
+      {form && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void action(async () => {
+              await api.saveTask(
+                title,
+                JSON.stringify({
+                  studyhub_plan: 1,
+                  due: due || null,
+                  done: edit?.plan.done || false,
+                  details,
+                  link,
+                }),
+                edit?.id || null,
+                edit?.version || null,
+              );
+              draft.clear();
+              setForm(false);
+            });
+          }}
+        >
+          <label>
+            Что нужно сделать
+            <input
+              autoFocus
+              required
+              maxLength={200}
+              disabled={busy}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
+          <label>
+            Срок задачи
+            <input
+              type="date"
+              disabled={busy}
+              value={due}
+              onChange={(e) => setDue(e.target.value)}
+            />
+          </label>
+          <label>
+            Подробности
+            <textarea
+              aria-label="Подробности"
+              maxLength={20000}
+              disabled={busy}
+              value={details}
+              onChange={(e) => setDetails(e.target.value)}
+            />
+          </label>
+          <label>
+            Связать с учебным материалом
+            <select
+              disabled={busy}
+              value={link ? link.kind + ':' + link.id : ''}
+              onChange={(e) =>
+                setLink(choices.find((c) => c.kind + ':' + c.id === e.target.value) || null)
+              }
+            >
+              <option value="">Без связи</option>
+              {choices.map((c) => (
+                <option key={c.kind + c.id} value={c.kind + ':' + c.id}>
+                  {c.kind === 'course' ? 'Дисциплина' : c.kind === 'note' ? 'Заметка' : 'Книга'}:{' '}
+                  {c.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="card-actions">
+            <button className="primary" disabled={busy}>
+              Сохранить задачу
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                draft.clear();
+                setForm(false);
+              }}
+            >
+              Отмена
+            </button>
+          </div>
+        </form>
+      )}
+      {!compact && !date && (
+        <label className="plan-completed">
+          <input
+            type="checkbox"
+            checked={completed}
+            onChange={(e) => setCompleted(e.target.checked)}
+          />
+          Показать выполненные
+        </label>
+      )}
+      {busy && <p role="status">Обновляем личный план…</p>}
+      {visible.map((t) => (
+        <article key={t.id} className={'plan-task' + (t.plan.done ? ' done' : '')}>
+          <label>
+            <input
+              type="checkbox"
+              checked={t.plan.done}
+              disabled={busy}
+              onChange={() =>
+                void action(() =>
+                  api.saveTask(
+                    t.title,
+                    JSON.stringify({ ...t.plan, done: !t.plan.done }),
+                    t.id,
+                    t.version,
+                  ),
+                )
+              }
+            />
+            <b>{t.title}</b>
+          </label>
+          <small className={t.plan.due && t.plan.due < today && !t.plan.done ? 'plan-overdue' : ''}>
+            {t.plan.due
+              ? `${t.plan.due.split('-').reverse().join('.')}${t.plan.due < today && !t.plan.done ? ' · Просрочено' : ''}`
+              : 'Без срока'}
+          </small>
+          {t.plan.details && <p>{t.plan.details}</p>}
+          {t.plan.link && (
+            <button disabled={busy} onClick={() => void open(t.plan.link!)}>
+              Открыть: {t.plan.link.title}
+            </button>
+          )}
+          <div className="card-actions">
+            <button disabled={busy} onClick={() => start(t)}>
+              Изменить задачу
+            </button>
+            {deleting === t.id ? (
+              <>
+                <button
+                  className="danger"
+                  disabled={busy}
+                  onClick={() =>
+                    void action(async () => {
+                      await api.deleteTask(t.id, t.version);
+                      setDeleting('');
+                    })
+                  }
+                >
+                  Подтвердить удаление задачи
+                </button>
+                <button disabled={busy} onClick={() => setDeleting('')}>
+                  Отмена
+                </button>
+              </>
+            ) : (
+              <button disabled={busy} onClick={() => setDeleting(t.id)}>
+                Удалить задачу
+              </button>
+            )}
+          </div>
+        </article>
+      ))}
+      {!busy && !error && !visible.length && (
+        <p>
+          {compact
+            ? 'На сегодня личных задач нет.'
+            : date
+              ? 'На этот день личных задач нет.'
+              : 'Добавьте первую задачу — например, прочитать главу к семинару.'}
+        </p>
+      )}
+      {(!compact || form || visible.length > 0 || error) && (
+        <button disabled={busy} onClick={() => setRevision((n) => n + 1)}>
+          Обновить план
+        </button>
+      )}
+    </section>
+  );
 }

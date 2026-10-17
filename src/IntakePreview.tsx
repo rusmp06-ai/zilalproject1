@@ -1,15 +1,137 @@
-import {CloseButton} from './CloseButton';
-import {useEffect,useMemo,useRef,useState} from 'react';
-import {ReaderPanel} from './ReaderPanel';
-import {emptyReading,validateReading} from './reader-state';
-import {canReadDocument} from './reader-tools';
-import {validateFile} from './files';
-import type {Gateway,LibraryItem} from './types';
-export function IntakePreview({api,file,onClose}:{api:Gateway;file:File;onClose:()=>void}){
- const [image,setImage]=useState<string|null>(null);useEffect(()=>{if(!file.type.startsWith('image/'))return;const url=URL.createObjectURL(file);setImage(url);return()=>URL.revokeObjectURL(url);},[file]);
- const dialog=useRef<HTMLElement>(null),reading=useRef(emptyReading('intake-preview'));
- const bridge=useMemo(()=>{const item:LibraryItem={id:'intake-preview',title:file.name,author_id:'local',author_name:'',source_group_id:'',group_name:'',created_at:new Date().toISOString(),status:'published',storage_path:'local',original_name:file.name,mime_type:validateFile(file),size_bytes:file.size,can_manage:false};return {item,api:{...api,downloadLibrary:async()=>file,readingState:async()=>reading.current,saveReading:async next=>{validateReading(next);reading.current={...next,version:reading.current.version+1};return reading.current;}} as Gateway};},[api,file]);
- useEffect(()=>{const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;document.body.style.overflow='hidden';const key=(e:KeyboardEvent)=>{if(e.defaultPrevented)return;if(e.key==='Escape'&&!document.fullscreenElement){e.preventDefault();onClose();}if(e.key==='Tab'){const nodes=[...dialog.current?.querySelectorAll<HTMLElement>('button,input,select,textarea,summary,[tabindex]')||[]].filter(n=>n.getClientRects().length>0&&!n.hasAttribute('disabled')&&n.getAttribute('tabindex')!=='-1');if(e.shiftKey&&document.activeElement===nodes[0]){e.preventDefault();nodes.at(-1)?.focus();}else if(!e.shiftKey&&document.activeElement===nodes.at(-1)){e.preventDefault();nodes[0]?.focus();}}};document.addEventListener('keydown',key);return()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',key);previous?.focus();};},[]);
- function download(){const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
- return <section ref={dialog} className="preview-modal" role="dialog" aria-modal="true" aria-label="Проверка исходного документа"><div className="preview-content"><header><div><h2>{file.name}</h2><p>Документ ещё не опубликован.</p></div><CloseButton autoFocus label="Закрыть оригинал" onClick={onClose}/></header>{canReadDocument(bridge.item.mime_type)?<ReaderPanel api={bridge.api} item={bridge.item} allowFavorite={false} allowNotes={false} storageHint="Проверка оригинала перед публикацией. Отметки в этом просмотре не сохраняются." onChanged={()=>{}}/>:image?<img src={image} alt={file.name}/>:<p>Для проверки этого формата откройте файл в подходящей программе. <button onClick={download}>Скачать оригинал</button></p>}</div></section>;
+import { CloseButton } from './CloseButton';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ReaderPanel } from './ReaderPanel';
+import { emptyReading, validateReading } from './reader-state';
+import { canReadDocument } from './reader-tools';
+import { validateFile } from './files';
+import type { Gateway, LibraryItem } from './types';
+export function IntakePreview({
+  api,
+  file,
+  onClose,
+}: {
+  api: Gateway;
+  file: File;
+  onClose: () => void;
+}) {
+  const [image, setImage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    setImage(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  const dialog = useRef<HTMLElement>(null),
+    reading = useRef(emptyReading('intake-preview'));
+  const bridge = useMemo(() => {
+    const item: LibraryItem = {
+      id: 'intake-preview',
+      title: file.name,
+      author_id: 'local',
+      author_name: '',
+      source_group_id: '',
+      group_name: '',
+      created_at: new Date().toISOString(),
+      status: 'published',
+      storage_path: 'local',
+      original_name: file.name,
+      mime_type: validateFile(file),
+      size_bytes: file.size,
+      can_manage: false,
+    };
+    return {
+      item,
+      api: {
+        ...api,
+        downloadLibrary: async () => file,
+        readingState: async () => reading.current,
+        saveReading: async (next) => {
+          validateReading(next);
+          reading.current = { ...next, version: reading.current.version + 1 };
+          return reading.current;
+        },
+      } as Gateway,
+    };
+  }, [api, file]);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null,
+      overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (e.key === 'Escape' && !document.fullscreenElement) {
+        e.preventDefault();
+        onClose();
+      }
+      if (e.key === 'Tab') {
+        const nodes = [
+          ...(dialog.current?.querySelectorAll<HTMLElement>(
+            'button,input,select,textarea,summary,[tabindex]',
+          ) || []),
+        ].filter(
+          (n) =>
+            n.getClientRects().length > 0 &&
+            !n.hasAttribute('disabled') &&
+            n.getAttribute('tabindex') !== '-1',
+        );
+        if (e.shiftKey && document.activeElement === nodes[0]) {
+          e.preventDefault();
+          nodes.at(-1)?.focus();
+        } else if (!e.shiftKey && document.activeElement === nodes.at(-1)) {
+          e.preventDefault();
+          nodes[0]?.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', key);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener('keydown', key);
+      previous?.focus();
+    };
+  }, []);
+  function download() {
+    const url = URL.createObjectURL(file),
+      a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  return (
+    <section
+      ref={dialog}
+      className="preview-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Проверка исходного документа"
+    >
+      <div className="preview-content">
+        <header>
+          <div>
+            <h2>{file.name}</h2>
+            <p>Документ ещё не опубликован.</p>
+          </div>
+          <CloseButton autoFocus label="Закрыть оригинал" onClick={onClose} />
+        </header>
+        {canReadDocument(bridge.item.mime_type) ? (
+          <ReaderPanel
+            api={bridge.api}
+            item={bridge.item}
+            allowFavorite={false}
+            allowNotes={false}
+            storageHint="Проверка оригинала перед публикацией. Отметки в этом просмотре не сохраняются."
+            onChanged={() => {}}
+          />
+        ) : image ? (
+          <img src={image} alt={file.name} />
+        ) : (
+          <p>
+            Для проверки этого формата откройте файл в подходящей программе.{' '}
+            <button onClick={download}>Скачать оригинал</button>
+          </p>
+        )}
+      </div>
+    </section>
+  );
 }

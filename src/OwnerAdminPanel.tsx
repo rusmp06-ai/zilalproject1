@@ -1,58 +1,971 @@
-import {WeeklyScheduleEditor} from './WeeklyScheduleEditor';
-import {CourseManager} from './CourseManager';
-import {OwnerTeaching} from './OwnerTeaching';
-import {OwnerOperations} from './OwnerOperations';
-import {useViewState,shortText,oneOf} from './view-state';
-import {GroupRequests} from './GroupRequests';
-import {useEffect,useState,useRef} from 'react';
-import type {Gateway,Snapshot,Role,AuditEvent} from './types';
-import {mayLeaveDrafts} from './drafts';
-import {InvitationManager,TeachingManager,StudentTransfer} from './AccessManagers';
-import {BoardPanel} from './BoardPanel';
-import {LibraryPanel} from './LibraryPanel';
-import {CoursePanel} from './CoursePanel';
-export type OwnerSection='requests'|'groups'|'accounts'|'courses'|'invitations'|'access'|'schedule'|'announcements'|'library'|'history';
-const sections:Record<OwnerSection,string>={requests:'Заявки',groups:'Группы',accounts:'Участники и роли',courses:'Дисциплины и преподаватели',invitations:'Приглашения',access:'Ограничения доступа',schedule:'Расписание',announcements:'Объявления',library:'Публикации в библиотеке',history:'История действий'};
-const roleNames={student:'Студент',leader:'Староста · студент',teacher:'Преподаватель'};
-const accessNames:Record<string,string>={library:'Библиотека',lectures:'Лекции',presentations:'Презентации',materials:'Материалы',assignments:'Задания',course:'Дисциплина',schedule:'Расписание',announcements:'Объявления'};
-const historyNames:Record<string,string>={'student.request_resolved':'Обработана заявка в группу','group.created':'Создана группа','course.created':'Создана дисциплина','course.renamed':'Переименована дисциплина','course.archived':'Дисциплина отправлена в архив','course.restored':'Дисциплина восстановлена','course.deleted':'Удалена пустая дисциплина','invitation.created':'Создано приглашение','invitation.redeemed':'Принято приглашение','invitation.revoked':'Отозвано приглашение','student.joined':'Участник присоединился к группе','student.transferred':'Студент переведён в другую группу','teacher.unassigned':'Снято назначение преподавателя','access.block':'Изменён доступ к аккаунту или группе','access.denied':'Добавлено ограничение раздела','access.restored':'Снято ограничение раздела','library.reserved':'Начата загрузка в библиотеку','library.published':'Опубликован материал библиотеки','library.renamed':'Изменено название материала','library.delete_started':'Начато удаление материала','library.deleted':'Удалён материал библиотеки','board.saved':'Сохранена запись расписания или объявление','board.deleted':'Удалена запись расписания или объявление','course.material_saved':'Сохранён учебный материал','course.upload_reserved':'Начата загрузка учебного файла','course.upload_published':'Опубликован учебный файл','course.delete_started':'Начато удаление учебного материала','course.material_deleted':'Удалён учебный материал','course.topic_saved':'Сохранена тема дисциплины','course.topic_deleted':'Удалена тема дисциплины','assignment.created':'Создано задание','submission.created':'Начата сдача работы','submission.submitted':'Работа отправлена','grade.published':'Опубликована оценка','grade.draft_saved':'Сохранён черновик оценки','submission.returned':'Работа возвращена на доработку','submission.cancel_started':'Начата отмена загрузки работы','submission.upload_cancelled':'Отменена загрузка работы'};
-function OwnerHistory({api,snapshot}:{api:Gateway;snapshot:Snapshot}){
- const [items,setItems]=useState<AuditEvent[]>([]),[offset,setOffset]=useState(0),[busy,setBusy]=useState(true),[error,setError]=useState(''),[revision,setRevision]=useState(0);
- useEffect(()=>{let active=true;setBusy(true);setItems([]);setError('');api.auditEvents(offset).then(rows=>{if(active)setItems(rows);}).catch(e=>{if(active)setError(e instanceof Error?e.message:'История не загрузилась.');}).finally(()=>{if(active)setBusy(false);});return()=>{active=false;};},[api,offset,revision]);
- const name=(id:string|null)=>snapshot.profiles.find(p=>p.id===id)?.full_name||snapshot.groups.find(g=>g.id===id)?.name||snapshot.courses.find(c=>c.id===id)?.title;
- return <section className="card"><h2>История действий</h2><p>Кто и когда изменил данные проекта. История доступна только владельцу.</p>{api.demo&&<p className="helper">В демонстрации записываются действия управления, выполненные в этом браузере.</p>}{busy&&<p role="status">Загружаем историю…</p>}{error&&<p className="notice error" role="alert">{error}</p>}{items.map(e=><article key={e.id} className="access-entry"><b>{historyNames[e.action]||'Изменение в проекте'}</b><p>{name(e.actor_id)||'Аккаунт недоступен'} · {new Date(e.created_at).toLocaleString('ru-RU',{timeZone:'Asia/Bishkek'})}</p>{(name(e.entity_id)||typeof e.details.title==='string')&&<p>{name(e.entity_id)||String(e.details.title)}</p>}{typeof e.details.blocked==='boolean'&&<span className="badge">{e.details.blocked?'Доступ закрыт':'Доступ восстановлен'}</span>}{e.action==='student.transferred'&&<p>{name(String(e.details.from))||'Предыдущая группа'} → {name(String(e.details.to))||'Новая группа'}</p>}</article>)}{!busy&&!error&&!items.length&&<p>Записей пока нет.</p>}<div className="card-actions"><button disabled={busy} onClick={()=>setRevision(n=>n+1)}>Обновить историю</button><button disabled={busy||!offset} onClick={()=>setOffset(n=>Math.max(0,n-50))}>Предыдущие события</button><button disabled={busy||items.length<50} onClick={()=>setOffset(n=>n+50)}>Следующие события</button></div></section>;
+import { WeeklyScheduleEditor } from './WeeklyScheduleEditor';
+import { CourseManager } from './CourseManager';
+import { OwnerTeaching } from './OwnerTeaching';
+import { OwnerOperations } from './OwnerOperations';
+import { useViewState, shortText, oneOf } from './view-state';
+import { GroupRequests } from './GroupRequests';
+import { useEffect, useState, useRef } from 'react';
+import type { Gateway, Snapshot, Role, AuditEvent } from './types';
+import { mayLeaveDrafts } from './drafts';
+import { InvitationManager, TeachingManager, StudentTransfer } from './AccessManagers';
+import { BoardPanel } from './BoardPanel';
+import { LibraryPanel } from './LibraryPanel';
+import { CoursePanel } from './CoursePanel';
+export type OwnerSection =
+  | 'requests'
+  | 'groups'
+  | 'accounts'
+  | 'courses'
+  | 'invitations'
+  | 'access'
+  | 'schedule'
+  | 'announcements'
+  | 'library'
+  | 'history';
+const sections: Record<OwnerSection, string> = {
+  requests: 'Заявки',
+  groups: 'Группы',
+  accounts: 'Участники и роли',
+  courses: 'Дисциплины и преподаватели',
+  invitations: 'Приглашения',
+  access: 'Ограничения доступа',
+  schedule: 'Расписание',
+  announcements: 'Объявления',
+  library: 'Публикации в библиотеке',
+  history: 'История действий',
+};
+const roleNames = { student: 'Студент', leader: 'Староста · студент', teacher: 'Преподаватель' };
+const accessNames: Record<string, string> = {
+  library: 'Библиотека',
+  lectures: 'Лекции',
+  presentations: 'Презентации',
+  materials: 'Материалы',
+  assignments: 'Задания',
+  course: 'Дисциплина',
+  schedule: 'Расписание',
+  announcements: 'Объявления',
+};
+const historyNames: Record<string, string> = {
+  'student.request_resolved': 'Обработана заявка в группу',
+  'group.created': 'Создана группа',
+  'course.created': 'Создана дисциплина',
+  'course.renamed': 'Переименована дисциплина',
+  'course.archived': 'Дисциплина отправлена в архив',
+  'course.restored': 'Дисциплина восстановлена',
+  'course.deleted': 'Удалена пустая дисциплина',
+  'invitation.created': 'Создано приглашение',
+  'invitation.redeemed': 'Принято приглашение',
+  'invitation.revoked': 'Отозвано приглашение',
+  'student.joined': 'Участник присоединился к группе',
+  'student.transferred': 'Студент переведён в другую группу',
+  'teacher.unassigned': 'Снято назначение преподавателя',
+  'access.block': 'Изменён доступ к аккаунту или группе',
+  'access.denied': 'Добавлено ограничение раздела',
+  'access.restored': 'Снято ограничение раздела',
+  'library.reserved': 'Начата загрузка в библиотеку',
+  'library.published': 'Опубликован материал библиотеки',
+  'library.renamed': 'Изменено название материала',
+  'library.delete_started': 'Начато удаление материала',
+  'library.deleted': 'Удалён материал библиотеки',
+  'board.saved': 'Сохранена запись расписания или объявление',
+  'board.deleted': 'Удалена запись расписания или объявление',
+  'course.material_saved': 'Сохранён учебный материал',
+  'course.upload_reserved': 'Начата загрузка учебного файла',
+  'course.upload_published': 'Опубликован учебный файл',
+  'course.delete_started': 'Начато удаление учебного материала',
+  'course.material_deleted': 'Удалён учебный материал',
+  'course.topic_saved': 'Сохранена тема дисциплины',
+  'course.topic_deleted': 'Удалена тема дисциплины',
+  'assignment.created': 'Создано задание',
+  'submission.created': 'Начата сдача работы',
+  'submission.submitted': 'Работа отправлена',
+  'grade.published': 'Опубликована оценка',
+  'grade.draft_saved': 'Сохранён черновик оценки',
+  'submission.returned': 'Работа возвращена на доработку',
+  'submission.cancel_started': 'Начата отмена загрузки работы',
+  'submission.upload_cancelled': 'Отменена загрузка работы',
+};
+function OwnerHistory({ api, snapshot }: { api: Gateway; snapshot: Snapshot }) {
+  const [items, setItems] = useState<AuditEvent[]>([]),
+    [offset, setOffset] = useState(0),
+    [busy, setBusy] = useState(true),
+    [error, setError] = useState(''),
+    [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setBusy(true);
+    setItems([]);
+    setError('');
+    api
+      .auditEvents(offset)
+      .then((rows) => {
+        if (active) setItems(rows);
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof Error ? e.message : 'История не загрузилась.');
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, offset, revision]);
+  const name = (id: string | null) =>
+    snapshot.profiles.find((p) => p.id === id)?.full_name ||
+    snapshot.groups.find((g) => g.id === id)?.name ||
+    snapshot.courses.find((c) => c.id === id)?.title;
+  return (
+    <section className="card">
+      <h2>История действий</h2>
+      <p>Кто и когда изменил данные проекта. История доступна только владельцу.</p>
+      {api.demo && (
+        <p className="helper">
+          В демонстрации записываются действия управления, выполненные в этом браузере.
+        </p>
+      )}
+      {busy && <p role="status">Загружаем историю…</p>}
+      {error && (
+        <p className="notice error" role="alert">
+          {error}
+        </p>
+      )}
+      {items.map((e) => (
+        <article key={e.id} className="access-entry">
+          <b>{historyNames[e.action] || 'Изменение в проекте'}</b>
+          <p>
+            {name(e.actor_id) || 'Аккаунт недоступен'} ·{' '}
+            {new Date(e.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' })}
+          </p>
+          {(name(e.entity_id) || typeof e.details.title === 'string') && (
+            <p>{name(e.entity_id) || String(e.details.title)}</p>
+          )}
+          {typeof e.details.blocked === 'boolean' && (
+            <span className="badge">
+              {e.details.blocked ? 'Доступ закрыт' : 'Доступ восстановлен'}
+            </span>
+          )}
+          {e.action === 'student.transferred' && (
+            <p>
+              {name(String(e.details.from)) || 'Предыдущая группа'} →{' '}
+              {name(String(e.details.to)) || 'Новая группа'}
+            </p>
+          )}
+        </article>
+      ))}
+      {!busy && !error && !items.length && <p>Записей пока нет.</p>}
+      <div className="card-actions">
+        <button disabled={busy} onClick={() => setRevision((n) => n + 1)}>
+          Обновить историю
+        </button>
+        <button disabled={busy || !offset} onClick={() => setOffset((n) => Math.max(0, n - 50))}>
+          Предыдущие события
+        </button>
+        <button disabled={busy || items.length < 50} onClick={() => setOffset((n) => n + 50)}>
+          Следующие события
+        </button>
+      </div>
+    </section>
+  );
 }
-export function OwnerAdminPanel({api,snapshot,onChanged,onOverview,initialSection='groups',initialGroup=''}:{api:Gateway;snapshot:Snapshot;onChanged:()=>Promise<void>;onOverview:()=>void;initialSection?:OwnerSection;initialGroup?:string}){
- const [section,setSection]=useViewState<OwnerSection>('admin','ownerSection','groups',oneOf(...Object.keys(sections))),[selected,setSelected]=useViewState<string>('admin','ownerWorkingGroup','',v=>snapshot.groups.some(g=>g.id===v)),[courseId,setCourse]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[query,setQuery]=useViewState<string>('admin','ownerSearch','',shortText),[status,setStatus]=useViewState<string>('admin','ownerStatus','',oneOf('','active','blocked','ungrouped')),[role,setRole]=useViewState<string>('admin','ownerRole','',oneOf('','student','leader','teacher','owner')),[memberGroup,setMemberGroup]=useViewState<string>('admin','ownerGroup','',v=>snapshot.groups.some(g=>g.id===v)),[offset,setOffset]=useState(0),[inviteRole,setInviteRole]=useState<Role>('student'),[link,setLink]=useState(''),[confirm,setConfirm]=useState<{type:'user'|'group';id:string;blocked:boolean}|null>(null);
- const [person,setPerson]=useViewState<string>('admin','person','',v=>snapshot.profiles.some(p=>p.id===v));
- useEffect(()=>{if(!new URLSearchParams(location.search).has('ui_ownerSection')&&initialSection!=='groups')setSection(initialSection);if(!new URLSearchParams(location.search).has('ui_ownerWorkingGroup')&&initialGroup)setSelected(initialGroup);},[initialSection,initialGroup]);
- const group=snapshot.groups.find(g=>g.id===(selected||initialGroup))||snapshot.groups[0],groupId=group?.id||'',courses=snapshot.courses.filter(c=>c.group_id===groupId&&!c.archived);
- useEffect(()=>{setSelected(groupId);setCourse('');setLink('');setConfirm(null);},[groupId]);
- useEffect(()=>{setOffset(0);setConfirm(null);},[query,status,role,memberGroup]);
- const writing=useRef(false);
- async function action(fn:()=>Promise<void>,ok:string,refresh=true){if(writing.current)return;writing.current=true;setBusy(true);setError('');setMessage('');try{await fn();setMessage(ok);setConfirm(null);if(refresh)try{await onChanged();}catch{setError('Изменение сохранено, но данные не обновились. Обновите страницу; повторять действие не нужно.');}}catch(e){setError(e instanceof Error?e.message:'Действие не выполнено.');}finally{writing.current=false;setBusy(false);}}
- function navigate(next:OwnerSection){if(!mayLeaveDrafts())return;setSection(next);setCourse('');setQuery('');setStatus('');setRole('');setMemberGroup('');setOffset(0);setConfirm(null);setError('');setMessage('');setLink('');}
- const memberships=(id:string)=>snapshot.memberships.filter(m=>m.user_id===id&&m.active);
- const search=(name:string)=>name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
- const filteredGroups=snapshot.groups.filter(g=>search(g.name)&&(!status||g.blocked===(status==='blocked')));
- const filteredAccounts=snapshot.profiles.filter(p=>(search(p.full_name)||search(p.id))&&(!status||(status==='ungrouped'?p.id!==snapshot.me.id&&!memberships(p.id).length:p.blocked===(status==='blocked')))&&(!role||(role==='owner'?p.id===snapshot.me.id:memberships(p.id).some(m=>m.role===role||role==='student'&&m.role==='leader')))&&(!memberGroup||memberships(p.id).some(m=>m.group_id===memberGroup)));
- useEffect(()=>{if(section!=='groups'&&section!=='accounts')return;const total=section==='groups'?filteredGroups.length:filteredAccounts.length;setOffset(n=>Math.min(n,Math.max(0,Math.floor((total-1)/24)*24)));},[section,filteredGroups.length,filteredAccounts.length]);
- function blockControl(type:'user'|'group',id:string,blocked:boolean,name:string){const current=confirm?.type===type&&confirm.id===id;return <div className="owner-block-control">{current?<><p>{confirm.blocked?'Закрыть доступ':'Восстановить доступ'}: <b>{name}</b>? {confirm.blocked?'Данные сохранятся.':''}</p><div className="card-actions"><button disabled={busy} className={confirm.blocked?'danger':'primary'} onClick={()=>void action(()=>api.block(type==='user'?id:null,type==='group'?id:null,confirm.blocked),'Статус '+(type==='user'?'аккаунта':'группы')+' изменён.')}>{confirm.blocked?'Подтвердить блокировку':'Подтвердить восстановление'}</button><button disabled={busy} onClick={()=>setConfirm(null)}>Отмена</button></div></>:<button disabled={busy} className={blocked?'':'danger'} onClick={()=>setConfirm({type,id,blocked:!blocked})}>{blocked?'Разблокировать':'Заблокировать'}</button>}</div>;}
- function pagination(total:number){return total>24?<div className="pagination"><button disabled={busy||!offset} onClick={()=>{setOffset(n=>Math.max(0,n-24));setConfirm(null);}}>Предыдущие записи</button><span>Страница {offset/24+1}</span><button disabled={busy||offset+24>=total} onClick={()=>{setOffset(n=>n+24);setConfirm(null);}}>Следующие записи</button></div>:null;}
- useEffect(()=>{if(!confirm)return;const target=confirm.type==='user'?snapshot.profiles.find(p=>p.id===confirm.id):snapshot.groups.find(g=>g.id===confirm.id);if(!target||target.blocked===confirm.blocked)setConfirm(null);},[snapshot,confirm]);
- const groupChoice=<label>Рабочая группа<select value={groupId} disabled={busy} onChange={e=>{if(mayLeaveDrafts()){setSelected(e.target.value);setCourse('');setLink('');setMessage('');}}}>{snapshot.groups.map(g=><option key={g.id} value={g.id}>{g.name}{g.blocked?' · доступ закрыт':''}</option>)}</select></label>;
- if(!snapshot.owner)return <p role="alert">Панель доступна только владельцу.</p>;
- return <section className="owner-admin" aria-label="Админ владельца"><div className="leader-admin-heading"><div><span className="eyebrow">УПРАВЛЕНИЕ ВСЕМ ПРОЕКТОМ</span><h2>Панель владельца</h2><p>Группы, участники, публикации и доступ в одном месте.</p></div><button disabled={busy} onClick={onOverview}>К обзору проекта</button></div><nav className="owner-admin-tabs" aria-label="Разделы владельца">{Object.entries(sections).map(([id,title])=><button disabled={busy} key={id} aria-current={section===id?'page':undefined} onClick={()=>navigate(id as OwnerSection)}>{title}</button>)}</nav>
- {error&&<p className="notice error" role="alert">{error}</p>}{message&&<p className="notice success" role="status">{message}</p>}
- {section==='requests'&&<OwnerOperations api={api} snapshot={snapshot} queue onChanged={onChanged}/>}
- {section==='groups'&&<section>{groupChoice}{groupId&&<GroupRequests key={groupId} api={api} group={groupId} onChanged={onChanged}/>}</section>}
- {section==='groups'&&<><section className="card"><h2>Создание группы</h2><form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f);void action(async()=>{await api.createGroup(String(d.get('name')));f.reset();},'Группа создана.');}}><label>Название группы<input name="name" required maxLength={100} placeholder="Например, ИФ-3-24"/></label><button disabled={busy} className="primary">Создать группу</button></form></section><div className="owner-filters"><label>Поиск группы<input value={query} onChange={e=>setQuery(e.target.value)} maxLength={150}/></label><label>Доступ группы<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Все группы</option><option value="active">Открыт</option><option value="blocked">Закрыт</option></select></label></div><p>Найдено групп: {filteredGroups.length}</p><div className="owner-group-grid">{filteredGroups.slice(offset,offset+24).map(g=><article className="card" key={g.id}><span className="badge">{g.blocked?'Доступ закрыт':'Активна'}</span><h3>{g.name}</h3><p>Дисциплин: {snapshot.courses.filter(c=>c.group_id===g.id&&!c.archived).length} · Участников: {new Set(snapshot.memberships.filter(m=>m.group_id===g.id&&m.active).map(m=>m.user_id)).size}</p><p>Староста: {snapshot.memberships.filter(m=>m.group_id===g.id&&m.role==='leader'&&m.active).map(m=>snapshot.profiles.find(p=>p.id===m.user_id)?.full_name||'Имя недоступно').join(', ')||'Не назначен'}</p><button disabled={busy} onClick={()=>{setSelected(g.id);navigate('courses');}}>Дисциплины группы</button>{blockControl('group',g.id,g.blocked,g.name)}</article>)}</div>{!filteredGroups.length&&<p>Группы не найдены.</p>}{pagination(filteredGroups.length)}</>}
- {section==='accounts'&&<><div className="section-heading"><h2>Участники и роли</h2><button disabled={busy} onClick={()=>void action(onChanged,'Список пользователей обновлён.',false)}>Обновить пользователей</button></div><div className="owner-filters"><label>Поиск участника<input value={query} maxLength={150} placeholder="Имя или идентификатор" onChange={e=>setQuery(e.target.value)}/></label><label>Роль участника<select value={role} onChange={e=>setRole(e.target.value)}><option value="">Все роли</option><option value="student">Студенты и старосты</option><option value="leader">Старосты</option><option value="teacher">Преподаватели</option><option value="owner">Мой аккаунт владельца</option></select></label><label>Доступ аккаунта<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Все аккаунты</option><option value="active">Открыт</option><option value="blocked">Закрыт</option><option value="ungrouped">Без действующей группы</option></select></label><label>Группа участника<select value={memberGroup} onChange={e=>setMemberGroup(e.target.value)}><option value="">Все группы</option>{snapshot.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></label></div><p>Найдено аккаунтов: {filteredAccounts.length} из {snapshot.profiles.length}</p>{(query||status||role||memberGroup)&&<button onClick={()=>{setQuery('');setStatus('');setRole('');setMemberGroup('');}}>Сбросить фильтры</button>}<div className="owner-account-list">{filteredAccounts.slice(offset,offset+24).map(p=><article className="card" key={p.id}><div><h3>{p.full_name}</h3><span className="badge">{p.blocked?'Доступ закрыт':'Активный аккаунт'}</span>{p.id===snapshot.me.id&&<span className="badge">Владелец · ваш аккаунт</span>}<ul className="owner-memberships">{memberships(p.id).map(m=><li key={m.group_id+m.role}>{roleNames[m.role]} · {snapshot.groups.find(g=>g.id===m.group_id)?.name||'Группа недоступна'}</li>)}</ul>{!memberships(p.id).length&&p.id!==snapshot.me.id&&<p className="helper">Нет действующих членств в группах.</p>}<button className="owner-person-open" aria-expanded={person===p.id} onClick={()=>setPerson(person===p.id?'':p.id)}>Подробнее об аккаунте</button>{person===p.id&&<div className="owner-person-detail"><p>Идентификатор аккаунта</p><code>{p.id}</code><h4>Группы и роли</h4>{snapshot.memberships.filter(m=>m.user_id===p.id).map(m=>{const g=snapshot.groups.find(g=>g.id===m.group_id);return <p key={m.group_id+m.role}>{roleNames[m.role]} · {g?.name||'Группа недоступна'}{!m.active?' · членство отключено':g?.blocked?' · группа закрыта':''}</p>;})}{p.id===snapshot.me.id&&<p>Владелец управляет всем проектом.</p>}{memberships(p.id).some(m=>m.role==='teacher')&&<OwnerTeaching api={api} snapshot={snapshot} user={p.id}/>}<h4>Ограничения разделов</h4>{snapshot.denials.filter(d=>d.user_id===p.id||memberships(p.id).some(m=>m.group_id===d.group_id)).map(d=><p key={d.id}>{accessNames[d.section]||d.section}{d.group_id?' · для группы '+(snapshot.groups.find(g=>g.id===d.group_id)?.name||''): ' · личное'}{d.course_id?' · '+(snapshot.courses.find(c=>c.id===d.course_id)?.title||'Дисциплина'):''}</p>)}{!snapshot.denials.some(d=>d.user_id===p.id||memberships(p.id).some(m=>m.group_id===d.group_id))&&<p>Дополнительных ограничений нет.</p>}</div>}</div>{p.id!==snapshot.me.id&&blockControl('user',p.id,p.blocked,p.full_name)}</article>)}</div>{!filteredAccounts.length&&<p>Участники не найдены.</p>}{pagination(filteredAccounts.length)}<details className="owner-transfer"><summary>Перенос студента в другую группу</summary><StudentTransfer api={api} snapshot={snapshot} onChanged={onChanged}/></details></>}
- {section==='courses'&&<>{groupChoice}{!group?<p>Сначала создайте группу.</p>:courseId&&courses.some(c=>c.id===courseId)?<CoursePanel key={courseId} api={api} snapshot={snapshot} course={courses.find(c=>c.id===courseId)!} userId={snapshot.me.id} groupName={group.name} onClose={()=>setCourse('')}/>:<><section className="card"><h2>Дисциплины · {group!.name}</h2><CourseManager key={groupId} api={api} snapshot={snapshot} group={groupId} onOpen={setCourse} onChanged={onChanged}/><form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f);void action(async()=>{await api.createCourse(groupId,String(d.get('title')));f.reset();},'Дисциплина создана.');}}><label>Новая дисциплина<input name="title" required maxLength={200}/></label><button disabled={busy} className="primary">Добавить дисциплину</button></form></section><TeachingManager key={groupId} api={api} snapshot={snapshot} group={groupId} onChanged={onChanged}/><button onClick={()=>{setInviteRole('teacher');navigate('invitations');}}>Пригласить преподавателя</button></>}</>}
- {section==='invitations'&&<><section className="card narrow"><h2>Пригласить участника</h2><p>Ссылки действуют 72 часа. Приглашение старосты даёт право создать одну новую группу.</p><form key={inviteRole+groupId} onSubmit={e=>{e.preventDefault();const d=new FormData(e.currentTarget);void action(async()=>{const token=await api.invite(inviteRole,inviteRole==='leader'?null:groupId,inviteRole==='teacher'?d.getAll('courses').map(String):[],inviteRole==='student'?60:1);const url=new URL(location.href);url.search='';url.hash='invite='+encodeURIComponent(token);setLink(url.href);},'Приглашение создано.');}}><label>Кого приглашаем<select value={inviteRole} onChange={e=>{setInviteRole(e.target.value as Role);setLink('');}}><option value="student">Студент · до 60 регистраций</option><option value="teacher">Преподаватель · одноразовая ссылка</option><option value="leader">Староста · создание группы</option></select></label>{inviteRole!=='leader'&&groupChoice}{inviteRole==='teacher'&&<fieldset><legend>Дисциплины преподавателя</legend>{courses.filter(c=>!c.archived).map(c=><label className="check" key={c.id}><input type="checkbox" name="courses" value={c.id}/>{c.title}</label>)}</fieldset>}<button className="primary" disabled={busy||inviteRole!=='leader'&&!group||inviteRole==='teacher'&&!courses.length}>Создать ссылку</button></form>{link&&<div className="link-box"><label>Пригласительная ссылка<textarea readOnly value={link}/></label><button disabled={busy} onClick={()=>void action(()=>navigator.clipboard.writeText(link),'Ссылка скопирована.')}>Копировать</button></div>}</section><InvitationManager api={api} snapshot={snapshot} onChanged={onChanged}/></>}
- {section==='access'&&<><section className="card"><h2>Ограничения разделов</h2><p>Закрывайте отдельный раздел для группы или участника. Полная блокировка находится в разделах «Группы» и «Участники и роли».</p><form onSubmit={e=>{e.preventDefault();const d=new FormData(e.currentTarget),[type,id]=String(d.get('target')).split(':');void action(()=>api.deny(String(d.get('section')),type==='user'?id:null,type==='group'?id:null,null),'Ограничение добавлено.');}}><label>Для кого<select name="target" required><option value="">Выберите группу или участника</option><optgroup label="Группы">{snapshot.groups.map(g=><option key={g.id} value={'group:'+g.id}>{g.name}</option>)}</optgroup><optgroup label="Участники">{snapshot.profiles.filter(p=>p.id!==snapshot.me.id).map(p=><option key={p.id} value={'user:'+p.id}>{p.full_name}</option>)}</optgroup></select></label><label>Ограничиваемый раздел<select name="section" aria-label="Ограничиваемый раздел">{Object.entries(accessNames).filter(([id])=>id!=='course').map(([id,title])=><option key={id} value={id}>{title}</option>)}</select></label><button className="primary" disabled={busy||!snapshot.groups.length&&snapshot.profiles.length<2}>Закрыть доступ к разделу</button></form></section><section className="card"><h2>Действующие ограничения</h2>{snapshot.denials.map(d=><article className="access-entry" key={d.id}><b>{accessNames[d.section]||d.section}</b><p>{d.group_id?snapshot.groups.find(g=>g.id===d.group_id)?.name:snapshot.profiles.find(p=>p.id===d.user_id)?.full_name}{d.course_id?' · '+(snapshot.courses.find(c=>c.id===d.course_id)?.title||'Дисциплина'):''}</p><button disabled={busy} onClick={()=>void action(()=>api.restore(d.id),'Доступ восстановлен.')}>Снять ограничение</button></article>)}{!snapshot.denials.length&&<p>Дополнительных ограничений нет.</p>}</section></>}
- {(section==='schedule'||section==='announcements')&&<>{groupChoice}{group?(section==='schedule'?<WeeklyScheduleEditor key={groupId} api={api} snapshot={snapshot} group={groupId}/>:<BoardPanel key={groupId+section} api={api} snapshot={{...snapshot,groups:[group]}} initialGroup={groupId} kind="announcement"/>):<p>Сначала создайте группу.</p>}</>}
- {section==='library'&&<LibraryPanel api={api} snapshot={snapshot}/>}
- {section==='history'&&<OwnerHistory api={api} snapshot={snapshot}/>}
- </section>;
+export function OwnerAdminPanel({
+  api,
+  snapshot,
+  onChanged,
+  onOverview,
+  initialSection = 'groups',
+  initialGroup = '',
+}: {
+  api: Gateway;
+  snapshot: Snapshot;
+  onChanged: () => Promise<void>;
+  onOverview: () => void;
+  initialSection?: OwnerSection;
+  initialGroup?: string;
+}) {
+  const [section, setSection] = useViewState<OwnerSection>(
+      'admin',
+      'ownerSection',
+      'groups',
+      oneOf(...Object.keys(sections)),
+    ),
+    [selected, setSelected] = useViewState<string>('admin', 'ownerWorkingGroup', '', (v) =>
+      snapshot.groups.some((g) => g.id === v),
+    ),
+    [courseId, setCourse] = useState(''),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [message, setMessage] = useState(''),
+    [query, setQuery] = useViewState<string>('admin', 'ownerSearch', '', shortText),
+    [status, setStatus] = useViewState<string>(
+      'admin',
+      'ownerStatus',
+      '',
+      oneOf('', 'active', 'blocked', 'ungrouped'),
+    ),
+    [role, setRole] = useViewState<string>(
+      'admin',
+      'ownerRole',
+      '',
+      oneOf('', 'student', 'leader', 'teacher', 'owner'),
+    ),
+    [memberGroup, setMemberGroup] = useViewState<string>('admin', 'ownerGroup', '', (v) =>
+      snapshot.groups.some((g) => g.id === v),
+    ),
+    [offset, setOffset] = useState(0),
+    [inviteRole, setInviteRole] = useState<Role>('student'),
+    [link, setLink] = useState(''),
+    [confirm, setConfirm] = useState<{
+      type: 'user' | 'group';
+      id: string;
+      blocked: boolean;
+    } | null>(null);
+  const [person, setPerson] = useViewState<string>('admin', 'person', '', (v) =>
+    snapshot.profiles.some((p) => p.id === v),
+  );
+  useEffect(() => {
+    if (!new URLSearchParams(location.search).has('ui_ownerSection') && initialSection !== 'groups')
+      setSection(initialSection);
+    if (!new URLSearchParams(location.search).has('ui_ownerWorkingGroup') && initialGroup)
+      setSelected(initialGroup);
+  }, [initialSection, initialGroup]);
+  const group =
+      snapshot.groups.find((g) => g.id === (selected || initialGroup)) || snapshot.groups[0],
+    groupId = group?.id || '',
+    courses = snapshot.courses.filter((c) => c.group_id === groupId && !c.archived);
+  useEffect(() => {
+    setSelected(groupId);
+    setCourse('');
+    setLink('');
+    setConfirm(null);
+  }, [groupId]);
+  useEffect(() => {
+    setOffset(0);
+    setConfirm(null);
+  }, [query, status, role, memberGroup]);
+  const writing = useRef(false);
+  async function action(fn: () => Promise<void>, ok: string, refresh = true) {
+    if (writing.current) return;
+    writing.current = true;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await fn();
+      setMessage(ok);
+      setConfirm(null);
+      if (refresh)
+        try {
+          await onChanged();
+        } catch {
+          setError(
+            'Изменение сохранено, но данные не обновились. Обновите страницу; повторять действие не нужно.',
+          );
+        }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Действие не выполнено.');
+    } finally {
+      writing.current = false;
+      setBusy(false);
+    }
+  }
+  function navigate(next: OwnerSection) {
+    if (!mayLeaveDrafts()) return;
+    setSection(next);
+    setCourse('');
+    setQuery('');
+    setStatus('');
+    setRole('');
+    setMemberGroup('');
+    setOffset(0);
+    setConfirm(null);
+    setError('');
+    setMessage('');
+    setLink('');
+  }
+  const memberships = (id: string) =>
+    snapshot.memberships.filter((m) => m.user_id === id && m.active);
+  const search = (name: string) =>
+    name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  const filteredGroups = snapshot.groups.filter(
+    (g) => search(g.name) && (!status || g.blocked === (status === 'blocked')),
+  );
+  const filteredAccounts = snapshot.profiles.filter(
+    (p) =>
+      (search(p.full_name) || search(p.id)) &&
+      (!status ||
+        (status === 'ungrouped'
+          ? p.id !== snapshot.me.id && !memberships(p.id).length
+          : p.blocked === (status === 'blocked'))) &&
+      (!role ||
+        (role === 'owner'
+          ? p.id === snapshot.me.id
+          : memberships(p.id).some(
+              (m) => m.role === role || (role === 'student' && m.role === 'leader'),
+            ))) &&
+      (!memberGroup || memberships(p.id).some((m) => m.group_id === memberGroup)),
+  );
+  useEffect(() => {
+    if (section !== 'groups' && section !== 'accounts') return;
+    const total = section === 'groups' ? filteredGroups.length : filteredAccounts.length;
+    setOffset((n) => Math.min(n, Math.max(0, Math.floor((total - 1) / 24) * 24)));
+  }, [section, filteredGroups.length, filteredAccounts.length]);
+  function blockControl(type: 'user' | 'group', id: string, blocked: boolean, name: string) {
+    const current = confirm?.type === type && confirm.id === id;
+    return (
+      <div className="owner-block-control">
+        {current ? (
+          <>
+            <p>
+              {confirm.blocked ? 'Закрыть доступ' : 'Восстановить доступ'}: <b>{name}</b>?{' '}
+              {confirm.blocked ? 'Данные сохранятся.' : ''}
+            </p>
+            <div className="card-actions">
+              <button
+                disabled={busy}
+                className={confirm.blocked ? 'danger' : 'primary'}
+                onClick={() =>
+                  void action(
+                    () =>
+                      api.block(
+                        type === 'user' ? id : null,
+                        type === 'group' ? id : null,
+                        confirm.blocked,
+                      ),
+                    'Статус ' + (type === 'user' ? 'аккаунта' : 'группы') + ' изменён.',
+                  )
+                }
+              >
+                {confirm.blocked ? 'Подтвердить блокировку' : 'Подтвердить восстановление'}
+              </button>
+              <button disabled={busy} onClick={() => setConfirm(null)}>
+                Отмена
+              </button>
+            </div>
+          </>
+        ) : (
+          <button
+            disabled={busy}
+            className={blocked ? '' : 'danger'}
+            onClick={() => setConfirm({ type, id, blocked: !blocked })}
+          >
+            {blocked ? 'Разблокировать' : 'Заблокировать'}
+          </button>
+        )}
+      </div>
+    );
+  }
+  function pagination(total: number) {
+    return total > 24 ? (
+      <div className="pagination">
+        <button
+          disabled={busy || !offset}
+          onClick={() => {
+            setOffset((n) => Math.max(0, n - 24));
+            setConfirm(null);
+          }}
+        >
+          Предыдущие записи
+        </button>
+        <span>Страница {offset / 24 + 1}</span>
+        <button
+          disabled={busy || offset + 24 >= total}
+          onClick={() => {
+            setOffset((n) => n + 24);
+            setConfirm(null);
+          }}
+        >
+          Следующие записи
+        </button>
+      </div>
+    ) : null;
+  }
+  useEffect(() => {
+    if (!confirm) return;
+    const target =
+      confirm.type === 'user'
+        ? snapshot.profiles.find((p) => p.id === confirm.id)
+        : snapshot.groups.find((g) => g.id === confirm.id);
+    if (!target || target.blocked === confirm.blocked) setConfirm(null);
+  }, [snapshot, confirm]);
+  const groupChoice = (
+    <label>
+      Рабочая группа
+      <select
+        value={groupId}
+        disabled={busy}
+        onChange={(e) => {
+          if (mayLeaveDrafts()) {
+            setSelected(e.target.value);
+            setCourse('');
+            setLink('');
+            setMessage('');
+          }
+        }}
+      >
+        {snapshot.groups.map((g) => (
+          <option key={g.id} value={g.id}>
+            {g.name}
+            {g.blocked ? ' · доступ закрыт' : ''}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  if (!snapshot.owner) return <p role="alert">Панель доступна только владельцу.</p>;
+  return (
+    <section className="owner-admin" aria-label="Админ владельца">
+      <div className="leader-admin-heading">
+        <div>
+          <span className="eyebrow">УПРАВЛЕНИЕ ВСЕМ ПРОЕКТОМ</span>
+          <h2>Панель владельца</h2>
+          <p>Группы, участники, публикации и доступ в одном месте.</p>
+        </div>
+        <button disabled={busy} onClick={onOverview}>
+          К обзору проекта
+        </button>
+      </div>
+      <nav className="owner-admin-tabs" aria-label="Разделы владельца">
+        {Object.entries(sections).map(([id, title]) => (
+          <button
+            disabled={busy}
+            key={id}
+            aria-current={section === id ? 'page' : undefined}
+            onClick={() => navigate(id as OwnerSection)}
+          >
+            {title}
+          </button>
+        ))}
+      </nav>
+      {error && (
+        <p className="notice error" role="alert">
+          {error}
+        </p>
+      )}
+      {message && (
+        <p className="notice success" role="status">
+          {message}
+        </p>
+      )}
+      {section === 'requests' && (
+        <OwnerOperations api={api} snapshot={snapshot} queue onChanged={onChanged} />
+      )}
+      {section === 'groups' && (
+        <section>
+          {groupChoice}
+          {groupId && (
+            <GroupRequests key={groupId} api={api} group={groupId} onChanged={onChanged} />
+          )}
+        </section>
+      )}
+      {section === 'groups' && (
+        <>
+          <section className="card">
+            <h2>Создание группы</h2>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const f = e.currentTarget,
+                  d = new FormData(f);
+                void action(async () => {
+                  await api.createGroup(String(d.get('name')));
+                  f.reset();
+                }, 'Группа создана.');
+              }}
+            >
+              <label>
+                Название группы
+                <input name="name" required maxLength={100} placeholder="Например, ИФ-3-24" />
+              </label>
+              <button disabled={busy} className="primary">
+                Создать группу
+              </button>
+            </form>
+          </section>
+          <div className="owner-filters">
+            <label>
+              Поиск группы
+              <input value={query} onChange={(e) => setQuery(e.target.value)} maxLength={150} />
+            </label>
+            <label>
+              Доступ группы
+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="">Все группы</option>
+                <option value="active">Открыт</option>
+                <option value="blocked">Закрыт</option>
+              </select>
+            </label>
+          </div>
+          <p>Найдено групп: {filteredGroups.length}</p>
+          <div className="owner-group-grid">
+            {filteredGroups.slice(offset, offset + 24).map((g) => (
+              <article className="card" key={g.id}>
+                <span className="badge">{g.blocked ? 'Доступ закрыт' : 'Активна'}</span>
+                <h3>{g.name}</h3>
+                <p>
+                  Дисциплин:{' '}
+                  {snapshot.courses.filter((c) => c.group_id === g.id && !c.archived).length} ·
+                  Участников:{' '}
+                  {
+                    new Set(
+                      snapshot.memberships
+                        .filter((m) => m.group_id === g.id && m.active)
+                        .map((m) => m.user_id),
+                    ).size
+                  }
+                </p>
+                <p>
+                  Староста:{' '}
+                  {snapshot.memberships
+                    .filter((m) => m.group_id === g.id && m.role === 'leader' && m.active)
+                    .map(
+                      (m) =>
+                        snapshot.profiles.find((p) => p.id === m.user_id)?.full_name ||
+                        'Имя недоступно',
+                    )
+                    .join(', ') || 'Не назначен'}
+                </p>
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    setSelected(g.id);
+                    navigate('courses');
+                  }}
+                >
+                  Дисциплины группы
+                </button>
+                {blockControl('group', g.id, g.blocked, g.name)}
+              </article>
+            ))}
+          </div>
+          {!filteredGroups.length && <p>Группы не найдены.</p>}
+          {pagination(filteredGroups.length)}
+        </>
+      )}
+      {section === 'accounts' && (
+        <>
+          <div className="section-heading">
+            <h2>Участники и роли</h2>
+            <button
+              disabled={busy}
+              onClick={() => void action(onChanged, 'Список пользователей обновлён.', false)}
+            >
+              Обновить пользователей
+            </button>
+          </div>
+          <div className="owner-filters">
+            <label>
+              Поиск участника
+              <input
+                value={query}
+                maxLength={150}
+                placeholder="Имя или идентификатор"
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+            <label>
+              Роль участника
+              <select value={role} onChange={(e) => setRole(e.target.value)}>
+                <option value="">Все роли</option>
+                <option value="student">Студенты и старосты</option>
+                <option value="leader">Старосты</option>
+                <option value="teacher">Преподаватели</option>
+                <option value="owner">Мой аккаунт владельца</option>
+              </select>
+            </label>
+            <label>
+              Доступ аккаунта
+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="">Все аккаунты</option>
+                <option value="active">Открыт</option>
+                <option value="blocked">Закрыт</option>
+                <option value="ungrouped">Без действующей группы</option>
+              </select>
+            </label>
+            <label>
+              Группа участника
+              <select value={memberGroup} onChange={(e) => setMemberGroup(e.target.value)}>
+                <option value="">Все группы</option>
+                {snapshot.groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p>
+            Найдено аккаунтов: {filteredAccounts.length} из {snapshot.profiles.length}
+          </p>
+          {(query || status || role || memberGroup) && (
+            <button
+              onClick={() => {
+                setQuery('');
+                setStatus('');
+                setRole('');
+                setMemberGroup('');
+              }}
+            >
+              Сбросить фильтры
+            </button>
+          )}
+          <div className="owner-account-list">
+            {filteredAccounts.slice(offset, offset + 24).map((p) => (
+              <article className="card" key={p.id}>
+                <div>
+                  <h3>{p.full_name}</h3>
+                  <span className="badge">{p.blocked ? 'Доступ закрыт' : 'Активный аккаунт'}</span>
+                  {p.id === snapshot.me.id && <span className="badge">Владелец · ваш аккаунт</span>}
+                  <ul className="owner-memberships">
+                    {memberships(p.id).map((m) => (
+                      <li key={m.group_id + m.role}>
+                        {roleNames[m.role]} ·{' '}
+                        {snapshot.groups.find((g) => g.id === m.group_id)?.name ||
+                          'Группа недоступна'}
+                      </li>
+                    ))}
+                  </ul>
+                  {!memberships(p.id).length && p.id !== snapshot.me.id && (
+                    <p className="helper">Нет действующих членств в группах.</p>
+                  )}
+                  <button
+                    className="owner-person-open"
+                    aria-expanded={person === p.id}
+                    onClick={() => setPerson(person === p.id ? '' : p.id)}
+                  >
+                    Подробнее об аккаунте
+                  </button>
+                  {person === p.id && (
+                    <div className="owner-person-detail">
+                      <p>Идентификатор аккаунта</p>
+                      <code>{p.id}</code>
+                      <h4>Группы и роли</h4>
+                      {snapshot.memberships
+                        .filter((m) => m.user_id === p.id)
+                        .map((m) => {
+                          const g = snapshot.groups.find((g) => g.id === m.group_id);
+                          return (
+                            <p key={m.group_id + m.role}>
+                              {roleNames[m.role]} · {g?.name || 'Группа недоступна'}
+                              {!m.active
+                                ? ' · членство отключено'
+                                : g?.blocked
+                                  ? ' · группа закрыта'
+                                  : ''}
+                            </p>
+                          );
+                        })}
+                      {p.id === snapshot.me.id && <p>Владелец управляет всем проектом.</p>}
+                      {memberships(p.id).some((m) => m.role === 'teacher') && (
+                        <OwnerTeaching api={api} snapshot={snapshot} user={p.id} />
+                      )}
+                      <h4>Ограничения разделов</h4>
+                      {snapshot.denials
+                        .filter(
+                          (d) =>
+                            d.user_id === p.id ||
+                            memberships(p.id).some((m) => m.group_id === d.group_id),
+                        )
+                        .map((d) => (
+                          <p key={d.id}>
+                            {accessNames[d.section] || d.section}
+                            {d.group_id
+                              ? ' · для группы ' +
+                                (snapshot.groups.find((g) => g.id === d.group_id)?.name || '')
+                              : ' · личное'}
+                            {d.course_id
+                              ? ' · ' +
+                                (snapshot.courses.find((c) => c.id === d.course_id)?.title ||
+                                  'Дисциплина')
+                              : ''}
+                          </p>
+                        ))}
+                      {!snapshot.denials.some(
+                        (d) =>
+                          d.user_id === p.id ||
+                          memberships(p.id).some((m) => m.group_id === d.group_id),
+                      ) && <p>Дополнительных ограничений нет.</p>}
+                    </div>
+                  )}
+                </div>
+                {p.id !== snapshot.me.id && blockControl('user', p.id, p.blocked, p.full_name)}
+              </article>
+            ))}
+          </div>
+          {!filteredAccounts.length && <p>Участники не найдены.</p>}
+          {pagination(filteredAccounts.length)}
+          <details className="owner-transfer">
+            <summary>Перенос студента в другую группу</summary>
+            <StudentTransfer api={api} snapshot={snapshot} onChanged={onChanged} />
+          </details>
+        </>
+      )}
+      {section === 'courses' && (
+        <>
+          {groupChoice}
+          {!group ? (
+            <p>Сначала создайте группу.</p>
+          ) : courseId && courses.some((c) => c.id === courseId) ? (
+            <CoursePanel
+              key={courseId}
+              api={api}
+              snapshot={snapshot}
+              course={courses.find((c) => c.id === courseId)!}
+              userId={snapshot.me.id}
+              groupName={group.name}
+              onClose={() => setCourse('')}
+            />
+          ) : (
+            <>
+              <section className="card">
+                <h2>Дисциплины · {group!.name}</h2>
+                <CourseManager
+                  key={groupId}
+                  api={api}
+                  snapshot={snapshot}
+                  group={groupId}
+                  onOpen={setCourse}
+                  onChanged={onChanged}
+                />
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const f = e.currentTarget,
+                      d = new FormData(f);
+                    void action(async () => {
+                      await api.createCourse(groupId, String(d.get('title')));
+                      f.reset();
+                    }, 'Дисциплина создана.');
+                  }}
+                >
+                  <label>
+                    Новая дисциплина
+                    <input name="title" required maxLength={200} />
+                  </label>
+                  <button disabled={busy} className="primary">
+                    Добавить дисциплину
+                  </button>
+                </form>
+              </section>
+              <TeachingManager
+                key={groupId}
+                api={api}
+                snapshot={snapshot}
+                group={groupId}
+                onChanged={onChanged}
+              />
+              <button
+                onClick={() => {
+                  setInviteRole('teacher');
+                  navigate('invitations');
+                }}
+              >
+                Пригласить преподавателя
+              </button>
+            </>
+          )}
+        </>
+      )}
+      {section === 'invitations' && (
+        <>
+          <section className="card narrow">
+            <h2>Пригласить участника</h2>
+            <p>
+              Ссылки действуют 72 часа. Приглашение старосты даёт право создать одну новую группу.
+            </p>
+            <form
+              key={inviteRole + groupId}
+              onSubmit={(e) => {
+                e.preventDefault();
+                const d = new FormData(e.currentTarget);
+                void action(async () => {
+                  const token = await api.invite(
+                    inviteRole,
+                    inviteRole === 'leader' ? null : groupId,
+                    inviteRole === 'teacher' ? d.getAll('courses').map(String) : [],
+                    inviteRole === 'student' ? 60 : 1,
+                  );
+                  const url = new URL(location.href);
+                  url.search = '';
+                  url.hash = 'invite=' + encodeURIComponent(token);
+                  setLink(url.href);
+                }, 'Приглашение создано.');
+              }}
+            >
+              <label>
+                Кого приглашаем
+                <select
+                  value={inviteRole}
+                  onChange={(e) => {
+                    setInviteRole(e.target.value as Role);
+                    setLink('');
+                  }}
+                >
+                  <option value="student">Студент · до 60 регистраций</option>
+                  <option value="teacher">Преподаватель · одноразовая ссылка</option>
+                  <option value="leader">Староста · создание группы</option>
+                </select>
+              </label>
+              {inviteRole !== 'leader' && groupChoice}
+              {inviteRole === 'teacher' && (
+                <fieldset>
+                  <legend>Дисциплины преподавателя</legend>
+                  {courses
+                    .filter((c) => !c.archived)
+                    .map((c) => (
+                      <label className="check" key={c.id}>
+                        <input type="checkbox" name="courses" value={c.id} />
+                        {c.title}
+                      </label>
+                    ))}
+                </fieldset>
+              )}
+              <button
+                className="primary"
+                disabled={
+                  busy ||
+                  (inviteRole !== 'leader' && !group) ||
+                  (inviteRole === 'teacher' && !courses.length)
+                }
+              >
+                Создать ссылку
+              </button>
+            </form>
+            {link && (
+              <div className="link-box">
+                <label>
+                  Пригласительная ссылка
+                  <textarea readOnly value={link} />
+                </label>
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    void action(() => navigator.clipboard.writeText(link), 'Ссылка скопирована.')
+                  }
+                >
+                  Копировать
+                </button>
+              </div>
+            )}
+          </section>
+          <InvitationManager api={api} snapshot={snapshot} onChanged={onChanged} />
+        </>
+      )}
+      {section === 'access' && (
+        <>
+          <section className="card">
+            <h2>Ограничения разделов</h2>
+            <p>
+              Закрывайте отдельный раздел для группы или участника. Полная блокировка находится в
+              разделах «Группы» и «Участники и роли».
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const d = new FormData(e.currentTarget),
+                  [type, id] = String(d.get('target')).split(':');
+                void action(
+                  () =>
+                    api.deny(
+                      String(d.get('section')),
+                      type === 'user' ? id : null,
+                      type === 'group' ? id : null,
+                      null,
+                    ),
+                  'Ограничение добавлено.',
+                );
+              }}
+            >
+              <label>
+                Для кого
+                <select name="target" required>
+                  <option value="">Выберите группу или участника</option>
+                  <optgroup label="Группы">
+                    {snapshot.groups.map((g) => (
+                      <option key={g.id} value={'group:' + g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Участники">
+                    {snapshot.profiles
+                      .filter((p) => p.id !== snapshot.me.id)
+                      .map((p) => (
+                        <option key={p.id} value={'user:' + p.id}>
+                          {p.full_name}
+                        </option>
+                      ))}
+                  </optgroup>
+                </select>
+              </label>
+              <label>
+                Ограничиваемый раздел
+                <select name="section" aria-label="Ограничиваемый раздел">
+                  {Object.entries(accessNames)
+                    .filter(([id]) => id !== 'course')
+                    .map(([id, title]) => (
+                      <option key={id} value={id}>
+                        {title}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <button
+                className="primary"
+                disabled={busy || (!snapshot.groups.length && snapshot.profiles.length < 2)}
+              >
+                Закрыть доступ к разделу
+              </button>
+            </form>
+          </section>
+          <section className="card">
+            <h2>Действующие ограничения</h2>
+            {snapshot.denials.map((d) => (
+              <article className="access-entry" key={d.id}>
+                <b>{accessNames[d.section] || d.section}</b>
+                <p>
+                  {d.group_id
+                    ? snapshot.groups.find((g) => g.id === d.group_id)?.name
+                    : snapshot.profiles.find((p) => p.id === d.user_id)?.full_name}
+                  {d.course_id
+                    ? ' · ' +
+                      (snapshot.courses.find((c) => c.id === d.course_id)?.title || 'Дисциплина')
+                    : ''}
+                </p>
+                <button
+                  disabled={busy}
+                  onClick={() => void action(() => api.restore(d.id), 'Доступ восстановлен.')}
+                >
+                  Снять ограничение
+                </button>
+              </article>
+            ))}
+            {!snapshot.denials.length && <p>Дополнительных ограничений нет.</p>}
+          </section>
+        </>
+      )}
+      {(section === 'schedule' || section === 'announcements') && (
+        <>
+          {groupChoice}
+          {group ? (
+            section === 'schedule' ? (
+              <WeeklyScheduleEditor key={groupId} api={api} snapshot={snapshot} group={groupId} />
+            ) : (
+              <BoardPanel
+                key={groupId + section}
+                api={api}
+                snapshot={{ ...snapshot, groups: [group] }}
+                initialGroup={groupId}
+                kind="announcement"
+              />
+            )
+          ) : (
+            <p>Сначала создайте группу.</p>
+          )}
+        </>
+      )}
+      {section === 'library' && <LibraryPanel api={api} snapshot={snapshot} />}
+      {section === 'history' && <OwnerHistory api={api} snapshot={snapshot} />}
+    </section>
+  );
 }

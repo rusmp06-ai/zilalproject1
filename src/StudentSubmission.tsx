@@ -1,33 +1,295 @@
-import {useEffect,useState,useRef} from 'react';
-import {PdfOptimization} from './PdfOptimization';
-import {FILE_ACCEPT,validateFile} from './files';
-import {submissionDraftKey,useSubmissionDraft} from './submission-draft';
-import type {Gateway,Assignment} from './types';
-export function StudentSubmission({api,task,user,attempt,onSubmitted,onFailed}:{api:Gateway;task:Assignment;user:string;attempt:number;onSubmitted:()=>Promise<void>;onFailed:(message:string)=>Promise<void>}){
- const [sending,setSending]=useState(false),[optimizing,setOptimizing]=useState(false),[error,setError]=useState(''),[committed,setCommitted]=useState(false),[fileKey,setFileKey]=useState(0),[online,setOnline]=useState(navigator.onLine);
- const inFlight=useRef(false);
- const draft=useSubmissionDraft(submissionDraftKey(api.demo?'demo':'live',user,task.id,attempt),sending);
- const missing=!!draft.attachment&&!draft.file;
- useEffect(()=>{const change=()=>setOnline(navigator.onLine);window.addEventListener('online',change);window.addEventListener('offline',change);return()=>{window.removeEventListener('online',change);window.removeEventListener('offline',change);};},[]);
- async function submit(){const current=draft.read();if(inFlight.current||sending||committed||current.sent||optimizing||!online)return;setError('');if(current.attachment&&!current.file){setError('Прикрепите файл повторно или явно выберите отправку без него.');return;}if(!current.text.trim()&&!current.file){setError('Добавьте текст ответа или файл.');return;}if(current.status==='conflict'){setError('Сначала разрешите различие черновиков.');return;}
-  if(current.file)try{validateFile(current.file);}catch(e){setError((e as Error).message);return;}
-  draft.save();if(draft.read().status==='conflict'){setError('Сначала разрешите различие черновиков.');return;}inFlight.current=true;setSending(true);
-  try{await api.submit(task.id,current.text,current.file);}catch(e){
-   let confirmed=false;
-   try{const works=await api.works(task.id,0);confirmed=works.some(work=>work.student_id===user&&work.attempt_no===attempt&&['submitted','graded','returned'].includes(work.status)&&work.text_answer===current.text&&(current.file?work.original_name===current.file.name&&Number(work.size_bytes)===current.file.size:!work.original_name));}catch{/* Keep the draft when delivery cannot be verified. */}
-   if(!confirmed){const message=(e as Error).message||'Отправка не подтверждена. Черновик сохранён.';setError(message);try{await onFailed(message);}catch{}finally{inFlight.current=false;setSending(false);}return;}
+import { useEffect, useState, useRef } from 'react';
+import { PdfOptimization } from './PdfOptimization';
+import { FILE_ACCEPT, validateFile } from './files';
+import { submissionDraftKey, useSubmissionDraft } from './submission-draft';
+import type { Gateway, Assignment } from './types';
+export function StudentSubmission({
+  api,
+  task,
+  user,
+  attempt,
+  onSubmitted,
+  onFailed,
+}: {
+  api: Gateway;
+  task: Assignment;
+  user: string;
+  attempt: number;
+  onSubmitted: () => Promise<void>;
+  onFailed: (message: string) => Promise<void>;
+}) {
+  const [sending, setSending] = useState(false),
+    [optimizing, setOptimizing] = useState(false),
+    [error, setError] = useState(''),
+    [committed, setCommitted] = useState(false),
+    [fileKey, setFileKey] = useState(0),
+    [online, setOnline] = useState(navigator.onLine);
+  const inFlight = useRef(false);
+  const draft = useSubmissionDraft(
+    submissionDraftKey(api.demo ? 'demo' : 'live', user, task.id, attempt),
+    sending,
+  );
+  const missing = !!draft.attachment && !draft.file;
+  useEffect(() => {
+    const change = () => setOnline(navigator.onLine);
+    window.addEventListener('online', change);
+    window.addEventListener('offline', change);
+    return () => {
+      window.removeEventListener('online', change);
+      window.removeEventListener('offline', change);
+    };
+  }, []);
+  async function submit() {
+    const current = draft.read();
+    if (inFlight.current || sending || committed || current.sent || optimizing || !online) return;
+    setError('');
+    if (current.attachment && !current.file) {
+      setError('Прикрепите файл повторно или явно выберите отправку без него.');
+      return;
+    }
+    if (!current.text.trim() && !current.file) {
+      setError('Добавьте текст ответа или файл.');
+      return;
+    }
+    if (current.status === 'conflict') {
+      setError('Сначала разрешите различие черновиков.');
+      return;
+    }
+    if (current.file)
+      try {
+        validateFile(current.file);
+      } catch (e) {
+        setError((e as Error).message);
+        return;
+      }
+    draft.save();
+    if (draft.read().status === 'conflict') {
+      setError('Сначала разрешите различие черновиков.');
+      return;
+    }
+    inFlight.current = true;
+    setSending(true);
+    try {
+      await api.submit(task.id, current.text, current.file);
+    } catch (e) {
+      let confirmed = false;
+      try {
+        const works = await api.works(task.id, 0);
+        confirmed = works.some(
+          (work) =>
+            work.student_id === user &&
+            work.attempt_no === attempt &&
+            ['submitted', 'graded', 'returned'].includes(work.status) &&
+            work.text_answer === current.text &&
+            (current.file
+              ? work.original_name === current.file.name &&
+                Number(work.size_bytes) === current.file.size
+              : !work.original_name),
+        );
+      } catch {
+        /* Keep the draft when delivery cannot be verified. */
+      }
+      if (!confirmed) {
+        const message = (e as Error).message || 'Отправка не подтверждена. Черновик сохранён.';
+        setError(message);
+        try {
+          await onFailed(message);
+        } catch {
+        } finally {
+          inFlight.current = false;
+          setSending(false);
+        }
+        return;
+      }
+    }
+    // A refresh failure must never turn a successful submission into another send.
+    setCommitted(true);
+    const removed = draft.clear();
+    inFlight.current = false;
+    setSending(false);
+    if (!removed)
+      setError('Работа отправлена. Браузер не смог полностью обновить локальный черновик.');
+    try {
+      await onSubmitted();
+    } catch {
+      setError(
+        'Работа отправлена. Список попыток не обновился — обновите задания; повторно отправлять ответ не нужно.',
+      );
+    }
   }
-  // A refresh failure must never turn a successful submission into another send.
-  setCommitted(true);const removed=draft.clear();inFlight.current=false;setSending(false);if(!removed)setError('Работа отправлена. Браузер не смог полностью обновить локальный черновик.');
-  try{await onSubmitted();}catch{setError('Работа отправлена. Список попыток не обновился — обновите задания; повторно отправлять ответ не нужно.');}
- }
- if(committed||draft.sent)return <section className="card"><p role="status" className="notice success">Работа отправлена на проверку.</p>{error&&<p role="alert">{error}</p>}{draft.text&&<><p>Отправка подтверждена в другой вкладке. Этот вариант текста оставлен для копирования и не отправляется повторно.</p><label>Сохранённый вариант ответа<textarea readOnly value={draft.text}/></label></>}</section>;
- return <section className="card upload-panel student-submission"><h3>{attempt>1?'Повторная сдача':'Сдать работу'}</h3><p className="helper">Черновик сохраняется на этом устройстве.</p>
- <p role="status" aria-live="polite" className={'submission-draft-status '+(['error','conflict'].includes(draft.status)?'draft-warning':'')}>{draft.status==='saving'?'Сохраняем черновик…':draft.status==='saved'?'Черновик сохранён на этом устройстве'+(draft.savedAt?' · '+new Date(draft.savedAt).toLocaleTimeString('ru-RU',{timeZone:'Asia/Bishkek',hour:'2-digit',minute:'2-digit'}):''):draft.status==='empty'?'Начните ответ — черновик сохранится автоматически.':draft.error}</p>
- {['error','conflict'].includes(draft.status)&&<div className="card-actions"><button type="button" disabled={sending} onClick={()=>draft.save()}>Повторить сохранение</button>{draft.status==='conflict'&&<><button type="button" disabled={sending} onClick={()=>{if(window.confirm('Сохранить текст из этой вкладки поверх другой версии?'))draft.overwrite();}}>Сохранить мой вариант</button><button type="button" disabled={sending} onClick={()=>{if(window.confirm('Заменить текущий текст черновиком с устройства? Несохранённые изменения в этой вкладке будут заменены.'))draft.acceptRemote();}}>Открыть другую версию</button></>}</div>}
- {error&&<p role="alert" className="notice error">{error}</p>}{!online&&<p className="notice" role="status">Нет интернета. Продолжайте писать: черновик сохраняется на устройстве. Отправить работу можно после подключения.</p>}
- <form onSubmit={e=>{e.preventDefault();void submit();}}><label>Ваш ответ<textarea aria-label="Ваш ответ" name="answer" value={draft.text} onChange={e=>draft.setText(e.target.value)} maxLength={50000} disabled={sending}/></label><label>Файл работы — необязательно<input key={fileKey} name="file" type="file" accept={FILE_ACCEPT} disabled={sending} onChange={e=>{const f=e.target.files?.[0]||null;try{if(f)validateFile(f);draft.setFile(f);setError('');}catch(error){setError((error as Error).message);setFileKey(k=>k+1);}}}/></label>
- {draft.file&&<p className="filename">Прикреплён: {draft.file.name}. Файл хранится только в памяти вкладки; после перезагрузки его нужно выбрать снова.</p>}
- {missing&&<div className="notice" role="status"><p>Прикрепите файл повторно: <b>{draft.attachment!.name}</b>. Текст черновика восстановлен, сам файл после перезагрузки не прикрепляется автоматически.</p><button type="button" disabled={sending} onClick={()=>{if(window.confirm('Продолжить без сохранённого вложения?')){draft.setFile(null);setFileKey(k=>k+1);}}}>Продолжить без этого файла</button></div>}
- <PdfOptimization file={draft.file} onChange={draft.setFile} onBusy={setOptimizing} disabled={sending}/><p className="helper">Текст или файл до 10 МБ.</p><button className="primary" disabled={sending||optimizing||!online||missing||draft.status==='conflict'}>{sending?'Отправляем работу…':'Отправить работу'}</button></form></section>;
+  if (committed || draft.sent)
+    return (
+      <section className="card">
+        <p role="status" className="notice success">
+          Работа отправлена на проверку.
+        </p>
+        {error && <p role="alert">{error}</p>}
+        {draft.text && (
+          <>
+            <p>
+              Отправка подтверждена в другой вкладке. Этот вариант текста оставлен для копирования и
+              не отправляется повторно.
+            </p>
+            <label>
+              Сохранённый вариант ответа
+              <textarea readOnly value={draft.text} />
+            </label>
+          </>
+        )}
+      </section>
+    );
+  return (
+    <section className="card upload-panel student-submission">
+      <h3>{attempt > 1 ? 'Повторная сдача' : 'Сдать работу'}</h3>
+      <p className="helper">Черновик сохраняется на этом устройстве.</p>
+      <p
+        role="status"
+        aria-live="polite"
+        className={
+          'submission-draft-status ' +
+          (['error', 'conflict'].includes(draft.status) ? 'draft-warning' : '')
+        }
+      >
+        {draft.status === 'saving'
+          ? 'Сохраняем черновик…'
+          : draft.status === 'saved'
+            ? 'Черновик сохранён на этом устройстве' +
+              (draft.savedAt
+                ? ' · ' +
+                  new Date(draft.savedAt).toLocaleTimeString('ru-RU', {
+                    timeZone: 'Asia/Bishkek',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '')
+            : draft.status === 'empty'
+              ? 'Начните ответ — черновик сохранится автоматически.'
+              : draft.error}
+      </p>
+      {['error', 'conflict'].includes(draft.status) && (
+        <div className="card-actions">
+          <button type="button" disabled={sending} onClick={() => draft.save()}>
+            Повторить сохранение
+          </button>
+          {draft.status === 'conflict' && (
+            <>
+              <button
+                type="button"
+                disabled={sending}
+                onClick={() => {
+                  if (window.confirm('Сохранить текст из этой вкладки поверх другой версии?'))
+                    draft.overwrite();
+                }}
+              >
+                Сохранить мой вариант
+              </button>
+              <button
+                type="button"
+                disabled={sending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Заменить текущий текст черновиком с устройства? Несохранённые изменения в этой вкладке будут заменены.',
+                    )
+                  )
+                    draft.acceptRemote();
+                }}
+              >
+                Открыть другую версию
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="notice error">
+          {error}
+        </p>
+      )}
+      {!online && (
+        <p className="notice" role="status">
+          Нет интернета. Продолжайте писать: черновик сохраняется на устройстве. Отправить работу
+          можно после подключения.
+        </p>
+      )}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <label>
+          Ваш ответ
+          <textarea
+            aria-label="Ваш ответ"
+            name="answer"
+            value={draft.text}
+            onChange={(e) => draft.setText(e.target.value)}
+            maxLength={50000}
+            disabled={sending}
+          />
+        </label>
+        <label>
+          Файл работы — необязательно
+          <input
+            key={fileKey}
+            name="file"
+            type="file"
+            accept={FILE_ACCEPT}
+            disabled={sending}
+            onChange={(e) => {
+              const f = e.target.files?.[0] || null;
+              try {
+                if (f) validateFile(f);
+                draft.setFile(f);
+                setError('');
+              } catch (error) {
+                setError((error as Error).message);
+                setFileKey((k) => k + 1);
+              }
+            }}
+          />
+        </label>
+        {draft.file && (
+          <p className="filename">
+            Прикреплён: {draft.file.name}. Файл хранится только в памяти вкладки; после перезагрузки
+            его нужно выбрать снова.
+          </p>
+        )}
+        {missing && (
+          <div className="notice" role="status">
+            <p>
+              Прикрепите файл повторно: <b>{draft.attachment!.name}</b>. Текст черновика
+              восстановлен, сам файл после перезагрузки не прикрепляется автоматически.
+            </p>
+            <button
+              type="button"
+              disabled={sending}
+              onClick={() => {
+                if (window.confirm('Продолжить без сохранённого вложения?')) {
+                  draft.setFile(null);
+                  setFileKey((k) => k + 1);
+                }
+              }}
+            >
+              Продолжить без этого файла
+            </button>
+          </div>
+        )}
+        <PdfOptimization
+          file={draft.file}
+          onChange={draft.setFile}
+          onBusy={setOptimizing}
+          disabled={sending}
+        />
+        <p className="helper">Текст или файл до 10 МБ.</p>
+        <button
+          className="primary"
+          disabled={sending || optimizing || !online || missing || draft.status === 'conflict'}
+        >
+          {sending ? 'Отправляем работу…' : 'Отправить работу'}
+        </button>
+      </form>
+    </section>
+  );
 }

@@ -1,12 +1,144 @@
-import type {Gateway,Course,CourseMaterial,Assignment,AssignmentProgress,BoardItem,CourseWorkspace} from './types';
-export type CourseData={workspace:CourseWorkspace|null;materials:CourseMaterial[];assignments:Assignment[];progress:AssignmentProgress[]|null;canSubmit:boolean;canGrade:boolean;events:BoardItem[];announcements:BoardItem[];issues:string[];needsUpdate:boolean};
-export async function loadCourseData(api:Gateway,course:Course):Promise<CourseData>{
- const data:CourseData={workspace:null,materials:[],assignments:[],progress:null,canSubmit:false,canGrade:false,events:[],announcements:[],issues:[],needsUpdate:false};
- const operations=[api.courseWorkspace(course.id).then(w=>{data.workspace=w;}).catch(e=>{data.needsUpdate=e.code==='PGRST202';data.issues.push(data.needsUpdate?'Темы ещё не включены в базе. Материалы и задания доступны.':'Темы и прогресс недоступны или не загрузились.');}),
- ...(['lecture','presentation','material'] as const).map(async kind=>{const items:CourseMaterial[]=[];try{for(let offset=0;offset<=100000;offset+=50){const p=await api.courseMaterials(course.id,kind,offset);items.push(...p.items);if(p.items.length<50){data.materials.push(...items);return;}}throw Error('Catalog limit');}catch{data.issues.push(({lecture:'Лекции',presentation:'Презентации',material:'Дополнительные материалы'}[kind])+' недоступны или не загрузились.');}}),
- api.assignments(course.id).then(async p=>{data.assignments=p.items;data.canGrade=p.canGrade;data.canSubmit=p.canSubmit;if(p.canSubmit)try{data.progress=await api.assignmentProgress(p.items.map(a=>a.id));}catch{data.issues.push('Статусы сдачи не загрузились.');}}).catch(()=>{data.issues.push('Задания недоступны или не загрузились.');}),
- ...(['schedule','announcement'] as const).map(async kind=>{try{const items:BoardItem[]=[],now=new Date().toISOString(),end=new Date(Date.now()+30*86400000).toISOString();for(let offset=0;offset<=100000;offset+=50){const p=await api.board(course.group_id,kind,kind==='schedule'?now:null,kind==='schedule'?end:null,offset);if(!p.canRead)throw Error('Access denied');items.push(...p.items.filter(i=>i.course_id===course.id&&!i.cancelled));if(p.items.length<50){if(kind==='schedule')data.events=items.sort((a,b)=>(a.starts_at||'').localeCompare(b.starts_at||''));else data.announcements=items.sort((a,b)=>b.created_at.localeCompare(a.created_at));return;}if(kind==='announcement'&&items.length>=10){data.announcements=items.slice(0,10);return;}}throw Error('Catalog limit');}catch{data.issues.push(kind==='schedule'?'Расписание недоступно или не загрузилось.':'Объявления недоступны или не загрузились.');}})];
- await Promise.all(operations);data.materials.sort((a,b)=>b.created_at.localeCompare(a.created_at)||a.id.localeCompare(b.id));return data;
+import type {
+  Gateway,
+  Course,
+  CourseMaterial,
+  Assignment,
+  AssignmentProgress,
+  BoardItem,
+  CourseWorkspace,
+} from './types';
+export type CourseData = {
+  workspace: CourseWorkspace | null;
+  materials: CourseMaterial[];
+  assignments: Assignment[];
+  progress: AssignmentProgress[] | null;
+  canSubmit: boolean;
+  canGrade: boolean;
+  events: BoardItem[];
+  announcements: BoardItem[];
+  issues: string[];
+  needsUpdate: boolean;
+};
+export async function loadCourseData(api: Gateway, course: Course): Promise<CourseData> {
+  const data: CourseData = {
+    workspace: null,
+    materials: [],
+    assignments: [],
+    progress: null,
+    canSubmit: false,
+    canGrade: false,
+    events: [],
+    announcements: [],
+    issues: [],
+    needsUpdate: false,
+  };
+  const operations = [
+    api
+      .courseWorkspace(course.id)
+      .then((w) => {
+        data.workspace = w;
+      })
+      .catch((e) => {
+        data.needsUpdate = e.code === 'PGRST202';
+        data.issues.push(
+          data.needsUpdate
+            ? 'Темы ещё не включены в базе. Материалы и задания доступны.'
+            : 'Темы и прогресс недоступны или не загрузились.',
+        );
+      }),
+    ...(['lecture', 'presentation', 'material'] as const).map(async (kind) => {
+      const items: CourseMaterial[] = [];
+      try {
+        for (let offset = 0; offset <= 100000; offset += 50) {
+          const p = await api.courseMaterials(course.id, kind, offset);
+          items.push(...p.items);
+          if (p.items.length < 50) {
+            data.materials.push(...items);
+            return;
+          }
+        }
+        throw Error('Catalog limit');
+      } catch {
+        data.issues.push(
+          { lecture: 'Лекции', presentation: 'Презентации', material: 'Дополнительные материалы' }[
+            kind
+          ] + ' недоступны или не загрузились.',
+        );
+      }
+    }),
+    api
+      .assignments(course.id)
+      .then(async (p) => {
+        data.assignments = p.items;
+        data.canGrade = p.canGrade;
+        data.canSubmit = p.canSubmit;
+        if (p.canSubmit)
+          try {
+            data.progress = await api.assignmentProgress(p.items.map((a) => a.id));
+          } catch {
+            data.issues.push('Статусы сдачи не загрузились.');
+          }
+      })
+      .catch(() => {
+        data.issues.push('Задания недоступны или не загрузились.');
+      }),
+    ...(['schedule', 'announcement'] as const).map(async (kind) => {
+      try {
+        const items: BoardItem[] = [],
+          now = new Date().toISOString(),
+          end = new Date(Date.now() + 30 * 86400000).toISOString();
+        for (let offset = 0; offset <= 100000; offset += 50) {
+          const p = await api.board(
+            course.group_id,
+            kind,
+            kind === 'schedule' ? now : null,
+            kind === 'schedule' ? end : null,
+            offset,
+          );
+          if (!p.canRead) throw Error('Access denied');
+          items.push(...p.items.filter((i) => i.course_id === course.id && !i.cancelled));
+          if (p.items.length < 50) {
+            if (kind === 'schedule')
+              data.events = items.sort((a, b) =>
+                (a.starts_at || '').localeCompare(b.starts_at || ''),
+              );
+            else
+              data.announcements = items.sort((a, b) => b.created_at.localeCompare(a.created_at));
+            return;
+          }
+          if (kind === 'announcement' && items.length >= 10) {
+            data.announcements = items.slice(0, 10);
+            return;
+          }
+        }
+        throw Error('Catalog limit');
+      } catch {
+        data.issues.push(
+          kind === 'schedule'
+            ? 'Расписание недоступно или не загрузилось.'
+            : 'Объявления недоступны или не загрузились.',
+        );
+      }
+    }),
+  ];
+  await Promise.all(operations);
+  data.materials.sort(
+    (a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id),
+  );
+  return data;
 }
-export function assignmentStatus(data:CourseData,id:string){if(!data.canSubmit)return '';return data.progress===null?'unknown':data.progress.find(p=>p.assignment_id===id)?.status||'not_submitted';}
-export const courseStatusLabels:Record<string,string>={unknown:'Статус недоступен',not_submitted:'Нужно выполнить',submitted:'На проверке',returned:'На доработку',graded:'Проверено',uploading:'Загрузка не завершена',deleting:'Удаление не завершено'};
+export function assignmentStatus(data: CourseData, id: string) {
+  if (!data.canSubmit) return '';
+  return data.progress === null
+    ? 'unknown'
+    : data.progress.find((p) => p.assignment_id === id)?.status || 'not_submitted';
+}
+export const courseStatusLabels: Record<string, string> = {
+  unknown: 'Статус недоступен',
+  not_submitted: 'Нужно выполнить',
+  submitted: 'На проверке',
+  returned: 'На доработку',
+  graded: 'Проверено',
+  uploading: 'Загрузка не завершена',
+  deleting: 'Удаление не завершено',
+};

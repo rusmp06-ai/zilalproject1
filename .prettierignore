@@ -1,0 +1,10 @@
+node_modules/
+dist/
+preview.html
+coverage/
+test-results/
+supabase/*.sql
+supabase/migrations/
+README.md
+HANDOFF.md
+docs/

@@ -1,15 +1,73 @@
-import {chromium} from 'playwright-core';
+import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
-try{
- const context=await browser.newContext(),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.OFFLINE_TEST_URL||'http://127.0.0.1:4180/?demo=1');await page.getByRole('button',{name:'Владелец',exact:true}).click();
- await page.getByRole('button',{name:'Открыть админ',exact:true}).click();await page.getByRole('button',{name:'Публикации в библиотеке',exact:true}).click();await page.getByLabel('Название материала',{exact:true}).fill('Offline fixture');await page.getByLabel('Файл',{exact:true}).setInputFiles({name:'offline.txt',mimeType:'text/plain',buffer:Buffer.from('Offline reading works. '.repeat(300))});await page.getByRole('button',{name:'Загрузить материал',exact:true}).click();await page.getByText('Материал опубликован в общей библиотеке.',{exact:true}).waitFor();
- await page.getByRole('button',{name:'Студент',exact:true}).click();await page.locator('.sidebar').getByRole('button',{name:'Библиотека',exact:true}).click();const card=page.locator('article').filter({has:page.getByRole('heading',{name:'Offline fixture',exact:true})});await card.locator('.book-actions-more > summary').click();await card.getByRole('button',{name:'Сохранить без интернета',exact:true}).click();await page.getByText('Материал сохранён для автономного чтения.',{exact:true}).waitFor({timeout:60000});await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
- await page.locator('.sidebar').getByRole('button',{name:'Сохранённые материалы',exact:true}).click();await page.getByRole('heading',{name:'Offline fixture',exact:true}).waitFor();
- await context.setOffline(true);await page.reload();await page.locator('.sidebar').getByRole('button',{name:'Сохранённые материалы',exact:true}).click();await page.getByRole('button',{name:'Читать сохранённую копию',exact:true}).click();await page.getByText(/Страница 1 из/).waitFor();assert.ok((await page.locator('.reader-text').textContent()).includes('Offline reading works'));
- await page.getByRole('button',{name:'Следующая страница',exact:true}).click();await page.getByText(/Страница 2 из/).waitFor();await page.getByRole('button',{name:'Закрыть просмотр',exact:true}).click();
- await page.getByRole('button',{name:'Читать сохранённую копию',exact:true}).click();await page.getByText(/Страница 2 из/).waitFor();await page.getByRole('button',{name:'Закрыть просмотр',exact:true}).click();
- await page.getByRole('button',{name:'Владелец',exact:true}).click();await page.locator('.sidebar').getByRole('button',{name:'Сохранённые материалы',exact:true}).click();assert.equal(await page.getByRole('heading',{name:'Offline fixture',exact:true}).count(),0);
- assert.deepEqual(errors,[]);console.log('PASS production offline shell reload, saved text reading, local progress restoration, account isolation; no page errors');
-}finally{await browser.close();}
+const browser = await chromium.launch({
+  executablePath: '/usr/bin/chromium',
+  headless: true,
+  args: ['--no-sandbox'],
+});
+try {
+  const context = await browser.newContext(),
+    page = await context.newPage(),
+    errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(process.env.OFFLINE_TEST_URL || 'http://127.0.0.1:4180/?demo=1');
+  await page.getByRole('button', { name: 'Владелец', exact: true }).click();
+  await page.getByRole('button', { name: 'Открыть админ', exact: true }).click();
+  await page.getByRole('button', { name: 'Публикации в библиотеке', exact: true }).click();
+  await page.getByLabel('Название материала', { exact: true }).fill('Offline fixture');
+  await page
+    .getByLabel('Файл', { exact: true })
+    .setInputFiles({
+      name: 'offline.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Offline reading works. '.repeat(300)),
+    });
+  await page.getByRole('button', { name: 'Загрузить материал', exact: true }).click();
+  await page.getByText('Материал опубликован в общей библиотеке.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Студент', exact: true }).click();
+  await page.locator('.sidebar').getByRole('button', { name: 'Библиотека', exact: true }).click();
+  const card = page
+    .locator('article')
+    .filter({ has: page.getByRole('heading', { name: 'Offline fixture', exact: true }) });
+  await card.locator('.book-actions-more > summary').click();
+  await card.getByRole('button', { name: 'Сохранить без интернета', exact: true }).click();
+  await page
+    .getByText('Материал сохранён для автономного чтения.', { exact: true })
+    .waitFor({ timeout: 60000 });
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  await page
+    .locator('.sidebar')
+    .getByRole('button', { name: 'Сохранённые материалы', exact: true })
+    .click();
+  await page.getByRole('heading', { name: 'Offline fixture', exact: true }).waitFor();
+  await context.setOffline(true);
+  await page.reload();
+  await page
+    .locator('.sidebar')
+    .getByRole('button', { name: 'Сохранённые материалы', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Читать сохранённую копию', exact: true }).click();
+  await page.getByText(/Страница 1 из/).waitFor();
+  assert.ok((await page.locator('.reader-text').textContent()).includes('Offline reading works'));
+  await page.getByRole('button', { name: 'Следующая страница', exact: true }).click();
+  await page.getByText(/Страница 2 из/).waitFor();
+  await page.getByRole('button', { name: 'Закрыть просмотр', exact: true }).click();
+  await page.getByRole('button', { name: 'Читать сохранённую копию', exact: true }).click();
+  await page.getByText(/Страница 2 из/).waitFor();
+  await page.getByRole('button', { name: 'Закрыть просмотр', exact: true }).click();
+  await page.getByRole('button', { name: 'Владелец', exact: true }).click();
+  await page
+    .locator('.sidebar')
+    .getByRole('button', { name: 'Сохранённые материалы', exact: true })
+    .click();
+  assert.equal(
+    await page.getByRole('heading', { name: 'Offline fixture', exact: true }).count(),
+    0,
+  );
+  assert.deepEqual(errors, []);
+  console.log(
+    'PASS production offline shell reload, saved text reading, local progress restoration, account isolation; no page errors',
+  );
+} finally {
+  await browser.close();
+}

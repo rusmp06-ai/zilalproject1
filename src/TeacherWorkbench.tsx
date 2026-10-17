@@ -1,34 +1,640 @@
-import {MaterialIntake} from './MaterialIntake';
-import {useEffect,useState} from 'react';
-import type {Gateway,Snapshot,BoardItem} from './types';
-import type {TeacherCourse} from './teacher-types';
-import {TeacherReviewQueue} from './TeacherReview';
-import {TeacherAssignments} from './TeacherAssignments';
-import {CoursePanel} from './CoursePanel';
-import {BoardPanel} from './BoardPanel';
-import {loadSchedule} from './study-data';
-import {boardDate,boardWindow,bishkekInput} from './board-time';
-import {mayLeaveDrafts} from './drafts';
-import {notificationEvent} from './notifications';
-export type TeacherSection='overview'|'courses'|'review'|'journal'|'schedule'|'announcements';
-const sectionNames:Record<TeacherSection,string>={overview:'Обзор',courses:'Мои дисциплины',review:'Работы на проверку',journal:'Задания и журнал',schedule:'Мои занятия',announcements:'Объявления'};
-export function TeacherWorkbench({api,snapshot,initialSection='overview',onSection}:{api:Gateway;snapshot:Snapshot;initialSection?:TeacherSection;onSection?:(s:TeacherSection)=>void}){
- const [section,setSection]=useState(initialSection),[courses,setCourses]=useState<TeacherCourse[]>([]),[busy,setBusy]=useState(true),[ready,setReady]=useState(false),[error,setError]=useState(''),[revision,setRevision]=useState(0),[selected,setSelected]=useState<{id:string;kind?:'materials'|'assignment';assignment?:string}|null>(null),[query,setQuery]=useState(''),[group,setGroup]=useState(''),[events,setEvents]=useState<BoardItem[]>([]),[scheduleError,setScheduleError]=useState<string[]>([]),[scheduleLoading,setScheduleLoading]=useState(true),[announcementCourse,setAnnouncementCourse]=useState(''),[writeAnnouncement,setWriteAnnouncement]=useState(false),[now,setNow]=useState(Date.now()),[week,setWeek]=useState(()=>bishkekInput(new Date().toISOString()).slice(0,10)),[groupSchedule,setGroupSchedule]=useState(false);
- useEffect(()=>{setSection(initialSection);setSelected(null);},[initialSection]);
- useEffect(()=>{const refresh=()=>setRevision(n=>n+1);window.addEventListener(notificationEvent,refresh);const timer=window.setInterval(()=>{if(document.visibilityState!=='hidden'){setNow(Date.now());refresh();}},60000);window.addEventListener('focus',refresh);return()=>{window.removeEventListener('focus',refresh);window.removeEventListener(notificationEvent,refresh);window.clearInterval(timer);};},[]);
- useEffect(()=>{let active=true;setBusy(true);setError('');api.teacherCatalog().then(p=>{if(active){setCourses(p);setReady(true);setAnnouncementCourse(id=>p.some(c=>c.id===id)?id:p[0]?.id||'');}}).catch(e=>{if(active){setCourses([]);setReady(false);setError(e.code==='PGRST202'?'Для кабинета преподавателя требуется обновление базы v0.28.':e.message);}}).finally(()=>{if(active)setBusy(false);});return()=>{active=false;};},[api,revision]);
- useEffect(()=>{let active=true;setScheduleLoading(true);setEvents([]);const groups=[...new Set(courses.map(c=>c.group_id))];void(async()=>{let from=new Date(now).toISOString(),to=new Date(now+7*86400000).toISOString();if(section==='schedule'){try{const bounds=boardWindow(week);from=bounds.from;to=bounds.to;}catch{if(active){setScheduleError(['Укажите корректную дату']);setScheduleLoading(false);}return;}}const issues:string[]=[],all:BoardItem[]=[];await Promise.all(groups.map(async group=>{try{const p=await loadSchedule(api,group,from,to);if(!p.canRead)throw Error('Closed');all.push(...p.items.filter(e=>!e.cancelled&&courses.some(c=>c.id===e.course_id)));}catch{issues.push(courses.find(c=>c.group_id===group)?.group_name||'Группа');}}));if(active){setEvents(all.sort((a,b)=>(a.starts_at||'').localeCompare(b.starts_at||'')||a.id.localeCompare(b.id)));setScheduleError(issues);setScheduleLoading(false);}})();return()=>{active=false;};},[api,courses,now,section,week]);
- function navigate(s:TeacherSection){if(!mayLeaveDrafts())return;setSelected(null);if(onSection)onSection(s);else setSection(s);}
- function openCourse(id:string,kind?:'materials'|'assignment',assignment?:string){if(!mayLeaveDrafts())return;setSelected({id,kind,assignment});}
- const groups=[...new Map(courses.map(c=>[c.group_id,c.group_name])).entries()],filtered=courses.filter(c=>(!group||c.group_id===group)&&(c.title+' '+c.group_name).toLowerCase().includes(query.trim().toLowerCase())),pending=courses.reduce((n,c)=>n+(c.pending||0),0),drafts=courses.reduce((n,c)=>n+(c.drafts||0),0),next=events[0],opened=courses.find(c=>c.id===selected?.id),scoped:Snapshot={...snapshot,groups:snapshot.groups.filter(g=>courses.some(c=>c.group_id===g.id)),courses},announcement=courses.find(c=>c.id===announcementCourse);
- return <section className="teacher-workbench" aria-label="Кабинет преподавателя">{!onSection&&<nav className="teacher-tabs" aria-label="Разделы преподавателя">{Object.entries(sectionNames).map(([id,title])=><button key={id} aria-current={section===id?'page':undefined} onClick={()=>navigate(id as TeacherSection)}>{title}</button>)}</nav>}{error&&<p className="notice error" role="alert">{error}</p>}{busy&&<p className="helper" role="status">Обновляем рабочие данные…</p>}{opened&&selected?<CoursePanel key={opened.id+(selected.assignment||'')+(selected.kind||'')} api={api} course={opened} snapshot={scoped} userId={snapshot.me.id} groupName={opened.group_name} initialKind={selected.kind==='assignment'?'assignment':undefined} initialTab={selected.kind==='materials'?'materials':undefined} initialAssignment={selected.assignment} teacherCourse={opened} onClose={()=>setSelected(null)}/>:<>
- {section==='overview'&&ready&&<><div className="teacher-welcome"><div><span className="eyebrow">ВАШ РАБОЧИЙ ДЕНЬ</span><h2>Здравствуйте, {snapshot.me.full_name}.</h2><p>Занятия, дисциплины и проверка работ — без переключения между студенческими разделами.</p></div><button disabled={busy} onClick={()=>setRevision(n=>n+1)}>Обновить кабинет</button></div><div className="teacher-metrics"><button onClick={()=>navigate('courses')}><span>Мои дисциплины</span><b>{courses.length}</b></button><button onClick={()=>navigate('review')}><span>На проверке</span><b>{courses.some(c=>c.can_grade)?pending:'—'}</b></button><button onClick={()=>navigate('review')}><span>Черновики оценок</span><b>{courses.some(c=>c.can_grade)?drafts:'—'}</b></button></div><p className="helper">Черновики входят в число работ на проверке. Закрытые разделы не включены в счётчики.</p><div className="teacher-overview-columns"><section className="card teacher-next"><span className="eyebrow">{next?.starts_at&&Date.parse(next.starts_at)<=now?'ЗАНЯТИЕ СЕЙЧАС':'БЛИЖАЙШЕЕ ЗАНЯТИЕ'}</span><h3>{next?.title||(scheduleLoading?'Загружаем расписание':scheduleError.length?'Расписание не загрузилось полностью':'Занятия по вашим дисциплинам не указаны')}</h3>{next?<><p>{boardDate(next.starts_at!)} — {boardDate(next.ends_at!)}</p><p>{courses.find(c=>c.id===next.course_id)?.group_name} · {next.location||'Аудитория не указана'}</p><button className="primary" onClick={()=>openCourse(next.course_id!,'materials')}>Материалы занятия</button></>:<p>{scheduleError.length?'Часть расписания не загрузилась. Обновите кабинет.':'Попросите старосту связать занятие с дисциплиной. Общее расписание доступно в разделе «Мои занятия».'}</p>}{scheduleError.length>0&&<p className="helper">Часть расписания недоступна; показаны только загруженные занятия.</p>}<button onClick={()=>navigate('schedule')}>Открыть мои занятия</button></section><section className="card"><span className="eyebrow">С ЧЕГО НАЧАТЬ</span><h3>{!courses.length?'Дисциплины пока не назначены':!courses.some(c=>c.can_grade)?'Доступ к проверке закрыт':pending?'Работы ждут вашей проверки':'Проверка завершена'}</h3><p>{!courses.length?'Примите приглашение преподавателя с выбранными дисциплинами.':!courses.some(c=>c.can_grade)?'Материалы доступны в дисциплинах. За восстановлением доступа к заданиям обратитесь к владельцу.':pending?'Начните с самой ранней сданной работы. Ответ, история попыток и оценка открываются на одном экране.':'Можно подготовить материалы и следующее задание или посмотреть журнал группы.'}</p><div className="card-actions"><button className="primary" onClick={()=>navigate(!courses.some(c=>c.can_grade)?'courses':pending?'review':'journal')}>{!courses.some(c=>c.can_grade)?'Мои дисциплины':pending?'Перейти к проверке':'Открыть журнал'}</button><button onClick={()=>navigate('courses')}>Подготовить материалы</button></div></section></div><div className="section-heading"><h3>Дисциплины и группы</h3><button onClick={()=>navigate('courses')}>Все мои дисциплины</button></div><div className="teacher-course-grid">{courses.slice(0,6).map(c=><section className="card" key={c.id}><span className="eyebrow">{c.group_name}</span><h3>{c.title}</h3><p>{c.can_grade?`${c.pending} на проверке · студентов: ${c.students}`:'Доступ к заданиям закрыт'}</p><button onClick={()=>openCourse(c.id)}>Открыть дисциплину</button></section>)}</div></>}
- {section==='courses'&&ready&&<><MaterialIntake api={api} initialGroup={group||undefined} onPublished={()=>setRevision(n=>n+1)}/><div className="section-heading"><div><h2>Мои дисциплины</h2><p>Только действующие назначения преподавателя. Одинаковые названия в разных группах показаны отдельно.</p></div><button disabled={busy} onClick={()=>setRevision(n=>n+1)}>Обновить дисциплины</button></div><div className="teacher-filters"><label>Найти дисциплину или группу<input maxLength={200} value={query} onChange={e=>setQuery(e.target.value)}/></label><label>Учебная группа<select aria-label="Учебная группа" value={group} onChange={e=>setGroup(e.target.value)}><option value="">Все мои группы</option>{groups.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label></div><div className="teacher-course-grid">{filtered.map(c=><section className="card" key={c.id}><span className="eyebrow">{c.group_name}</span><h3>{c.title}</h3><p>{c.can_grade?`${c.assignment_count} заданий · ${c.pending} работ на проверке`:'Доступ к заданиям закрыт'}</p><div className="card-actions"><button className="primary" onClick={()=>openCourse(c.id)}>Открыть дисциплину</button><button onClick={()=>openCourse(c.id,'materials')}>Материалы</button>{c.can_grade&&<button onClick={()=>openCourse(c.id,'assignment')}>Задания и журнал</button>}</div></section>)}</div>{!busy&&!error&&!filtered.length&&<p className="card empty">{query||group?'Дисциплин с такими условиями нет.':'Дисциплины пока не назначены. Примите приглашение преподавателя или обратитесь к старосте.'}</p>}</>}
- {section==='review'&&ready&&!error&&courses.some(c=>c.can_grade)&&<TeacherReviewQueue api={api} courses={courses} user={snapshot.me.id} onCourse={(id,task)=>openCourse(id,'assignment',task)}/>}
- {section==='journal'&&ready&&!error&&courses.some(c=>c.can_grade)&&<TeacherAssignments api={api} courses={courses} user={snapshot.me.id}/>}
- {(section==='review'||section==='journal')&&ready&&!courses.some(c=>c.can_grade)&&<section className="card empty"><h2>Проверка работ недоступна</h2><p>Сейчас нет назначенных дисциплин с доступом к заданиям. Обновите кабинет или обратитесь к старосте и владельцу.</p></section>}
- {section==='schedule'&&ready&&<><div className="section-heading"><div><h2>Мои занятия</h2><p>Занятия по назначенным дисциплинам на выбранную неделю. Расписание группы ведёт староста.</p></div><button onClick={()=>setNow(Date.now())}>Обновить мои занятия</button></div><div className="teacher-tabs"><button aria-pressed={!groupSchedule} onClick={()=>setGroupSchedule(false)}>Мои дисциплины</button><button aria-pressed={groupSchedule} onClick={()=>setGroupSchedule(true)}>Расписание групп</button></div>{groupSchedule?<BoardPanel api={api} snapshot={{...snapshot,memberships:snapshot.memberships.filter(m=>m.user_id!==snapshot.me.id||m.role==='teacher')}} kind="schedule" allowManagement={false}/>:<><label>Показать неделю с<input type="date" value={week} onChange={e=>setWeek(e.target.value)}/></label><div className="card-actions"><button onClick={()=>setWeek(bishkekInput(new Date().toISOString()).slice(0,10))}>Сегодня</button><button disabled={!week} onClick={()=>{try{setWeek(bishkekInput(new Date(Date.parse(boardWindow(week).from)+7*86400000).toISOString()).slice(0,10));}catch{/* Invalid date is explained by the loader. */}}}>Следующие семь дней</button></div>{scheduleError.length>0&&<p className="notice error" role="alert">Не удалось загрузить расписание: {scheduleError.join(', ')}.</p>}<div className="teacher-lessons">{events.map(e=><article className="card" key={e.id}><div><span className="eyebrow">{courses.find(c=>c.id===e.course_id)?.group_name}</span><h3>{e.title}</h3><p>{boardDate(e.starts_at!)} — {boardDate(e.ends_at!)} · {e.location||'Аудитория не указана'}</p>{e.body&&<p>{e.body}</p>}</div><button onClick={()=>openCourse(e.course_id!,'materials')}>Материалы занятия</button></article>)}</div>{!events.length&&!scheduleError.length&&!busy&&!scheduleLoading&&<p className="card empty">По вашим дисциплинам занятия в эту неделю не добавлены. Проверьте общее расписание групп.</p>}</>}</>}
- {section==='announcements'&&ready&&<><h2>Объявления</h2><p>Читайте сообщения групп или публикуйте объявление по своей дисциплине.</p><div className="teacher-tabs"><button aria-pressed={!writeAnnouncement} onClick={()=>{if(mayLeaveDrafts())setWriteAnnouncement(false);}}>Сообщения групп</button><button aria-pressed={writeAnnouncement} disabled={!courses.length} onClick={()=>setWriteAnnouncement(true)}>Написать студентам</button></div>{writeAnnouncement?<><p className="helper">Сообщение адресовано выбранной дисциплине. Общие объявления группы ведёт староста.</p><label>Дисциплина объявления<select aria-label="Дисциплина объявления" value={announcementCourse} onChange={e=>{if(mayLeaveDrafts())setAnnouncementCourse(e.target.value);}}>{courses.map(c=><option key={c.id} value={c.id}>{c.title} · {c.group_name}</option>)}</select></label>{announcement&&<BoardPanel key={announcement.id} api={api} snapshot={scoped} kind="announcement" courseFilter={announcement.id}/>}</>:<BoardPanel api={api} snapshot={{...snapshot,memberships:snapshot.memberships.filter(m=>m.user_id!==snapshot.me.id||m.role==='teacher')}} kind="announcement" allowManagement={false}/>}</>}
-
- </>}{!busy&&!error&&!courses.length&&section==='overview'&&ready&&<p className="card empty">Примите приглашение преподавателя с назначенными дисциплинами. Самостоятельно выбирать чужие дисциплины нельзя.</p>}</section>;
+import { MaterialIntake } from './MaterialIntake';
+import { useEffect, useState } from 'react';
+import type { Gateway, Snapshot, BoardItem } from './types';
+import type { TeacherCourse } from './teacher-types';
+import { TeacherReviewQueue } from './TeacherReview';
+import { TeacherAssignments } from './TeacherAssignments';
+import { CoursePanel } from './CoursePanel';
+import { BoardPanel } from './BoardPanel';
+import { loadSchedule } from './study-data';
+import { boardDate, boardWindow, bishkekInput } from './board-time';
+import { mayLeaveDrafts } from './drafts';
+import { notificationEvent } from './notifications';
+export type TeacherSection =
+  | 'overview'
+  | 'courses'
+  | 'review'
+  | 'journal'
+  | 'schedule'
+  | 'announcements';
+const sectionNames: Record<TeacherSection, string> = {
+  overview: 'Обзор',
+  courses: 'Мои дисциплины',
+  review: 'Работы на проверку',
+  journal: 'Задания и журнал',
+  schedule: 'Мои занятия',
+  announcements: 'Объявления',
+};
+export function TeacherWorkbench({
+  api,
+  snapshot,
+  initialSection = 'overview',
+  onSection,
+}: {
+  api: Gateway;
+  snapshot: Snapshot;
+  initialSection?: TeacherSection;
+  onSection?: (s: TeacherSection) => void;
+}) {
+  const [section, setSection] = useState(initialSection),
+    [courses, setCourses] = useState<TeacherCourse[]>([]),
+    [busy, setBusy] = useState(true),
+    [ready, setReady] = useState(false),
+    [error, setError] = useState(''),
+    [revision, setRevision] = useState(0),
+    [selected, setSelected] = useState<{
+      id: string;
+      kind?: 'materials' | 'assignment';
+      assignment?: string;
+    } | null>(null),
+    [query, setQuery] = useState(''),
+    [group, setGroup] = useState(''),
+    [events, setEvents] = useState<BoardItem[]>([]),
+    [scheduleError, setScheduleError] = useState<string[]>([]),
+    [scheduleLoading, setScheduleLoading] = useState(true),
+    [announcementCourse, setAnnouncementCourse] = useState(''),
+    [writeAnnouncement, setWriteAnnouncement] = useState(false),
+    [now, setNow] = useState(Date.now()),
+    [week, setWeek] = useState(() => bishkekInput(new Date().toISOString()).slice(0, 10)),
+    [groupSchedule, setGroupSchedule] = useState(false);
+  useEffect(() => {
+    setSection(initialSection);
+    setSelected(null);
+  }, [initialSection]);
+  useEffect(() => {
+    const refresh = () => setRevision((n) => n + 1);
+    window.addEventListener(notificationEvent, refresh);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        setNow(Date.now());
+        refresh();
+      }
+    }, 60000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener(notificationEvent, refresh);
+      window.clearInterval(timer);
+    };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    setBusy(true);
+    setError('');
+    api
+      .teacherCatalog()
+      .then((p) => {
+        if (active) {
+          setCourses(p);
+          setReady(true);
+          setAnnouncementCourse((id) => (p.some((c) => c.id === id) ? id : p[0]?.id || ''));
+        }
+      })
+      .catch((e) => {
+        if (active) {
+          setCourses([]);
+          setReady(false);
+          setError(
+            e.code === 'PGRST202'
+              ? 'Для кабинета преподавателя требуется обновление базы v0.28.'
+              : e.message,
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, revision]);
+  useEffect(() => {
+    let active = true;
+    setScheduleLoading(true);
+    setEvents([]);
+    const groups = [...new Set(courses.map((c) => c.group_id))];
+    void (async () => {
+      let from = new Date(now).toISOString(),
+        to = new Date(now + 7 * 86400000).toISOString();
+      if (section === 'schedule') {
+        try {
+          const bounds = boardWindow(week);
+          from = bounds.from;
+          to = bounds.to;
+        } catch {
+          if (active) {
+            setScheduleError(['Укажите корректную дату']);
+            setScheduleLoading(false);
+          }
+          return;
+        }
+      }
+      const issues: string[] = [],
+        all: BoardItem[] = [];
+      await Promise.all(
+        groups.map(async (group) => {
+          try {
+            const p = await loadSchedule(api, group, from, to);
+            if (!p.canRead) throw Error('Closed');
+            all.push(
+              ...p.items.filter((e) => !e.cancelled && courses.some((c) => c.id === e.course_id)),
+            );
+          } catch {
+            issues.push(courses.find((c) => c.group_id === group)?.group_name || 'Группа');
+          }
+        }),
+      );
+      if (active) {
+        setEvents(
+          all.sort(
+            (a, b) =>
+              (a.starts_at || '').localeCompare(b.starts_at || '') || a.id.localeCompare(b.id),
+          ),
+        );
+        setScheduleError(issues);
+        setScheduleLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [api, courses, now, section, week]);
+  function navigate(s: TeacherSection) {
+    if (!mayLeaveDrafts()) return;
+    setSelected(null);
+    if (onSection) onSection(s);
+    else setSection(s);
+  }
+  function openCourse(id: string, kind?: 'materials' | 'assignment', assignment?: string) {
+    if (!mayLeaveDrafts()) return;
+    setSelected({ id, kind, assignment });
+  }
+  const groups = [...new Map(courses.map((c) => [c.group_id, c.group_name])).entries()],
+    filtered = courses.filter(
+      (c) =>
+        (!group || c.group_id === group) &&
+        (c.title + ' ' + c.group_name).toLowerCase().includes(query.trim().toLowerCase()),
+    ),
+    pending = courses.reduce((n, c) => n + (c.pending || 0), 0),
+    drafts = courses.reduce((n, c) => n + (c.drafts || 0), 0),
+    next = events[0],
+    opened = courses.find((c) => c.id === selected?.id),
+    scoped: Snapshot = {
+      ...snapshot,
+      groups: snapshot.groups.filter((g) => courses.some((c) => c.group_id === g.id)),
+      courses,
+    },
+    announcement = courses.find((c) => c.id === announcementCourse);
+  return (
+    <section className="teacher-workbench" aria-label="Кабинет преподавателя">
+      {!onSection && (
+        <nav className="teacher-tabs" aria-label="Разделы преподавателя">
+          {Object.entries(sectionNames).map(([id, title]) => (
+            <button
+              key={id}
+              aria-current={section === id ? 'page' : undefined}
+              onClick={() => navigate(id as TeacherSection)}
+            >
+              {title}
+            </button>
+          ))}
+        </nav>
+      )}
+      {error && (
+        <p className="notice error" role="alert">
+          {error}
+        </p>
+      )}
+      {busy && (
+        <p className="helper" role="status">
+          Обновляем рабочие данные…
+        </p>
+      )}
+      {opened && selected ? (
+        <CoursePanel
+          key={opened.id + (selected.assignment || '') + (selected.kind || '')}
+          api={api}
+          course={opened}
+          snapshot={scoped}
+          userId={snapshot.me.id}
+          groupName={opened.group_name}
+          initialKind={selected.kind === 'assignment' ? 'assignment' : undefined}
+          initialTab={selected.kind === 'materials' ? 'materials' : undefined}
+          initialAssignment={selected.assignment}
+          teacherCourse={opened}
+          onClose={() => setSelected(null)}
+        />
+      ) : (
+        <>
+          {section === 'overview' && ready && (
+            <>
+              <div className="teacher-welcome">
+                <div>
+                  <span className="eyebrow">ВАШ РАБОЧИЙ ДЕНЬ</span>
+                  <h2>Здравствуйте, {snapshot.me.full_name}.</h2>
+                  <p>
+                    Занятия, дисциплины и проверка работ — без переключения между студенческими
+                    разделами.
+                  </p>
+                </div>
+                <button disabled={busy} onClick={() => setRevision((n) => n + 1)}>
+                  Обновить кабинет
+                </button>
+              </div>
+              <div className="teacher-metrics">
+                <button onClick={() => navigate('courses')}>
+                  <span>Мои дисциплины</span>
+                  <b>{courses.length}</b>
+                </button>
+                <button onClick={() => navigate('review')}>
+                  <span>На проверке</span>
+                  <b>{courses.some((c) => c.can_grade) ? pending : '—'}</b>
+                </button>
+                <button onClick={() => navigate('review')}>
+                  <span>Черновики оценок</span>
+                  <b>{courses.some((c) => c.can_grade) ? drafts : '—'}</b>
+                </button>
+              </div>
+              <p className="helper">
+                Черновики входят в число работ на проверке. Закрытые разделы не включены в счётчики.
+              </p>
+              <div className="teacher-overview-columns">
+                <section className="card teacher-next">
+                  <span className="eyebrow">
+                    {next?.starts_at && Date.parse(next.starts_at) <= now
+                      ? 'ЗАНЯТИЕ СЕЙЧАС'
+                      : 'БЛИЖАЙШЕЕ ЗАНЯТИЕ'}
+                  </span>
+                  <h3>
+                    {next?.title ||
+                      (scheduleLoading
+                        ? 'Загружаем расписание'
+                        : scheduleError.length
+                          ? 'Расписание не загрузилось полностью'
+                          : 'Занятия по вашим дисциплинам не указаны')}
+                  </h3>
+                  {next ? (
+                    <>
+                      <p>
+                        {boardDate(next.starts_at!)} — {boardDate(next.ends_at!)}
+                      </p>
+                      <p>
+                        {courses.find((c) => c.id === next.course_id)?.group_name} ·{' '}
+                        {next.location || 'Аудитория не указана'}
+                      </p>
+                      <button
+                        className="primary"
+                        onClick={() => openCourse(next.course_id!, 'materials')}
+                      >
+                        Материалы занятия
+                      </button>
+                    </>
+                  ) : (
+                    <p>
+                      {scheduleError.length
+                        ? 'Часть расписания не загрузилась. Обновите кабинет.'
+                        : 'Попросите старосту связать занятие с дисциплиной. Общее расписание доступно в разделе «Мои занятия».'}
+                    </p>
+                  )}
+                  {scheduleError.length > 0 && (
+                    <p className="helper">
+                      Часть расписания недоступна; показаны только загруженные занятия.
+                    </p>
+                  )}
+                  <button onClick={() => navigate('schedule')}>Открыть мои занятия</button>
+                </section>
+                <section className="card">
+                  <span className="eyebrow">С ЧЕГО НАЧАТЬ</span>
+                  <h3>
+                    {!courses.length
+                      ? 'Дисциплины пока не назначены'
+                      : !courses.some((c) => c.can_grade)
+                        ? 'Доступ к проверке закрыт'
+                        : pending
+                          ? 'Работы ждут вашей проверки'
+                          : 'Проверка завершена'}
+                  </h3>
+                  <p>
+                    {!courses.length
+                      ? 'Примите приглашение преподавателя с выбранными дисциплинами.'
+                      : !courses.some((c) => c.can_grade)
+                        ? 'Материалы доступны в дисциплинах. За восстановлением доступа к заданиям обратитесь к владельцу.'
+                        : pending
+                          ? 'Начните с самой ранней сданной работы. Ответ, история попыток и оценка открываются на одном экране.'
+                          : 'Можно подготовить материалы и следующее задание или посмотреть журнал группы.'}
+                  </p>
+                  <div className="card-actions">
+                    <button
+                      className="primary"
+                      onClick={() =>
+                        navigate(
+                          !courses.some((c) => c.can_grade)
+                            ? 'courses'
+                            : pending
+                              ? 'review'
+                              : 'journal',
+                        )
+                      }
+                    >
+                      {!courses.some((c) => c.can_grade)
+                        ? 'Мои дисциплины'
+                        : pending
+                          ? 'Перейти к проверке'
+                          : 'Открыть журнал'}
+                    </button>
+                    <button onClick={() => navigate('courses')}>Подготовить материалы</button>
+                  </div>
+                </section>
+              </div>
+              <div className="section-heading">
+                <h3>Дисциплины и группы</h3>
+                <button onClick={() => navigate('courses')}>Все мои дисциплины</button>
+              </div>
+              <div className="teacher-course-grid">
+                {courses.slice(0, 6).map((c) => (
+                  <section className="card" key={c.id}>
+                    <span className="eyebrow">{c.group_name}</span>
+                    <h3>{c.title}</h3>
+                    <p>
+                      {c.can_grade
+                        ? `${c.pending} на проверке · студентов: ${c.students}`
+                        : 'Доступ к заданиям закрыт'}
+                    </p>
+                    <button onClick={() => openCourse(c.id)}>Открыть дисциплину</button>
+                  </section>
+                ))}
+              </div>
+            </>
+          )}
+          {section === 'courses' && ready && (
+            <>
+              <MaterialIntake
+                api={api}
+                initialGroup={group || undefined}
+                onPublished={() => setRevision((n) => n + 1)}
+              />
+              <div className="section-heading">
+                <div>
+                  <h2>Мои дисциплины</h2>
+                  <p>
+                    Только действующие назначения преподавателя. Одинаковые названия в разных
+                    группах показаны отдельно.
+                  </p>
+                </div>
+                <button disabled={busy} onClick={() => setRevision((n) => n + 1)}>
+                  Обновить дисциплины
+                </button>
+              </div>
+              <div className="teacher-filters">
+                <label>
+                  Найти дисциплину или группу
+                  <input maxLength={200} value={query} onChange={(e) => setQuery(e.target.value)} />
+                </label>
+                <label>
+                  Учебная группа
+                  <select
+                    aria-label="Учебная группа"
+                    value={group}
+                    onChange={(e) => setGroup(e.target.value)}
+                  >
+                    <option value="">Все мои группы</option>
+                    {groups.map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="teacher-course-grid">
+                {filtered.map((c) => (
+                  <section className="card" key={c.id}>
+                    <span className="eyebrow">{c.group_name}</span>
+                    <h3>{c.title}</h3>
+                    <p>
+                      {c.can_grade
+                        ? `${c.assignment_count} заданий · ${c.pending} работ на проверке`
+                        : 'Доступ к заданиям закрыт'}
+                    </p>
+                    <div className="card-actions">
+                      <button className="primary" onClick={() => openCourse(c.id)}>
+                        Открыть дисциплину
+                      </button>
+                      <button onClick={() => openCourse(c.id, 'materials')}>Материалы</button>
+                      {c.can_grade && (
+                        <button onClick={() => openCourse(c.id, 'assignment')}>
+                          Задания и журнал
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                ))}
+              </div>
+              {!busy && !error && !filtered.length && (
+                <p className="card empty">
+                  {query || group
+                    ? 'Дисциплин с такими условиями нет.'
+                    : 'Дисциплины пока не назначены. Примите приглашение преподавателя или обратитесь к старосте.'}
+                </p>
+              )}
+            </>
+          )}
+          {section === 'review' && ready && !error && courses.some((c) => c.can_grade) && (
+            <TeacherReviewQueue
+              api={api}
+              courses={courses}
+              user={snapshot.me.id}
+              onCourse={(id, task) => openCourse(id, 'assignment', task)}
+            />
+          )}
+          {section === 'journal' && ready && !error && courses.some((c) => c.can_grade) && (
+            <TeacherAssignments api={api} courses={courses} user={snapshot.me.id} />
+          )}
+          {(section === 'review' || section === 'journal') &&
+            ready &&
+            !courses.some((c) => c.can_grade) && (
+              <section className="card empty">
+                <h2>Проверка работ недоступна</h2>
+                <p>
+                  Сейчас нет назначенных дисциплин с доступом к заданиям. Обновите кабинет или
+                  обратитесь к старосте и владельцу.
+                </p>
+              </section>
+            )}
+          {section === 'schedule' && ready && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>Мои занятия</h2>
+                  <p>
+                    Занятия по назначенным дисциплинам на выбранную неделю. Расписание группы ведёт
+                    староста.
+                  </p>
+                </div>
+                <button onClick={() => setNow(Date.now())}>Обновить мои занятия</button>
+              </div>
+              <div className="teacher-tabs">
+                <button aria-pressed={!groupSchedule} onClick={() => setGroupSchedule(false)}>
+                  Мои дисциплины
+                </button>
+                <button aria-pressed={groupSchedule} onClick={() => setGroupSchedule(true)}>
+                  Расписание групп
+                </button>
+              </div>
+              {groupSchedule ? (
+                <BoardPanel
+                  api={api}
+                  snapshot={{
+                    ...snapshot,
+                    memberships: snapshot.memberships.filter(
+                      (m) => m.user_id !== snapshot.me.id || m.role === 'teacher',
+                    ),
+                  }}
+                  kind="schedule"
+                  allowManagement={false}
+                />
+              ) : (
+                <>
+                  <label>
+                    Показать неделю с
+                    <input type="date" value={week} onChange={(e) => setWeek(e.target.value)} />
+                  </label>
+                  <div className="card-actions">
+                    <button
+                      onClick={() => setWeek(bishkekInput(new Date().toISOString()).slice(0, 10))}
+                    >
+                      Сегодня
+                    </button>
+                    <button
+                      disabled={!week}
+                      onClick={() => {
+                        try {
+                          setWeek(
+                            bishkekInput(
+                              new Date(
+                                Date.parse(boardWindow(week).from) + 7 * 86400000,
+                              ).toISOString(),
+                            ).slice(0, 10),
+                          );
+                        } catch {
+                          /* Invalid date is explained by the loader. */
+                        }
+                      }}
+                    >
+                      Следующие семь дней
+                    </button>
+                  </div>
+                  {scheduleError.length > 0 && (
+                    <p className="notice error" role="alert">
+                      Не удалось загрузить расписание: {scheduleError.join(', ')}.
+                    </p>
+                  )}
+                  <div className="teacher-lessons">
+                    {events.map((e) => (
+                      <article className="card" key={e.id}>
+                        <div>
+                          <span className="eyebrow">
+                            {courses.find((c) => c.id === e.course_id)?.group_name}
+                          </span>
+                          <h3>{e.title}</h3>
+                          <p>
+                            {boardDate(e.starts_at!)} — {boardDate(e.ends_at!)} ·{' '}
+                            {e.location || 'Аудитория не указана'}
+                          </p>
+                          {e.body && <p>{e.body}</p>}
+                        </div>
+                        <button onClick={() => openCourse(e.course_id!, 'materials')}>
+                          Материалы занятия
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                  {!events.length && !scheduleError.length && !busy && !scheduleLoading && (
+                    <p className="card empty">
+                      По вашим дисциплинам занятия в эту неделю не добавлены. Проверьте общее
+                      расписание групп.
+                    </p>
+                  )}
+                </>
+              )}
+            </>
+          )}
+          {section === 'announcements' && ready && (
+            <>
+              <h2>Объявления</h2>
+              <p>Читайте сообщения групп или публикуйте объявление по своей дисциплине.</p>
+              <div className="teacher-tabs">
+                <button
+                  aria-pressed={!writeAnnouncement}
+                  onClick={() => {
+                    if (mayLeaveDrafts()) setWriteAnnouncement(false);
+                  }}
+                >
+                  Сообщения групп
+                </button>
+                <button
+                  aria-pressed={writeAnnouncement}
+                  disabled={!courses.length}
+                  onClick={() => setWriteAnnouncement(true)}
+                >
+                  Написать студентам
+                </button>
+              </div>
+              {writeAnnouncement ? (
+                <>
+                  <p className="helper">
+                    Сообщение адресовано выбранной дисциплине. Общие объявления группы ведёт
+                    староста.
+                  </p>
+                  <label>
+                    Дисциплина объявления
+                    <select
+                      aria-label="Дисциплина объявления"
+                      value={announcementCourse}
+                      onChange={(e) => {
+                        if (mayLeaveDrafts()) setAnnouncementCourse(e.target.value);
+                      }}
+                    >
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title} · {c.group_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {announcement && (
+                    <BoardPanel
+                      key={announcement.id}
+                      api={api}
+                      snapshot={scoped}
+                      kind="announcement"
+                      courseFilter={announcement.id}
+                    />
+                  )}
+                </>
+              ) : (
+                <BoardPanel
+                  api={api}
+                  snapshot={{
+                    ...snapshot,
+                    memberships: snapshot.memberships.filter(
+                      (m) => m.user_id !== snapshot.me.id || m.role === 'teacher',
+                    ),
+                  }}
+                  kind="announcement"
+                  allowManagement={false}
+                />
+              )}
+            </>
+          )}
+        </>
+      )}
+      {!busy && !error && !courses.length && section === 'overview' && ready && (
+        <p className="card empty">
+          Примите приглашение преподавателя с назначенными дисциплинами. Самостоятельно выбирать
+          чужие дисциплины нельзя.
+        </p>
+      )}
+    </section>
+  );
 }

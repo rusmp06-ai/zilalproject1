@@ -1,26 +1,193 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {JSDOM} from 'jsdom';
-const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'http://localhost:5204/?demo=1'});
-for(const key of ['window','document','localStorage','sessionStorage','location','history','HTMLElement','HTMLInputElement','MutationObserver','DOMParser','FormData'])Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],configurable:true});
-Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
-(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
-const React=await import('react');
-const {render,screen,cleanup,waitFor,fireEvent,within}=await import('@testing-library/react');
-const {App}=await import('../src/App');
-const {demoGateway:api,resetDemo,selectDemo}=await import('../src/demo');
-const {csvCell}=await import('../src/TeacherAssignments');
-const {groupContext}=await import('../src/group-context');
+import { JSDOM } from 'jsdom';
+const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+  url: 'http://localhost:5204/?demo=1',
+});
+for (const key of [
+  'window',
+  'document',
+  'localStorage',
+  'sessionStorage',
+  'location',
+  'history',
+  'HTMLElement',
+  'HTMLInputElement',
+  'MutationObserver',
+  'DOMParser',
+  'FormData',
+])
+  Object.defineProperty(globalThis, key, { value: (dom.window as any)[key], configurable: true });
+Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true });
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+const React = await import('react');
+const { render, screen, cleanup, waitFor, fireEvent, within } =
+  await import('@testing-library/react');
+const { App } = await import('../src/App');
+const { demoGateway: api, resetDemo, selectDemo } = await import('../src/demo');
+const { csvCell } = await import('../src/TeacherAssignments');
+const { groupContext } = await import('../src/group-context');
 // Each test starts as a fresh visit; remounts inside a test retain their URL.
-test.beforeEach(()=>history.replaceState(null,'','/?demo=1'));
-test.afterEach(()=>{cleanup();sessionStorage.clear();});
-test('teacher starts in working dashboard with distinct teaching navigation',async()=>{resetDemo();selectDemo('teacher');render(<App/>);await screen.findByRole('heading',{name:'Кабинет преподавателя',exact:true});await screen.findByText('С чего начать',{exact:false});assert.ok(screen.getByRole('button',{name:'На проверку',exact:true}));assert.equal(screen.queryByRole('button',{name:'Все задания',exact:true}),null);assert.equal(screen.queryByRole('button',{name:'Календарь',exact:true}),null);});
-test('last attempts, drafts and missing submissions remain different concepts',async()=>{resetDemo();selectDemo('teacher');const id=await api.teacherSaveAssignment({course:'g0c0',title:'Task',description:'Explain',due:null,max:100,late:true,id:null,revision:null});selectDemo('student');await api.submit(id,'Answer',null);selectDemo('teacher');const q=await api.teacherQueue(null,null,'pending','',0);assert.equal(q.total,1);const roster=await api.teacherRoster(id,'','all',0);assert.equal(roster.total,2);assert.equal(roster.items.filter(r=>r.status==='not_submitted').length,1);await api.teacherReview(q.items[0].id,q.items[0].review_version,'draft',70,'Private feedback');selectDemo('student');assert.equal((await api.works(id,0))[0].feedback,null);selectDemo('teacher');const d=await api.teacherDetail(q.items[0].id);await api.teacherReview(d.work.id,d.work.review_version,'return',null,'Revise');selectDemo('student');await api.submit(id,'Revision',null);selectDemo('teacher');assert.equal((await api.teacherQueue(null,null,'pending','',0)).total,1);assert.equal((await api.teacherDetail(d.work.id)).can_review,false);});
-test('concurrent reviews cannot overwrite each other; published grades cannot be hidden',async()=>{resetDemo();selectDemo('teacher');const id=await api.teacherSaveAssignment({course:'g0c0',title:'Task',description:'Explain',due:null,max:100,late:true,id:null,revision:null});selectDemo('student');await api.submit(id,'Answer',null);selectDemo('teacher');const w=(await api.teacherQueue(null,null,'pending','',0)).items[0];const both=await Promise.allSettled([api.teacherReview(w.id,w.review_version,'draft',60,'A'),api.teacherReview(w.id,w.review_version,'draft',90,'B')]);assert.equal(both.filter(r=>r.status==='fulfilled').length,1);const d=await api.teacherDetail(w.id);await api.teacherReview(w.id,d.work.review_version,'publish',80,'Final');const fresh=await api.teacherDetail(w.id);await assert.rejects(()=>api.teacherReview(w.id,fresh.work.review_version,'draft',20,'Hide'));});
-test('maximum score and assignment revision protect existing submissions',async()=>{resetDemo();selectDemo('teacher');const input={course:'g0c0',title:'Task',description:'Explain',due:null,max:100,late:true,id:null,revision:null};const id=await api.teacherSaveAssignment(input);selectDemo('student');await api.submit(id,'Answer',null);selectDemo('teacher');await assert.rejects(()=>api.teacherSaveAssignment({...input,id,revision:1,max:50}));await api.teacherSaveAssignment({...input,id,revision:1,description:'Updated'});await assert.rejects(()=>api.teacherSaveAssignment({...input,id,revision:1,description:'Stale'}));});
-test('mixed student/teacher context stays in registered learning group',async()=>{resetDemo();selectDemo('teacher');const s=await api.snapshot();const mixed={...s,memberships:[...s.memberships,{user_id:s.me.id,group_id:'g0',role:'student' as const,active:true}]};assert.equal(groupContext(mixed,'g1').id,'g0');assert.equal(groupContext(mixed).canChoose,false);});
-test('CSV treats spreadsheet formulas as literal text',()=>{for(const s of ['=1+1','+cmd','@formula','-1','  =SUM(A1)','\t=cmd'])assert.ok(csvCell(s).startsWith('"\''));assert.equal(csvCell('A"B'),'"A""B"');});
+test.beforeEach(() => history.replaceState(null, '', '/?demo=1'));
+test.afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+});
+test('teacher starts in working dashboard with distinct teaching navigation', async () => {
+  resetDemo();
+  selectDemo('teacher');
+  render(<App />);
+  await screen.findByRole('heading', { name: 'Кабинет преподавателя', exact: true });
+  await screen.findByText('С чего начать', { exact: false });
+  assert.ok(screen.getByRole('button', { name: 'На проверку', exact: true }));
+  assert.equal(screen.queryByRole('button', { name: 'Все задания', exact: true }), null);
+  assert.equal(screen.queryByRole('button', { name: 'Календарь', exact: true }), null);
+});
+test('last attempts, drafts and missing submissions remain different concepts', async () => {
+  resetDemo();
+  selectDemo('teacher');
+  const id = await api.teacherSaveAssignment({
+    course: 'g0c0',
+    title: 'Task',
+    description: 'Explain',
+    due: null,
+    max: 100,
+    late: true,
+    id: null,
+    revision: null,
+  });
+  selectDemo('student');
+  await api.submit(id, 'Answer', null);
+  selectDemo('teacher');
+  const q = await api.teacherQueue(null, null, 'pending', '', 0);
+  assert.equal(q.total, 1);
+  const roster = await api.teacherRoster(id, '', 'all', 0);
+  assert.equal(roster.total, 2);
+  assert.equal(roster.items.filter((r) => r.status === 'not_submitted').length, 1);
+  await api.teacherReview(
+    q.items[0].id,
+    q.items[0].review_version,
+    'draft',
+    70,
+    'Private feedback',
+  );
+  selectDemo('student');
+  assert.equal((await api.works(id, 0))[0].feedback, null);
+  selectDemo('teacher');
+  const d = await api.teacherDetail(q.items[0].id);
+  await api.teacherReview(d.work.id, d.work.review_version, 'return', null, 'Revise');
+  selectDemo('student');
+  await api.submit(id, 'Revision', null);
+  selectDemo('teacher');
+  assert.equal((await api.teacherQueue(null, null, 'pending', '', 0)).total, 1);
+  assert.equal((await api.teacherDetail(d.work.id)).can_review, false);
+});
+test('concurrent reviews cannot overwrite each other; published grades cannot be hidden', async () => {
+  resetDemo();
+  selectDemo('teacher');
+  const id = await api.teacherSaveAssignment({
+    course: 'g0c0',
+    title: 'Task',
+    description: 'Explain',
+    due: null,
+    max: 100,
+    late: true,
+    id: null,
+    revision: null,
+  });
+  selectDemo('student');
+  await api.submit(id, 'Answer', null);
+  selectDemo('teacher');
+  const w = (await api.teacherQueue(null, null, 'pending', '', 0)).items[0];
+  const both = await Promise.allSettled([
+    api.teacherReview(w.id, w.review_version, 'draft', 60, 'A'),
+    api.teacherReview(w.id, w.review_version, 'draft', 90, 'B'),
+  ]);
+  assert.equal(both.filter((r) => r.status === 'fulfilled').length, 1);
+  const d = await api.teacherDetail(w.id);
+  await api.teacherReview(w.id, d.work.review_version, 'publish', 80, 'Final');
+  const fresh = await api.teacherDetail(w.id);
+  await assert.rejects(() =>
+    api.teacherReview(w.id, fresh.work.review_version, 'draft', 20, 'Hide'),
+  );
+});
+test('maximum score and assignment revision protect existing submissions', async () => {
+  resetDemo();
+  selectDemo('teacher');
+  const input = {
+    course: 'g0c0',
+    title: 'Task',
+    description: 'Explain',
+    due: null,
+    max: 100,
+    late: true,
+    id: null,
+    revision: null,
+  };
+  const id = await api.teacherSaveAssignment(input);
+  selectDemo('student');
+  await api.submit(id, 'Answer', null);
+  selectDemo('teacher');
+  await assert.rejects(() => api.teacherSaveAssignment({ ...input, id, revision: 1, max: 50 }));
+  await api.teacherSaveAssignment({ ...input, id, revision: 1, description: 'Updated' });
+  await assert.rejects(() =>
+    api.teacherSaveAssignment({ ...input, id, revision: 1, description: 'Stale' }),
+  );
+});
+test('mixed student/teacher context stays in registered learning group', async () => {
+  resetDemo();
+  selectDemo('teacher');
+  const s = await api.snapshot();
+  const mixed = {
+    ...s,
+    memberships: [
+      ...s.memberships,
+      { user_id: s.me.id, group_id: 'g0', role: 'student' as const, active: true },
+    ],
+  };
+  assert.equal(groupContext(mixed, 'g1').id, 'g0');
+  assert.equal(groupContext(mixed).canChoose, false);
+});
+test('CSV treats spreadsheet formulas as literal text', () => {
+  for (const s of ['=1+1', '+cmd', '@formula', '-1', '  =SUM(A1)', '\t=cmd'])
+    assert.ok(csvCell(s).startsWith('"\''));
+  assert.equal(csvCell('A"B'), '"A""B"');
+});
 
-test('submitted instructions remain intact after teacher clarifies an assignment',async()=>{resetDemo();selectDemo('teacher');const input={course:'g0c0',title:'Task',description:'Original question',due:null,max:100,late:true,id:null,revision:null};const id=await api.teacherSaveAssignment(input);selectDemo('student');await api.submit(id,'Original answer',null);selectDemo('teacher');const w=(await api.teacherQueue(null,id,'pending','',0)).items[0];await api.teacherSaveAssignment({...input,id,revision:1,description:'Clarified question'});const detail=await api.teacherDetail(w.id);assert.equal(detail.assignment_snapshot,true);assert.equal(detail.assignment.description,'Original question');});
+test('submitted instructions remain intact after teacher clarifies an assignment', async () => {
+  resetDemo();
+  selectDemo('teacher');
+  const input = {
+    course: 'g0c0',
+    title: 'Task',
+    description: 'Original question',
+    due: null,
+    max: 100,
+    late: true,
+    id: null,
+    revision: null,
+  };
+  const id = await api.teacherSaveAssignment(input);
+  selectDemo('student');
+  await api.submit(id, 'Original answer', null);
+  selectDemo('teacher');
+  const w = (await api.teacherQueue(null, id, 'pending', '', 0)).items[0];
+  await api.teacherSaveAssignment({ ...input, id, revision: 1, description: 'Clarified question' });
+  const detail = await api.teacherDetail(w.id);
+  assert.equal(detail.assignment_snapshot, true);
+  assert.equal(detail.assignment.description, 'Original question');
+});
 
-test('teaching memberships do not prevent a separately invited learning group',async()=>{resetDemo();selectDemo('leader');const token=await api.invite('student','g0',[],1);selectDemo('teacher');await api.redeem(token);const s=await api.snapshot();assert.equal(groupContext(s,'g1').id,'g0');assert.ok(s.memberships.some(m=>m.user_id===s.me.id&&m.role==='student'&&m.group_id==='g0'));assert.equal((await api.teacherCatalog()).length,2);});
+test('teaching memberships do not prevent a separately invited learning group', async () => {
+  resetDemo();
+  selectDemo('leader');
+  const token = await api.invite('student', 'g0', [], 1);
+  selectDemo('teacher');
+  await api.redeem(token);
+  const s = await api.snapshot();
+  assert.equal(groupContext(s, 'g1').id, 'g0');
+  assert.ok(
+    s.memberships.some((m) => m.user_id === s.me.id && m.role === 'student' && m.group_id === 'g0'),
+  );
+  assert.equal((await api.teacherCatalog()).length, 2);
+});
