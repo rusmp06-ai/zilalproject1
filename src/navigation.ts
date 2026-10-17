@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {mayLeaveDrafts} from './drafts';
 export const views=['overview','groups','library','schedule','calendar','search','offline','tasks','announcements','notes','profile','teaching','admin','journal'] as const;
-export const courseSections=['overview','topics','materials','assignment','notes','announcements'] as const;
+export const courseSections=['overview','topics','materials','lectures','resources','assignment','notes','announcements'] as const;
 export type CourseSection=typeof courseSections[number];
 export type Route={tab:string;course?:string;section?:CourseSection;task?:string;book?:string;material?:string;invalid?:boolean};
 const keys=['view','course','section','task','book','material'];

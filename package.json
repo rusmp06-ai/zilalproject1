@@ -1,6 +1,6 @@
 {
   "name": "studyhub",
-  "version": "0.43.0",
+  "version": "0.44.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -41,7 +41,8 @@
     "test:upgrade": "node tests/upgrade.test.mjs",
     "test:design:browser": "node tests/student-design.browser.mjs",
     "test:course:management:browser": "node tests/course-management.browser.mjs",
-    "test:search:browser": "node tests/search.browser.mjs"
+    "test:search:browser": "node tests/search.browser.mjs",
+    "test:course:world:browser": "node tests/course-world.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
