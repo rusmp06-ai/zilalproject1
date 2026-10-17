@@ -168,7 +168,7 @@ export function createMaterialHandler(
       if (claimError || !claim)
         return reply(
           503,
-          'Не удалось проверить бюджет ИИ. Требуется SQL v0.31; заполните поля вручную.',
+          'Не удалось подготовить анализ. Проверьте обновления базы; поля можно заполнить вручную.',
         );
       quota = claim.quota;
       if (claim.status === 'cached')
@@ -189,7 +189,7 @@ export function createMaterialHandler(
       if (claim.status !== 'claimed')
         return reply(
           429,
-          'Лимит StudyHub временно исчерпан. Сохранённые результаты доступны; новые поля можно заполнить вручную.',
+          'Примените обновление базы v0.47 для снятия квот StudyHub. Сохранённые результаты доступны.',
           quota,
         );
       reservation = claim.reservation;
@@ -225,7 +225,7 @@ export function createMaterialHandler(
         await complete();
         return reply(
           422,
-          'Фрагмент превышает бюджет токенов или проверка недоступна. Сократите документ либо заполните поля вручную.',
+          'Не удалось зарегистрировать анализ документа. Проверьте обновление базы и повторите.',
           quota,
         );
       }

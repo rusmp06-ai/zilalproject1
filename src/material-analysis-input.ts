@@ -24,7 +24,74 @@ export async function prepareAnalysis(
   const ext = file.name.split('.').at(-1)!.toLowerCase();
   if (ext === 'pdf') {
     const { PDFDocument } = await import('pdf-lib');
-    const original = await PDFDocument.load(buffer, { updateMetadata: false });
+    let original;
+    try {
+      original = await PDFDocument.load(buffer, { updateMetadata: false });
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.startsWith('Input document to `PDFDocument.load` is encrypted.')
+      )
+        throw error;
+      // pdf-lib cannot decrypt PDFs. PDF.js can open permission-protected files
+      // with an empty user password; render a readable excerpt instead of ignoring encryption.
+      const { loadPdf } = await import('./pdf-reader');
+      const task = loadPdf(new Uint8Array(buffer));
+      const cancel = () => {
+        void task.destroy();
+      };
+      signal.addEventListener('abort', cancel, { once: true });
+      try {
+        const pdf = await task.promise;
+        const subset = await PDFDocument.create({ updateMetadata: false });
+        for (let index = 1; index <= Math.min(3, pdf.numPages); index++) {
+          abort(signal);
+          const source = await pdf.getPage(index);
+          const base = source.getViewport({ scale: 1 });
+          const viewport = source.getViewport({
+            scale: Math.min(1.5, Math.sqrt(4000000 / (base.width * base.height))),
+          });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          await source.render({ canvas, viewport }).promise;
+          abort(signal);
+          const blob = await new Promise<Blob>((resolve, reject) =>
+            canvas.toBlob(
+              (value) =>
+                value ? resolve(value) : reject(Error('Не удалось подготовить страницу PDF.')),
+              'image/jpeg',
+              0.88,
+            ),
+          );
+          const image = await subset.embedJpg(await blob.arrayBuffer());
+          subset
+            .addPage([base.width, base.height])
+            .drawImage(image, { x: 0, y: 0, width: base.width, height: base.height });
+          canvas.width = canvas.height = 0;
+        }
+        const bytes = await subset.save();
+        abort(signal);
+        if (bytes.length > 10 * 1024 * 1024)
+          throw Error('Фрагмент PDF слишком большой для анализа.');
+        return {
+          source_hash,
+          name: file.name,
+          mime,
+          data: base64(bytes),
+          excerpted: pdf.numPages > 3,
+        };
+      } catch (error) {
+        if (error instanceof Error && error.name === 'PasswordException')
+          throw Error(
+            'Для открытия PDF нужен пароль. Загрузите копию без пароля или заполните поля вручную.',
+          );
+        throw error;
+      } finally {
+        signal.removeEventListener('abort', cancel);
+        await task.destroy();
+      }
+    }
     abort(signal);
     const count = original.getPageCount();
     if (!count) throw Error('В PDF нет страниц.');

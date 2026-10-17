@@ -29,6 +29,7 @@ function harness(
   options: {
     auth?: boolean;
     quota?: boolean;
+    unlimited?: boolean;
     provider?: number;
     model?: unknown;
     finish?: string;
@@ -45,6 +46,7 @@ function harness(
   const cache = new Map<string, unknown>();
   let contextCourse = { ...course };
   const quota = () => ({
+    usage_unlimited: !!options.unlimited,
     user_remaining: 5 - charges,
     project_remaining: 20 - charges,
     user_daily: 5,
@@ -81,13 +83,13 @@ function harness(
       currentKey = body.p_key;
       if (cache.has(currentKey))
         return Response.json({ status: 'cached', analysis: cache.get(currentKey), quota: quota() });
-      if (options.quota === false || paused)
+      if (options.quota === false || (paused && !options.unlimited))
         return Response.json({ status: 'limited', quota: quota() });
       charges++;
       return Response.json({ status: 'claimed', reservation: 'reservation', quota: quota() });
     }
     if (address.includes('/rest/v1/rpc/meter_material_analysis'))
-      return Response.json(body.p_input > 0 && body.p_input <= 8000);
+      return Response.json(body.p_input > 0 && (options.unlimited || body.p_input <= 8000));
     if (address.includes('/rest/v1/rpc/finish_material_analysis')) {
       if (body.p_result) cache.set(currentKey, body.p_result);
       if (body.p_pause) paused = true;
@@ -186,7 +188,7 @@ Deno.test('auth, scope, invalid hash and oversized text stop before provider cal
     assert(h.counts().calls === 0 && h.counts().counts === 0);
   }
 });
-Deno.test('budget and token caps prevent generation', async () => {
+Deno.test('legacy database budget and token caps prevent generation before migration', async () => {
   for (const o of [{ quota: false }, { tokens: 8001 }, { countStatus: 503 }]) {
     const h = harness(o);
     const r = await h.handle(request());
@@ -194,7 +196,7 @@ Deno.test('budget and token caps prevent generation', async () => {
     assert(h.counts().calls === 0);
   }
 });
-Deno.test('429 causes a shared pause, without automatic retries', async () => {
+Deno.test('legacy database pause is respected, without automatic retries', async () => {
   const h = harness({ provider: 429 });
   assert((await h.handle(request())).status === 429);
   assert((await h.handle(request({ source_hash: 'b'.repeat(64) }))).status === 429);
@@ -251,5 +253,26 @@ Deno.test(
     );
     assert(missing.status === 401);
     assert(calls === 0);
+  },
+);
+
+Deno.test(
+  'unlimited database policy permits more than twenty analyses and input above the old token cap',
+  async () => {
+    const h = harness({ unlimited: true, tokens: 16000 });
+    for (let i = 0; i < 25; i++) {
+      const response = await h.handle(request({ source_hash: i.toString(16).padStart(64, '0') }));
+      assert(response.status === 200);
+    }
+    assert(h.counts().calls === 25);
+  },
+);
+Deno.test(
+  'unlimited policy returns provider 429 without adding an application cooldown or automatic retry',
+  async () => {
+    const h = harness({ unlimited: true, provider: 429 });
+    for (const hash of ['a', 'b'])
+      assert((await h.handle(request({ source_hash: hash.repeat(64) }))).status === 429);
+    assert(h.counts().calls === 2);
   },
 );

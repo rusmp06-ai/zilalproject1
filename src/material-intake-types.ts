@@ -51,18 +51,19 @@ export type IntakeReservation = {
 };
 
 export type MaterialAiQuota = {
-  user_daily: number;
-  project_daily: number;
-  rpm: number;
-  tpm: number;
-  max_input: number;
+  usage_unlimited?: boolean;
+  user_daily: number | null;
+  project_daily: number | null;
+  rpm: number | null;
+  tpm: number | null;
+  max_input: number | null;
   max_output: number;
-  user_remaining: number;
-  project_remaining: number;
-  minute_remaining: number;
-  tokens_remaining: number;
+  user_remaining: number | null;
+  project_remaining: number | null;
+  minute_remaining: number | null;
+  tokens_remaining: number | null;
   retry_after_seconds: number;
-  resets_at: string;
+  resets_at: string | null;
 };
 
 export type IntakeStatus = {

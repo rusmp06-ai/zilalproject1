@@ -16,6 +16,7 @@ export const bundles = {
   'StudyHub_update_v0.42.sql': [22, 22],
   'StudyHub_update_v0.43.sql': [22, 23],
   'StudyHub_update_v0.45.sql': [22, 24],
+  'StudyHub_update_v0.47.sql': [25, 25],
   'StudyHub_upgrade_to_v0.35.sql': [11, 21],
 };
 export async function renderBundles() {

@@ -477,26 +477,11 @@ export function MaterialIntake({
               {api.demo
                 ? 'Деморежим · без запросов Gemini'
                 : quota
-                  ? `Вам осталось ${quota.user_remaining} из ${quota.user_daily} анализов сегодня`
+                  ? quota.usage_unlimited
+                    ? 'Без квот StudyHub · ограничения Gemini сохраняются'
+                    : 'Для снятия квот StudyHub примените обновление базы v0.47'
                   : 'Анализ необязателен'}
             </small>
-            <details>
-              <summary>Лимиты ИИ</summary>
-              {quota && (
-                <p>
-                  Проект: {quota.project_remaining} из {quota.project_daily} анализов сегодня. До{' '}
-                  {quota.rpm} запросов и {quota.tpm.toLocaleString('ru-RU')} токенов в минуту.
-                  {quota.retry_after_seconds > 0 ? ' Действует пауза провайдера.' : ''}
-                </p>
-              )}
-              <p>
-                Повторный анализ из кеша не расходует квоту. Лимит Gemini может быть ниже лимита
-                приложения.
-              </p>
-              <button type="button" disabled={busy} onClick={() => void refreshQuota()}>
-                Обновить лимиты
-              </button>
-            </details>
           </div>
           {quotaError && <p role="status">{quotaError}</p>}
         </div>

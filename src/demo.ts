@@ -451,18 +451,19 @@ export const demoGateway: Gateway = {
   async materialAiQuota() {
     await this.materialIntakeContext();
     return {
-      user_daily: 5,
-      project_daily: 20,
-      rpm: 2,
-      tpm: 12000,
-      max_input: 8000,
+      usage_unlimited: true,
+      user_daily: null,
+      project_daily: null,
+      rpm: null,
+      tpm: null,
+      max_input: null,
       max_output: 2048,
-      user_remaining: 5,
-      project_remaining: 20,
-      minute_remaining: 2,
-      tokens_remaining: 12000,
+      user_remaining: null,
+      project_remaining: null,
+      minute_remaining: null,
+      tokens_remaining: null,
       retry_after_seconds: 0,
-      resets_at: new Date(Date.now() + 86400000).toISOString(),
+      resets_at: null,
     };
   },
   async materialIntakeContext() {

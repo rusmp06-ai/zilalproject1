@@ -1032,4 +1032,41 @@ begin
 end $$;
 revoke all on function public.weekly_schedule_day(uuid,integer),public.save_weekly_schedule(uuid,integer,jsonb,integer,uuid),public.schedule_rows(uuid,timestamptz,timestamptz),public.schedule_catalog(uuid,timestamptz,timestamptz,integer),public.save_schedule_exception(uuid,date,boolean,uuid,time,time,text,integer,boolean) from public,anon,authenticated;
 grant execute on function public.weekly_schedule_day(uuid,integer),public.save_weekly_schedule(uuid,integer,jsonb,integer,uuid),public.schedule_catalog(uuid,timestamptz,timestamptz,integer),public.save_schedule_exception(uuid,date,boolean,uuid,time,time,text,integer,boolean) to authenticated;
+
+-- 202610170025_ai_unlimited.sql; sha256=3ba909cf29930d42c018210920fc4bbe43bfb901d5f283778f10e5a339e9f573
+-- Remove StudyHub usage quotas; keep authorization, isolated cache and duplicate protection.
+
+create or replace function public.material_ai_quota_for(p_user uuid) returns jsonb
+language sql stable security definer set search_path=pg_catalog as $$
+ select jsonb_build_object('usage_unlimited',true,
+ 'user_daily',null,'project_daily',null,'rpm',null,'tpm',null,
+ 'user_remaining',null,'project_remaining',null,'minute_remaining',null,'tokens_remaining',null,
+ 'max_input',null,'max_output',l.max_output,'retry_after_seconds',0,'resets_at',null)
+ from public.material_ai_limits l where singleton;
+$$;
+create or replace function public.claim_material_analysis(p_user uuid,p_key text) returns jsonb language plpgsql security definer set search_path=pg_catalog as $$
+declare q jsonb;l public.material_ai_limits%rowtype;cached jsonb;run uuid;today date:=(now() at time zone 'Asia/Bishkek')::date;
+begin
+ if p_key is null or p_key!~'^[a-f0-9]{64}$' or not exists(select 1 from public.profiles where id=p_user and not blocked) then raise exception 'Account unavailable';end if;
+ perform pg_advisory_xact_lock(730049);
+ select result into cached from public.material_ai_cache where user_id=p_user and cache_key=p_key and expires_at>now();
+ if found then return jsonb_build_object('status','cached','analysis',cached,'quota',public.material_ai_quota_for(p_user));end if;
+ q:=public.material_ai_quota_for(p_user);select * into l from public.material_ai_limits where singleton;
+ if exists(select 1 from public.material_ai_runs where user_id=p_user and cache_key=p_key and status='running' and started_at>now()-interval '90 seconds') then return jsonb_build_object('status','busy','quota',q);end if;
+ insert into public.material_ai_usage values(p_user,today,1) on conflict(user_id,day) do update set requests=public.material_ai_usage.requests+1;
+ insert into public.material_ai_runs(user_id,cache_key,tokens) values(p_user,p_key,l.max_output) returning id into run;
+ delete from public.material_ai_runs where started_at<now()-interval '32 days';delete from public.material_ai_cache where expires_at<now();
+ return jsonb_build_object('status','claimed','reservation',run,'quota',public.material_ai_quota_for(p_user));
+end $$;
+create or replace function public.meter_material_analysis(p_id uuid,p_input integer) returns boolean language plpgsql security definer set search_path=pg_catalog as $$
+declare l public.material_ai_limits%rowtype;r public.material_ai_runs%rowtype;
+begin
+ perform pg_advisory_xact_lock(730049);select * into l from public.material_ai_limits where singleton;select * into r from public.material_ai_runs where id=p_id for update;
+ if not found or r.status<>'running' or r.started_at<now()-interval '90 seconds' then return false;end if;
+ if p_input is null or p_input<1 or p_input>2147483647-l.max_output then update public.material_ai_runs set status='failed' where id=p_id;return false;end if;
+ update public.material_ai_runs set tokens=p_input+l.max_output,started_at=clock_timestamp() where id=p_id;return true;
+end $$;
+
+revoke all on function public.material_ai_quota_for(uuid),public.claim_material_analysis(uuid,text),public.meter_material_analysis(uuid,integer) from public,anon,authenticated;
+grant execute on function public.material_ai_quota_for(uuid),public.claim_material_analysis(uuid,text),public.meter_material_analysis(uuid,integer) to service_role;
 commit;

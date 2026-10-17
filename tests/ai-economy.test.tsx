@@ -26,18 +26,19 @@ const { render, screen, fireEvent, waitFor, cleanup } = await import('@testing-l
 const { MaterialIntake } = await import('../src/MaterialIntake');
 const { demoGateway, selectDemo, resetDemo } = await import('../src/demo');
 const q = {
-  user_daily: 5,
-  project_daily: 20,
-  rpm: 2,
-  tpm: 12000,
-  max_input: 8000,
+  usage_unlimited: true,
+  user_daily: null,
+  project_daily: null,
+  rpm: null,
+  tpm: null,
+  max_input: null,
   max_output: 2048,
-  user_remaining: 5,
-  project_remaining: 20,
-  minute_remaining: 2,
-  tokens_remaining: 12000,
+  user_remaining: null,
+  project_remaining: null,
+  minute_remaining: null,
+  tokens_remaining: null,
   retry_after_seconds: 0,
-  resets_at: '2026-10-17T00:00:00+06:00',
+  resets_at: null,
 };
 const result = {
   kind: 'lecture' as const,
@@ -58,7 +59,7 @@ async function choose() {
   });
   await waitFor(() => assert.ok(screen.getByRole('button', { name: 'Распознать документ' })));
 }
-test('quota display and cached result do not turn title editing into another analysis', async () => {
+test('unlimited policy and cached result do not turn title editing into another analysis', async () => {
   resetDemo();
   selectDemo('teacher');
   let analyses = 0;
@@ -74,7 +75,8 @@ test('quota display and cached result do not turn title editing into another ana
   render(React.createElement(MaterialIntake, { api }));
   try {
     fireEvent.click(screen.getByRole('button', { name: 'Добавить документ с ИИ' }));
-    await screen.findByText(/Вам осталось 5 из 5/);
+    await screen.findByText(/Без квот StudyHub/);
+    assert.equal(screen.queryByText('Лимиты ИИ'), null);
     await choose();
     fireEvent.click(screen.getByRole('checkbox', { name: /Разрешаю отправить/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Распознать документ' }));
@@ -91,17 +93,17 @@ test('quota display and cached result do not turn title editing into another ana
     cleanup();
   }
 });
-test('zero quota and provider failure leave manual publication enabled', async () => {
+test('Gemini provider limit leaves manual publication enabled without application quotas', async () => {
   resetDemo();
   selectDemo('teacher');
   let publications = 0;
-  const zero = { ...q, user_remaining: 0, project_remaining: 0 };
+  const providerQuota = { ...q };
   const api = {
     ...demoGateway,
     demo: false,
-    materialAiQuota: async () => zero,
+    materialAiQuota: async () => providerQuota,
     analyzeMaterial: async () => {
-      throw Object.assign(Error('Квота исчерпана'), { quota: zero });
+      throw Object.assign(Error('Лимит Gemini исчерпан'), { quota: providerQuota });
     },
     publishIntake: async () => {
       publications++;
@@ -111,11 +113,11 @@ test('zero quota and provider failure leave manual publication enabled', async (
   render(React.createElement(MaterialIntake, { api }));
   try {
     fireEvent.click(screen.getByRole('button', { name: 'Добавить документ с ИИ' }));
-    await screen.findByText(/Вам осталось 0 из 5/);
+    await screen.findByText(/Без квот StudyHub/);
     await choose();
     fireEvent.click(screen.getByRole('checkbox', { name: /Разрешаю отправить/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Распознать документ' }));
-    await screen.findByText('Квота исчерпана');
+    await screen.findByText('Лимит Gemini исчерпан');
     fireEvent.change(screen.getByLabelText('Тип документа'), { target: { value: 'lecture' } });
     fireEvent.change(screen.getByLabelText('Дисциплина для публикации'), {
       target: { value: 'g0c0' },
