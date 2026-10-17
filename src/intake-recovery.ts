@@ -10,9 +10,10 @@ export function pendingIntake(api:Gateway,user:string):PendingIntake|null{
 export function forgetIntake(api:Gateway,user:string,request:string){try{if(pendingIntake(api,user)?.publication.request===request)localStorage.removeItem(key(api,user));}catch{/* The server status prevents a duplicate retry. */}}
 export function markDeleting(api:Gateway,user:string,p:PendingIntake){localStorage.setItem(key(api,user),JSON.stringify(p));}
 const payload=(p:IntakePublication)=>JSON.stringify({...p,request:''});
+const activePublications=new Set<string>();
 export async function publicationLock<T>(api:Gateway,user:string,work:()=>Promise<T>):Promise<T>{
- if(typeof navigator!=='undefined'&&navigator.locks)return navigator.locks.request(key(api,user),{ifAvailable:true},lock=>{if(!lock)throw Error('Публикация обрабатывается в другой вкладке. Дождитесь завершения.');return work();});
- return work();
+ const id=key(api,user);if(activePublications.has(id))throw Error('Публикация уже выполняется. Дождитесь завершения.');activePublications.add(id);
+ try{if(typeof navigator!=='undefined'&&navigator.locks)return await navigator.locks.request(id,{ifAvailable:true},lock=>{if(!lock)throw Error('Публикация обрабатывается в другой вкладке. Дождитесь завершения.');return work();});return await work();}finally{activePublications.delete(id);}
 }
 export async function publishRecoverable(api:Gateway,publication:IntakePublication,file:File,user?:string){
  const owner=user||(await api.snapshot()).me.id;

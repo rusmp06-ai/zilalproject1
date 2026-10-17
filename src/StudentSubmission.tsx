@@ -1,19 +1,24 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useState,useRef} from 'react';
 import {PdfOptimization} from './PdfOptimization';
 import {FILE_ACCEPT,validateFile} from './files';
 import {submissionDraftKey,useSubmissionDraft} from './submission-draft';
 import type {Gateway,Assignment} from './types';
 export function StudentSubmission({api,task,user,attempt,onSubmitted,onFailed}:{api:Gateway;task:Assignment;user:string;attempt:number;onSubmitted:()=>Promise<void>;onFailed:(message:string)=>Promise<void>}){
  const [sending,setSending]=useState(false),[optimizing,setOptimizing]=useState(false),[error,setError]=useState(''),[committed,setCommitted]=useState(false),[fileKey,setFileKey]=useState(0),[online,setOnline]=useState(navigator.onLine);
+ const inFlight=useRef(false);
  const draft=useSubmissionDraft(submissionDraftKey(api.demo?'demo':'live',user,task.id,attempt),sending);
  const missing=!!draft.attachment&&!draft.file;
  useEffect(()=>{const change=()=>setOnline(navigator.onLine);window.addEventListener('online',change);window.addEventListener('offline',change);return()=>{window.removeEventListener('online',change);window.removeEventListener('offline',change);};},[]);
- async function submit(){const current=draft.read();if(sending||committed||current.sent||optimizing||!online)return;setError('');if(current.attachment&&!current.file){setError('Прикрепите файл повторно или явно выберите отправку без него.');return;}if(!current.text.trim()&&!current.file){setError('Добавьте текст ответа или файл.');return;}if(current.status==='conflict'){setError('Сначала разрешите различие черновиков.');return;}
+ async function submit(){const current=draft.read();if(inFlight.current||sending||committed||current.sent||optimizing||!online)return;setError('');if(current.attachment&&!current.file){setError('Прикрепите файл повторно или явно выберите отправку без него.');return;}if(!current.text.trim()&&!current.file){setError('Добавьте текст ответа или файл.');return;}if(current.status==='conflict'){setError('Сначала разрешите различие черновиков.');return;}
   if(current.file)try{validateFile(current.file);}catch(e){setError((e as Error).message);return;}
-  draft.save();if(draft.read().status==='conflict'){setError('Сначала разрешите различие черновиков.');return;}setSending(true);
-  try{await api.submit(task.id,current.text,current.file);}catch(e){const message=(e as Error).message||'Отправка не подтверждена. Черновик сохранён.';setError(message);setSending(false);try{await onFailed(message);}catch{}return;}
+  draft.save();if(draft.read().status==='conflict'){setError('Сначала разрешите различие черновиков.');return;}inFlight.current=true;setSending(true);
+  try{await api.submit(task.id,current.text,current.file);}catch(e){
+   let confirmed=false;
+   try{const works=await api.works(task.id,0);confirmed=works.some(work=>work.student_id===user&&work.attempt_no===attempt&&['submitted','graded','returned'].includes(work.status)&&work.text_answer===current.text&&(current.file?work.original_name===current.file.name&&Number(work.size_bytes)===current.file.size:!work.original_name));}catch{/* Keep the draft when delivery cannot be verified. */}
+   if(!confirmed){const message=(e as Error).message||'Отправка не подтверждена. Черновик сохранён.';setError(message);try{await onFailed(message);}catch{}finally{inFlight.current=false;setSending(false);}return;}
+  }
   // A refresh failure must never turn a successful submission into another send.
-  setCommitted(true);const removed=draft.clear();setSending(false);if(!removed)setError('Работа отправлена. Браузер не смог полностью обновить локальный черновик.');
+  setCommitted(true);const removed=draft.clear();inFlight.current=false;setSending(false);if(!removed)setError('Работа отправлена. Браузер не смог полностью обновить локальный черновик.');
   try{await onSubmitted();}catch{setError('Работа отправлена. Список попыток не обновился — обновите задания; повторно отправлять ответ не нужно.');}
  }
  if(committed||draft.sent)return <section className="card"><p role="status" className="notice success">Работа отправлена на проверку.</p>{error&&<p role="alert">{error}</p>}{draft.text&&<><p>Отправка подтверждена в другой вкладке. Этот вариант текста оставлен для копирования и не отправляется повторно.</p><label>Сохранённый вариант ответа<textarea readOnly value={draft.text}/></label></>}</section>;
