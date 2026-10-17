@@ -147,3 +147,52 @@ button.close-button:disabled{opacity:.4;cursor:not-allowed}
 .preview-content>header h2,.schedule-detail .card-actions h2{min-width:0;overflow-wrap:anywhere}.schedule-detail>.card-actions:first-child{justify-content:space-between;flex-wrap:nowrap}
 
 .document-picker-field{position:relative;display:flex;align-items:center;gap:12px;min-height:48px;padding:10px 12px;border:1px solid #d4dfed;border-radius:12px;background:#fbfcfe;font-weight:400;color:#63738a;min-width:0}.document-picker-field input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;padding:0}.document-picker-action{flex-shrink:0;color:#285b95;font-weight:600}.document-picker-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.document-picker-field small{flex-shrink:0;font-size:11px}.document-picker-field:focus-within{outline:2px solid #2866a5;outline-offset:3px}.document-picker-field:hover:not(.disabled){background:#f0f5fb;border-color:#9db7d5}.document-picker-field.disabled{opacity:.5}.document-picker-field.disabled input{cursor:not-allowed}
+
+/* Home: focus on the next lesson, then deadlines; secondary catalogs stay within reach. */
+.home-shell .day-refresh{width:44px;min-width:44px;height:44px;padding:0;font-size:25px;line-height:1}
+.home-more{margin:20px 0;border:1px solid var(--line,#dce3ed);border-radius:16px;background:#fff}
+.home-more>summary{padding:18px 20px;cursor:pointer;font-weight:650;color:#263f61;min-height:44px}
+.home-more>summary>span{display:block;margin:5px 0 0 17px;font-size:13px;font-weight:400;color:#63758a}
+.home-more-content{padding:0 20px 20px}
+.home-more-content .study-grid{display:block}
+.home-shell .day-priorities:has(>.card:only-child){grid-template-columns:1fr}
+@media(max-width:700px){
+ .home-shell .welcome-heading{flex-direction:row;justify-content:space-between;align-items:center}
+ .home-shell .welcome-heading h2{font-size:16px}
+ .home-shell .day-refresh{font-size:25px;padding:0;flex-shrink:0}
+ .home-shell .lesson-now{padding:14px;margin-bottom:14px}
+ .home-shell .lesson-slots{gap:10px}
+ .home-shell .lesson-slot h3{font-size:18px;margin:6px 0;overflow-wrap:anywhere}
+ .home-shell .lesson-next{padding-top:10px}
+ .home-shell .lesson-next h3{font-size:16px}
+ .home-shell .lesson-details{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+ .home-shell .lesson-time{font-size:23px}
+ .home-shell .lesson-room{font-size:20px}
+ .home-shell .lesson-next .lesson-time,.home-shell .lesson-next .lesson-room{font-size:18px}
+ .home-shell .lesson-countdown{margin:5px 0 0;font-size:12px}
+ .home-shell .lesson-actions{margin-top:12px;grid-template-columns:1fr 1fr}
+ .home-shell .lesson-actions button{min-height:44px}
+ .home-shell .lesson-actions button:last-child{grid-column:1/-1;min-height:44px}
+ .home-shell .day-priorities{gap:12px;margin-bottom:14px}
+ .home-shell .day-priorities>.card{padding:16px}
+ .home-shell .day-priorities h3{font-size:18px}
+ .home-shell .study-row{gap:10px;min-width:0}
+ .home-shell .study-row>span{min-width:0;overflow-wrap:anywhere}
+ .home-shell .study-deadline{flex-shrink:0;max-width:40%;font-size:12px}
+ .home-shell .study-shortcuts{gap:8px}
+ .home-shell .study-shortcuts>button{padding:12px;min-height:56px;gap:8px}
+ .home-shell .study-shortcuts small,.home-shell .shortcut-open{display:none}
+ .home-shell .study-shortcuts b{font-size:13px}
+ .home-shell .home-more-content{padding:0 12px 12px}
+}
+.home-timeline{margin:0 0 20px;border:1px solid #dce3ed;border-radius:14px;background:#fff}
+.home-timeline>summary{padding:16px;cursor:pointer;font-weight:600;min-height:44px}
+.home-timeline .today-schedule{margin:0;border:0}
+@media(max-width:700px){
+ .home-shell .workspace>header{flex-direction:row;justify-content:space-between}
+ .home-shell .workspace>header .account{flex-direction:row;gap:6px}
+ .home-shell .study-controls .group-context{padding:0;background:transparent;font-size:12px}
+ .home-shell .lesson-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .home-shell .lesson-actions button:last-child{grid-column:auto}
+ .home-shell .lesson-actions button{font-size:11px;padding:8px 4px}
+}
