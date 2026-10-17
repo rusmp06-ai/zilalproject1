@@ -25,6 +25,10 @@ try {
  await db.exec(await readFile(new URL('../supabase/StudyHub_update_v0.42.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('./course-management-contract.sql',import.meta.url),'utf8'));
  console.log('PASS course management migration repeated; scope, archive preservation, empty deletion, optimistic rename and audit');
+ await db.exec(await readFile(new URL('../supabase/migrations/202610170023_study_search.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../supabase/StudyHub_update_v0.43.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('./search-contract.sql',import.meta.url),'utf8'));
+ console.log('PASS search migration and cumulative update repeated');
  const bundle=await readFile(new URL('../supabase/StudyHub_update_v0.16.sql',import.meta.url),'utf8');
  const snapshot=async()=>JSON.stringify((await db.query('select id,user_id,title,body,version,created_at,updated_at from public.private_tasks order by id')).rows);
  await db.exec(`insert into auth.users values('00000000-0000-0000-0000-000000000821');insert into public.profiles(id,full_name) values('00000000-0000-0000-0000-000000000821','Repeat fixture');insert into public.private_tasks(user_id,title,body,version) values('00000000-0000-0000-0000-000000000821','Keep task','{"studyhub_plan":1,"due":null,"done":false,"details":"Keep body","link":null}',9);`);

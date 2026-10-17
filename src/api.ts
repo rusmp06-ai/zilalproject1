@@ -1,3 +1,4 @@
+import {catalogSearch} from './study-search';
 import {uploadIntake} from './upload-intake';
 import {publishRecoverable} from './intake-recovery';
 import {notifyChanged} from './notifications';
@@ -19,6 +20,8 @@ async function rows<T>(table:string){const order=table==='group_memberships'?['g
 async function ensureProfile(name:string){const {data,error}=await db().auth.getUser();if(error||!data.user)throw Error('Войдите в аккаунт.');const p=await rows<Profile>('profiles');if(!p.some(p=>p.id===data.user!.id)){const {error:insertError}=await db().from('profiles').upsert({id:data.user.id,full_name:name},{onConflict:'id',ignoreDuplicates:true});if(insertError)throw Error('Не удалось создать профиль. Возможно, аккаунт заблокирован.');}}
 export const liveGateway:Gateway={
  demo:false,
+ async studySearch(query,filter,offset,signal){const request=db().rpc('study_search',{p_query:query,p_kind:filter,p_offset:offset});const {data,error}=await(signal?request.abortSignal(signal):request);if(error){if(error.code==='PGRST202'){const result=await catalogSearch(this,await this.snapshot(),query,filter,offset,signal);result.issues.unshift('Базовый поиск. Для поиска по русским формам слов примените SQL v0.43.');return result;}throw Error('Поиск не выполнен. Проверьте соединение и повторите.');}return data as import('./study-search').SearchPage;},
+ async searchNote(id){try{const rows=await rpc<Note[]>('study_search_note',{p_id:id});if(!rows[0])throw Error('Заметка удалена или недоступна.');return rows[0];}catch(e){if((e as {code?:string}).code==='PGRST202'){for(let offset=0;offset<100000;offset+=50){const rows=await this.notes('',offset),note=rows.find(n=>n.id===id&&!decodePlan(n.body));if(note)return note;if(rows.length<50)break;}throw Error('Заметка удалена или недоступна.');}throw e;}},
  async materialAiQuota(){try{return await rpc('material_ai_quota');}catch{throw Error('Счётчик ИИ недоступен. Примените SQL v0.31; ручная публикация остаётся доступной.');}},
  async materialIntakeContext(){try{return await rpc('material_intake_context');}catch(e){if((e as {code?:string}).code==='PGRST202')throw Error('Для помощника добавления материалов требуется SQL v0.30.');throw e;}},
  async analyzeMaterial(input,signal){

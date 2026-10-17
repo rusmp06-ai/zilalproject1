@@ -72,7 +72,7 @@ test('global search finds own notes and materials without exposing other account
  resetDemo();selectDemo('owner');await demoGateway.saveNote('Private owner finance','Secret',null,null);await demoGateway.saveMaterial('g0c0','lecture','Finance lecture','Budget',null,null);
  selectDemo('student');await demoGateway.saveNote('Finance summary','Personal finance',null,null);const snapshot=await demoGateway.snapshot();
  render(<StudySearch api={demoGateway} snapshot={snapshot} onCourse={()=>{}} onTasks={()=>{}}/>);fireEvent.change(screen.getByLabelText('Поиск по учебному пространству'),{target:{value:'Finance'}});fireEvent.click(screen.getByRole('button',{name:'Найти',exact:true}));
- await screen.findByText('Finance summary');await screen.findByText('Finance lecture');assert.equal(screen.queryByText('Private owner finance')===null,true);
+ await screen.findByRole('heading',{name:'Finance summary',exact:true});await screen.findByRole('heading',{name:'Finance lecture',exact:true});assert.equal(screen.queryByText('Private owner finance')===null,true);
 });
 
 test('library storefront filters the complete catalog and discards partial data on denial or failure',async()=>{
@@ -117,4 +117,19 @@ test('course catalog loads all pages, keeps denied sections separate and reports
 test('existing note draft survives additional course fields',async()=>{
  resetDemo();selectDemo('student');sessionStorage.setItem('studyhub-draft-v1:demo:student:note',JSON.stringify({edit:null,title:'Previous draft',body:'Keep this text'}));
  const {NotesPanel}=await import('../src/NotesPanel');render(<NotesPanel api={demoGateway} userId="student"/>);await waitFor(()=>assert.equal((screen.getByLabelText('Название заметки') as HTMLInputElement).disabled,false));assert.equal((screen.getByLabelText('Название заметки') as HTMLInputElement).value,'Previous draft');assert.equal((screen.getByLabelText('Текст заметки') as HTMLTextAreaElement).value,'Keep this text');
+});
+
+test('search cancels stale requests, filters results, paginates and checks note access on opening',async()=>{
+ resetDemo();selectDemo('student');const snapshot=await demoGateway.snapshot();const {StudySearch}=await import('../src/StudySearch');
+ const pending:{q:string;filter:string;offset:number;signal?:AbortSignal;resolve:(v:any)=>void}[]=[];
+ const api={...demoGateway,studySearch:(q:string,filter:any,offset:number,signal?:AbortSignal)=>new Promise<any>(resolve=>pending.push({q,filter,offset,signal,resolve})),searchNote:async()=>{throw Error('Access denied');}};
+ render(<StudySearch api={api} snapshot={snapshot} onCourse={()=>{}} onTasks={()=>{}}/>);
+ const input=screen.getByLabelText('Поиск по учебному пространству');
+ fireEvent.change(input,{target:{value:'Old'}});await waitFor(()=>assert.equal(pending.length,1));
+ fireEvent.change(input,{target:{value:'New'}});await waitFor(()=>assert.equal(pending.length,2));assert.equal(pending[0].signal?.aborted,true);
+ pending[1].resolve({items:[{id:'n1',kind:'note',title:'New note',highlightedTitle:'⟦New⟧ note',snippet:'<script>plain</script>'}],hasMore:true,issues:[]});await screen.findByRole('heading',{name:'New note'});
+ pending[0].resolve({items:[{id:'old',kind:'note',title:'Old note',snippet:''}],hasMore:false,issues:[]});await new Promise(r=>setTimeout(r,0));assert.equal(screen.queryByRole('heading',{name:'Old note'}),null);assert.equal(document.querySelector('.search-results script'),null);
+ fireEvent.click(screen.getByRole('button',{name:'Показать ещё'}));await waitFor(()=>assert.equal(pending.length,3));assert.equal(pending[2].offset,1);pending[2].resolve({items:[{id:'n2',kind:'note',title:'Another note',snippet:''}],hasMore:false,issues:[]});await screen.findByRole('heading',{name:'Another note'});
+ fireEvent.click(screen.getAllByRole('button',{name:'Открыть',exact:true})[0]);await screen.findByText('Заметка удалена или недоступна.');assert.equal(screen.queryByRole('dialog'),null);
+ fireEvent.click(screen.getByRole('button',{name:'Задания',exact:true}));await waitFor(()=>assert.equal(pending.length,4));assert.equal(pending[3].filter,'assignment');pending[3].resolve({items:[],hasMore:false,issues:[]});await screen.findByText('Совпадений нет. Попробуйте другое слово.');
 });

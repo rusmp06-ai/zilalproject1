@@ -1,3 +1,4 @@
+import {catalogSearch} from './study-search';
 import type {TeacherCourse,TeacherDetail,ReviewRow} from './teacher-types';
 import {notifyChanged,isOverdue} from './notifications';
 import {accountInput,profileName,type AccountInput} from './account';
@@ -46,6 +47,8 @@ function reviewRows(course:string|null,assignment:string|null){return latestWork
 
 export const demoGateway:Gateway={
  demo:true,
+ async studySearch(query,filter,offset,signal){return catalogSearch(this,await this.snapshot(),query,filter,offset,signal);},
+ async searchNote(id){const note=state.notes.find(n=>n.id===id&&n.user_id===me().id&&!decodePlan(n.body));if(!note)throw Error('Заметка удалена или недоступна.');return structuredClone(note);},
  async materialAiQuota(){await this.materialIntakeContext();return {user_daily:5,project_daily:20,rpm:2,tpm:12000,max_input:8000,max_output:2048,user_remaining:5,project_remaining:20,minute_remaining:2,tokens_remaining:12000,retry_after_seconds:0,resets_at:new Date(Date.now()+86400000).toISOString()};},
  async materialIntakeContext(){
   const courses=state.courses.filter(c=>!c.archived&&!state.groups.find(g=>g.id===c.group_id)?.blocked).map(c=>{const kinds:import('./material-intake-types').IntakeKind[]=[];for(const k of ['lecture','presentation','material'] as const)try{if(courseManager(c.id,k))kinds.push(k);}catch{}if(kinds.includes('material')&&gradeCourse(c.id))kinds.push('assignment');return {...c,group_name:state.groups.find(g=>g.id===c.group_id)!.name,kinds};}).filter(c=>c.kinds.length);

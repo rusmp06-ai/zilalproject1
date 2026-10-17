@@ -28,6 +28,8 @@ export type CourseWorkspace={topics:CourseTopic[];links:CourseLink[];completed:s
 export type AssignmentProgress={assignment_id:string;status:string;attempt_no:number};
 export type GroupRequest={user_id:string;group_id:string;full_name:string;status:string;created_at:string};
 export interface Gateway {
+ studySearch(query:string,filter:import('./study-search').SearchFilter,offset:number,signal?:AbortSignal):Promise<import('./study-search').SearchPage>;
+ searchNote(id:string):Promise<Note>;
  materialAiQuota():Promise<import('./material-intake-types').MaterialAiQuota>;
  materialIntakeContext():Promise<import('./material-intake-types').IntakeContext>;
  analyzeMaterial(input:import('./material-intake-types').AnalysisInput,signal:AbortSignal):Promise<import('./material-intake-types').MaterialAnalysis>;

@@ -23,5 +23,6 @@ try {
  const upgrade=await readFile(new URL('../supabase/StudyHub_upgrade_to_v0.35.sql',import.meta.url),'utf8');
  await db.exec(upgrade);await db.exec(upgrade);assert.equal(await snapshot(),before);
  await db.exec(await readFile(new URL('./upload-recovery-contract.sql',import.meta.url),'utf8'));
+ const search=await readFile(new URL('../supabase/StudyHub_update_v0.43.sql',import.meta.url),'utf8');await db.exec(search);await db.exec(search);assert.equal(await snapshot(),before);await db.exec(await readFile(new URL('./search-contract.sql',import.meta.url),'utf8'));
  console.log('PASS base 001-010 upgrades to v0.35 in one file, repeats safely, preserves existing notes and passes cancellation/visibility/quota contracts');
 } finally {await db.close();}
