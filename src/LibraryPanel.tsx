@@ -1,3 +1,4 @@
+import {useViewState,shortText,oneOf} from './view-state';
 import {CloseButton} from './CloseButton';
 import {publishRecoverable} from './intake-recovery';
 import {registerNavigationGuard} from './drafts';
@@ -15,8 +16,10 @@ import {FILE_ACCEPT,sizeLabel} from './files';
 type Preview={item:LibraryItem;url?:string};
 export function LibraryPanel({api,snapshot,initialItem=null,initialBook,onLocation,allowManagement=true}:{api:Gateway;snapshot:Snapshot;initialItem?:LibraryItem|null;initialBook?:string;onLocation?:(id?:string)=>void;allowManagement?:boolean}){
  const [optimizing,setOptimizing]=useState(false),[routeError,setRouteError]=useState(''),[bookRevision,setBookRevision]=useState(0),[openingBook,setOpeningBook]=useState(false);
- const [favorites,setFavorites]=useState(false),[page,setPage]=useState<LibraryPage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[search,setSearch]=useState(''),[query,setQuery]=useState(''),[offset,setOffset]=useState(0),[title,setTitle]=useState(''),[file,setFile]=useState<File|null>(null),[source,setSource]=useState(''),[fileKey,setFileKey]=useState(0),[editing,setEditing]=useState<string|null>(null),[editTitle,setEditTitle]=useState(''),[confirm,setConfirm]=useState<string|null>(null),[preview,setPreview]=useState<Preview|null>(initialItem?{item:initialItem}:null);
- const [shelf,setShelf]=useState<'all'|'reading'>('all'),[format,setFormat]=useState(''),[sort,setSort]=useState<'new'|'title'>('new');
+ const [favoriteChoice,setFavoriteChoice]=useViewState<string>('library','favorites','',oneOf('','1')),[page,setPage]=useState<LibraryPage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[search,setSearch]=useState(()=>new URLSearchParams(location.search).get('ui_query')?.slice(0,200)||''),[query,setQuery]=useViewState<string>('library','query','',shortText),[offset,setOffset]=useState(0),[title,setTitle]=useState(''),[file,setFile]=useState<File|null>(null),[source,setSource]=useState(''),[fileKey,setFileKey]=useState(0),[editing,setEditing]=useState<string|null>(null),[editTitle,setEditTitle]=useState(''),[confirm,setConfirm]=useState<string|null>(null),[preview,setPreview]=useState<Preview|null>(initialItem?{item:initialItem}:null);
+ const [shelf,setShelf]=useViewState<'all'|'reading'>('library','shelf','all',oneOf('all','reading')),[format,setFormat]=useViewState<string>('library','format','',oneOf('','PDF','EPUB','DOCX','TXT','Презентация','Таблица','Изображение','Другой')),[sort,setSort]=useViewState<'new'|'title'>('library','sort','new',oneOf('new','title'));
+ const favorites=favoriteChoice==='1',setFavorites=(v:boolean)=>setFavoriteChoice(v?'1':'');
+ useEffect(()=>setSearch(query),[query]);
  const uploadRegion=useRef<HTMLElement>(null);const readerDirty=useRef(false);
  function closePreview(){if(readerDirty.current&&!window.confirm('В читалке есть несохранённая заметка. Закрыть документ?'))return;readerDirty.current=false;if(onLocation){onLocation();return;}setPreview(null);}
  useEffect(()=>registerNavigationGuard(()=>!readerDirty.current||window.confirm('В читалке есть несохранённая заметка. Перейти?')),[snapshot.me.id]);

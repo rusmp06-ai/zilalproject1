@@ -1,3 +1,4 @@
+import {useViewState,validDate,oneOf} from './view-state';
 import {CloseButton} from './CloseButton';
 import {useEffect,useState} from 'react';
 import type {Gateway,Snapshot,BoardItem} from './types';
@@ -10,7 +11,7 @@ import {BoardPanel} from './BoardPanel';
 export function moveScheduleDate(date:string,days:number){return studyDate(Date.parse(boardInstant(date+'T12:00'))+days*86400000);}
 export function weekStart(date:string){const d=new Date(date+'T12:00:00+06:00');const day=new Date(d.getTime()+6*3600000).getUTCDay();return moveScheduleDate(date,-((day+6)%7));}
 export function SchedulePanel({api,snapshot,onCourse,allowManagement=true}:{api:Gateway;snapshot:Snapshot;onCourse:(id:string,task?:string,start?:'materials'|'notes')=>void;allowManagement?:boolean}){
- const [now,setNow]=useState(Date.now()),[date,setDate]=useState(studyDate(Date.now())),[mode,setMode]=useState<'day'|'week'>('day'),[group,setGroup]=useState(groupContext(snapshot).id),[items,setItems]=useState<BoardItem[]>([]),[busy,setBusy]=useState(true),[error,setError]=useState(''),[read,setRead]=useState(false),[revision,setRevision]=useState(0),[selected,setSelected]=useState<string|null>(null),[manage,setManage]=useState(false);
+ const [now,setNow]=useState(Date.now()),[date,setDate]=useViewState<string>('schedule','date',studyDate(Date.now()),validDate),[mode,setMode]=useViewState<'day'|'week'>('schedule','mode','day',oneOf('day','week')),[group,setGroup]=useViewState<string>('schedule','group',groupContext(snapshot).id,v=>groupContext(snapshot).groups.some(g=>g.id===v)),[items,setItems]=useState<BoardItem[]>([]),[busy,setBusy]=useState(true),[error,setError]=useState(''),[read,setRead]=useState(false),[revision,setRevision]=useState(0),[selected,setSelected]=useState<string|null>(null),[manage,setManage]=useState(false);
  const context=groupContext(snapshot,group),start=mode==='week'?weekStart(date):date;
  useEffect(()=>{let previous=Date.now();const tick=()=>{const time=Date.now(),previousDay=studyDate(previous);setNow(time);setDate(old=>old===previousDay?studyDate(time):old);previous=time;};const id=setInterval(tick,15000);window.addEventListener('focus',tick);document.addEventListener('visibilitychange',tick);return()=>{clearInterval(id);window.removeEventListener('focus',tick);document.removeEventListener('visibilitychange',tick);};},[]);
  useEffect(()=>{setGroup(old=>groupContext(snapshot,old).id);},[snapshot]);

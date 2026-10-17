@@ -1,3 +1,4 @@
+import {useViewState,validDate,shortText} from './view-state';
 import {isOverdue} from './notifications';
 import {LessonNow,type ScheduleStatus} from './LessonNow';
 import {LessonTimeline} from './LessonTimeline';
@@ -22,7 +23,7 @@ const empty=():Data=>({notices:[],scheduleStatus:'loading',scheduleSavedAt:null,
 const dateKey=(iso:string)=>bishkekInput(iso).slice(0,10);
 const dayLabel=(date:string)=>new Date(date+'T12:00:00+06:00').toLocaleDateString('ru-RU',{timeZone:'Asia/Bishkek',weekday:'long',day:'numeric',month:'long'});
 export function StudyHome({api,snapshot,view='home',onNavigate,onCourse,onRead}:{api:Gateway;snapshot:Snapshot;view?:View;onNavigate:(tab:string)=>void;onCourse:(course:string,task?:string,start?:'materials'|'notes')=>void;onRead:(item:LibraryItem)=>void}){
- const [selectedGroup,setGroup]=useState(groupContext(snapshot).id),[date,setDate]=useState(()=>dateKey(new Date().toISOString())),[baseData,setData]=useState<Data>(empty),[busy,setBusy]=useState(true),[search,setSearch]=useState(''),[revision,setRevision]=useState(0),[offset,setOffset]=useState(0);
+ const [selectedGroup,setGroup]=useState(groupContext(snapshot).id),[date,setDate]=useViewState<string>(view==='calendar'?'calendar':view==='tasks'?'tasks':'overview','date',dateKey(new Date().toISOString()),validDate),[baseData,setData]=useState<Data>(empty),[busy,setBusy]=useState(true),[search,setSearch]=useViewState<string>(view==='tasks'?'tasks':'calendar','query','',shortText),[revision,setRevision]=useState(0),[offset,setOffset]=useState(0);
  const context=groupContext(snapshot,selectedGroup),group=context.id,user=(api.demo?'demo:':'live:')+snapshot.me.id;const todayRef=useRef<HTMLElement>(null),timelineRef=useRef<HTMLDetailsElement>(null);
  const courses=snapshot.courses.filter(c=>c.group_id===group&&!c.archived),month=date.slice(0,7);
  const bounds=view==='calendar'?{from:boardInstant(month+'-01T00:00'),to:new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),1)-6*3600000).toISOString()}:boardWindow(date);
