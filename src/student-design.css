@@ -1185,10 +1185,9 @@
 }
 .weekly-row {
   display: grid;
-  grid-template-columns: minmax(180px, 2fr) minmax(90px, 1fr) minmax(90px, 1fr) minmax(
-      100px,
-      1fr
-    ) 44px;
+  grid-template-columns:
+    minmax(180px, 2fr) minmax(90px, 1fr) minmax(90px, 1fr) minmax(100px, 1fr)
+    44px;
   align-items: end;
   gap: 12px;
   padding: 18px;

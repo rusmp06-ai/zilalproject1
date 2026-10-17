@@ -1,14 +1,14 @@
 {
   "name": "studyhub",
-  "version": "0.45.0",
+  "version": "0.46.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/access.test.mjs && node tests/database.test.mjs && node --import tsx --test tests/interface.test.tsx && node --import tsx --test tests/hardening.test.tsx && node --test tests/course-sync-runner.test.mjs && node --import tsx --test tests/day.test.tsx && node --import tsx --test tests/leader.test.tsx && node --import tsx --test tests/owner.test.tsx && node --import tsx --test tests/account.test.ts && node --import tsx --test tests/profile-security.test.tsx && node --import tsx --test tests/auth.test.tsx && node --import tsx --test tests/notifications.test.tsx && node --import tsx --test tests/teacher.test.tsx && node --import tsx --test tests/pdf-optimize.test.ts && node --import tsx --test tests/material-intake.test.ts && node --import tsx --test tests/ai-economy.test.tsx && node --import tsx --test tests/submission-draft.test.tsx && node --import tsx --test tests/navigation.test.tsx && node --import tsx --test tests/upload-intake.test.ts tests/upload-recovery.test.tsx && node --import tsx --test tests/course-management.test.tsx tests/reliability.test.tsx && node --import tsx --test tests/weekly-schedule.test.tsx && node tests/upgrade.test.mjs",
+    "test": "node scripts/test-runner.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "build:preview": "STUDYHUB_SINGLE_FILE=1 npm run build && node scripts/make-preview.mjs",
+    "build:preview": "node scripts/build-preview.mjs",
     "test:reader:browser": "node tests/reader.browser.mjs",
     "test:study:browser": "node tests/study.browser.mjs",
     "test:reader:tools:browser": "node tests/reader-tools.browser.mjs",
@@ -45,11 +45,20 @@
     "test:course:world:browser": "node tests/course-world.browser.mjs",
     "test:weekly:schedule:browser": "node tests/weekly-schedule.browser.mjs",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:browser": "node scripts/browser-runner.mjs",
+    "test:browser:smoke": "node scripts/browser-runner.mjs --smoke",
+    "test:browser:offline": "node scripts/browser-runner.mjs --offline",
+    "sql:generate": "node scripts/sql-bundles.mjs",
+    "sql:check": "node scripts/sql-bundles.mjs --check",
+    "build:budget": "node scripts/build-budget.mjs",
+    "verify": "node scripts/verify.mjs",
+    "docs:check": "node scripts/check-docs.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
     "@testing-library/react": "^16.3.3",
+    "@types/node": "22.19.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
@@ -71,6 +80,6 @@
     "tesseract.js": "7.0.0"
   },
   "engines": {
-    "node": "^24.15.0 || >=26.0.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   }
 }

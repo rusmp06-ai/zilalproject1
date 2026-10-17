@@ -1,0 +1,86 @@
+name: Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 3 * * 1'
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  VITE_SUPABASE_URL: ''
+  VITE_SUPABASE_ANON_KEY: ''
+jobs:
+  unit:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.22.2', '24.19.0']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run sql:check
+      - run: npm run docs:check
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:budget
+      - name: Build downloadable demonstration
+        if: matrix.node == '24.19.0' && github.ref == 'refs/heads/main'
+        run: npm run build:preview
+      - uses: actions/upload-artifact@v4
+        if: matrix.node == '24.19.0' && github.ref == 'refs/heads/main'
+        with:
+          name: studyhub-demo
+          path: preview.html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-${{ matrix.node }}
+          path: test-results/
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - name: Critical user flows on every change
+        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        run: npm run test:browser:smoke
+      - name: Full browser suite weekly and on request
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: npm run test:browser
+      - run: npm run build
+      - run: npm run test:browser:offline
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-results
+          path: test-results/
+  edge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - run: npm ci
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.7.1
+      - run: npm run test:ai:edge

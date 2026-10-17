@@ -1,7 +1,8 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
+  executablePath: process.env.CHROMIUM_PATH || browserExecutable,
   args: ['--no-sandbox'],
 });
 try {
@@ -23,21 +24,27 @@ try {
     .getByRole('navigation', { name: 'Разделы владельца' })
     .getByRole('button', { name: 'Расписание', exact: true })
     .click();
-  await page.getByLabel('Название занятия', { exact: true }).fill('Автономное расписание');
-  await page.getByLabel('Начало · Бишкек', { exact: true }).fill('2026-10-15T09:00');
-  await page.getByLabel('Окончание · Бишкек', { exact: true }).fill('2026-10-15T10:20');
-  await page.getByLabel('Аудитория или место', { exact: true }).fill('204');
-  await page.getByRole('button', { name: 'Добавить занятие', exact: true }).click();
-  await page.getByText('Занятие добавлено.', { exact: true }).waitFor();
+  await page.getByText('Повторяется каждую неделю', { exact: true }).waitFor();
+  await page
+    .getByRole('navigation', { name: 'Дни недели для заполнения' })
+    .getByRole('button', { name: 'Четверг', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Добавить пару', exact: true }).click();
+  await page.getByLabel('Дисциплина пары 1', { exact: true }).selectOption('g0c0');
+  await page.getByLabel('Начало пары 1', { exact: true }).fill('09:00');
+  await page.getByLabel('Конец пары 1', { exact: true }).fill('10:20');
+  await page.getByLabel('Аудитория пары 1', { exact: true }).fill('204');
+  await page.getByRole('button', { name: 'Сохранить расписание', exact: true }).click();
+  await page.getByText('Расписание сохранено.', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Студент', exact: true }).click();
   const hero = page.getByRole('region', { name: 'Сейчас и следующая пара' });
-  await hero.getByRole('heading', { name: 'Автономное расписание', exact: true }).waitFor();
+  await hero.getByRole('heading', { name: 'Корпоративные финансы', exact: true }).waitFor();
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
   await hero.getByText(/доступно без сети/).waitFor();
   await page.evaluate(() => localStorage.setItem('studyhub-test-offline', '1'));
   await context.setOffline(true);
   await page.reload();
-  await hero.getByRole('heading', { name: 'Автономное расписание', exact: true }).waitFor();
+  await hero.getByRole('heading', { name: 'Корпоративные финансы', exact: true }).waitFor();
   await hero
     .getByText('Сохранённое расписание · изменения не проверены', { exact: true })
     .waitFor();
@@ -49,11 +56,11 @@ try {
   await page.getByRole('button', { name: 'Преподаватель', exact: true }).click();
   await page.getByRole('heading', { name: 'Кабинет преподавателя', exact: true }).waitFor();
   assert.equal(
-    await hero.getByRole('heading', { name: 'Автономное расписание', exact: true }).count(),
+    await hero.getByRole('heading', { name: 'Корпоративные финансы', exact: true }).count(),
     0,
   );
   await page.getByRole('button', { name: 'Студент', exact: true }).click();
-  await hero.getByRole('heading', { name: 'Автономное расписание', exact: true }).waitFor();
+  await hero.getByRole('heading', { name: 'Корпоративные финансы', exact: true }).waitFor();
   await context.setOffline(false);
   await page.evaluate(() => {
     localStorage.removeItem('studyhub-test-offline');

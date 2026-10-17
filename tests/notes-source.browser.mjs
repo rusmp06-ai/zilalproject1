@@ -1,3 +1,4 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import { createClient } from '@supabase/supabase-js';
 import assert from 'node:assert/strict';
@@ -100,7 +101,7 @@ try {
     }
   }
   stage = 'браузер и вход';
-  browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox'] });
+  browser = await chromium.launch({ executablePath: browserExecutable, args: ['--no-sandbox'] });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   let errors = 0;
   page.on('pageerror', () => errors++);

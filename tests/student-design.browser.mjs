@@ -1,8 +1,9 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 const browser = await chromium.launch({
-  executablePath: '/usr/bin/chromium',
+  executablePath: browserExecutable,
   args: ['--no-sandbox'],
 });
 try {

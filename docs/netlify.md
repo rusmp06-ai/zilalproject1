@@ -1,5 +1,7 @@
 # Публикация в Netlify
 
+> Справка отдельного этапа. Версии и результаты проверок ниже относятся к моменту его разработки. Текущие настройки — в [README](../README.md) и [развёртывании](deployment-current.md), подтверждённые результаты — в [готовности пилота](pilot-readiness.md).
+
 В Netlify выберите Add new project → Import an existing project → GitHub → rusmp06-ai/zilalproject1, ветка main.
 
 Настройки сборки находятся в netlify.toml: npm run build, каталог dist, Node.js 24. Netlify должен использовать Node.js не ниже 24.15.

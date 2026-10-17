@@ -1,30 +1,62 @@
+import { PageBoundary } from './PageBoundary';
+import { AppSidebar } from './AppSidebar';
+import { AppHeader } from './AppHeader';
 import { useAppRoute } from './navigation';
-import { TeacherWorkbench, type TeacherSection } from './TeacherWorkbench';
+import { type TeacherSection } from './TeacherWorkbench';
 import { NotificationBell, useNotifications } from './notifications';
 import { AuthPanel } from './AuthPanel';
 import { GroupRequests } from './GroupRequests';
-import { ProfilePanel } from './ProfilePanel';
-import { OwnerOverview } from './OwnerOverview';
-import { OwnerAdminPanel, type OwnerSection } from './OwnerAdminPanel';
-import { LeaderAdminPanel } from './LeaderAdminPanel';
+import { type OwnerSection } from './OwnerAdminPanel';
 import { isLeaderStudent } from './leader-context';
 import { OfflineDay } from './OfflineDay';
 import { forgetSchedule } from './schedule-cache';
-import { OfflineShelf } from './OfflineShelf';
-import { StudySearch } from './StudySearch';
 import { mayLeaveDrafts } from './drafts';
 import { StudyIcon } from './StudyIcon';
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { groupContext } from './group-context';
-import { StudyHome } from './StudyHome';
-import { NotesPanel } from './NotesPanel';
-import { BoardPanel } from './BoardPanel';
-import { SchedulePanel } from './SchedulePanel';
-import { CoursePanel } from './CoursePanel';
-import { LibraryPanel } from './LibraryPanel';
 import { liveGateway, configured, client } from './api';
 import { demoGateway, selectDemo, resetDemo } from './demo';
 import type { Gateway, Snapshot } from './types';
+
+const TeacherWorkbench = lazy(() =>
+  import('./TeacherWorkbench').then((module) => ({ default: module.TeacherWorkbench })),
+);
+const ProfilePanel = lazy(() =>
+  import('./ProfilePanel').then((module) => ({ default: module.ProfilePanel })),
+);
+const OwnerOverview = lazy(() =>
+  import('./OwnerOverview').then((module) => ({ default: module.OwnerOverview })),
+);
+const OwnerAdminPanel = lazy(() =>
+  import('./OwnerAdminPanel').then((module) => ({ default: module.OwnerAdminPanel })),
+);
+const LeaderAdminPanel = lazy(() =>
+  import('./LeaderAdminPanel').then((module) => ({ default: module.LeaderAdminPanel })),
+);
+const OfflineShelf = lazy(() =>
+  import('./OfflineShelf').then((module) => ({ default: module.OfflineShelf })),
+);
+const StudySearch = lazy(() =>
+  import('./StudySearch').then((module) => ({ default: module.StudySearch })),
+);
+const StudyHome = lazy(() =>
+  import('./StudyHome').then((module) => ({ default: module.StudyHome })),
+);
+const NotesPanel = lazy(() =>
+  import('./NotesPanel').then((module) => ({ default: module.NotesPanel })),
+);
+const BoardPanel = lazy(() =>
+  import('./BoardPanel').then((module) => ({ default: module.BoardPanel })),
+);
+const SchedulePanel = lazy(() =>
+  import('./SchedulePanel').then((module) => ({ default: module.SchedulePanel })),
+);
+const CoursePanel = lazy(() =>
+  import('./CoursePanel').then((module) => ({ default: module.CoursePanel })),
+);
+const LibraryPanel = lazy(() =>
+  import('./LibraryPanel').then((module) => ({ default: module.LibraryPanel })),
+);
 const labels: Record<string, string> = {
   student: 'Студент',
   leader: 'Староста',
@@ -84,6 +116,9 @@ export function App() {
     () => new URLSearchParams(location.hash.slice(1)).get('invite') || '',
   );
   const api: Gateway = demo ? demoGateway : liveGateway;
+  const activeApi = useRef(api);
+  activeApi.current = api;
+  const refreshVersion = useRef(0);
   useEffect(() => {
     const url = new URL(location.href);
     if (demo) url.searchParams.set('demo', '1');
@@ -101,14 +136,21 @@ export function App() {
         ? 'task-notification-description'
         : undefined;
   async function refresh() {
+    if (activeApi.current !== api) return;
+    const version = ++refreshVersion.current;
+    const current = () => activeApi.current === api && version === refreshVersion.current;
     try {
-      setDirectory(await api.groups());
+      const directory = await api.groups();
+      if (!current()) return;
+      setDirectory(directory);
       if (await api.session()) {
         const s = await api.snapshot();
+        if (!current()) return;
         setSnap(s);
         setGroup((old) => groupContext(s, old).id);
-      } else setSnap(null);
+      } else if (current()) setSnap(null);
     } catch (e) {
+      if (!current()) return;
       if (e instanceof Error && e.message.startsWith('Доступ к аккаунту закрыт')) {
         forgetSchedule(offlineUser);
         setOfflineUser('');
@@ -128,7 +170,9 @@ export function App() {
     setMessage('');
     try {
       await work();
+      if (activeApi.current !== api) return;
       await refresh();
+      if (activeApi.current !== api) return;
       setError('');
       setMessage(ok);
     } catch (e) {
@@ -168,6 +212,8 @@ export function App() {
   }, [demo]);
   function switchDemo(id: string) {
     if (!mayLeaveDrafts()) return;
+    activeApi.current = demoGateway;
+    const version = ++refreshVersion.current;
     setDemo(true);
     go({ tab: 'overview' }, true);
     selectDemo(id);
@@ -176,10 +222,12 @@ export function App() {
     demoGateway
       .snapshot()
       .then((s) => {
+        if (activeApi.current !== demoGateway || version !== refreshVersion.current) return;
         setSnap(s);
         setGroup(groupContext(s).id);
       })
       .catch((e) => {
+        if (activeApi.current !== demoGateway || version !== refreshVersion.current) return;
         setSnap(null);
         setError(e.message);
       });
@@ -372,6 +420,8 @@ export function App() {
                 await refresh();
               }}
               onDemo={() => {
+                activeApi.current = demoGateway;
+                ++refreshVersion.current;
                 setDemo(true);
                 setError('');
               }}
@@ -408,200 +458,36 @@ export function App() {
             (tab === 'groups' && courseId ? ' course-shell' : '')
           }
         >
-          <aside className="sidebar">
-            <div className="brand">
-              <b className="logo">S</b> StudyHub
-            </div>
-            <div className="eyebrow">{snap.owner ? 'ВАШ ПРОЕКТ' : 'УЧЕБНОЕ ПРОСТРАНСТВО'}</div>
-            <nav>
-              {(snap.owner
-                ? [
-                    ['overview', 'Обзор проекта'],
-                    ['admin', 'Админ'],
-                    ['library', 'Библиотека'],
-                    ['offline', 'Сохранённые материалы'],
-                    ['notes', 'Мои заметки'],
-                    ['profile', 'Профиль'],
-                  ]
-                : teacherOnly
-                  ? [
-                      ['overview', 'Главная'],
-                      ['groups', 'Мои дисциплины'],
-                      ['tasks', 'На проверку'],
-                      ['journal', 'Задания и журнал'],
-                      ['schedule', 'Расписание'],
-                      ['announcements', 'Объявления'],
-                      ['library', 'Библиотека'],
-                      ['offline', 'Сохранённые материалы'],
-                      ['notes', 'Мои заметки'],
-                      ['profile', 'Профиль'],
-                    ]
-                  : [
-                      ['overview', 'Главная'],
-                      ['groups', 'Группы и дисциплины'],
-                      ['library', 'Библиотека'],
-                      ['schedule', 'Расписание'],
-                      ['calendar', 'Календарь'],
-                      ['search', 'Поиск'],
-                      ['offline', 'Сохранённые материалы'],
-                      ['tasks', 'Все задания'],
-                      ['announcements', 'Объявления'],
-                      ['notes', 'Мои заметки'],
-                      ['profile', 'Профиль'],
-                      ...(hasTeaching ? [['teaching', 'Преподавание']] : []),
-                      ...(hasLeaderAdmin ? [['admin', 'Админ']] : []),
-                    ]
-              ).map(([id, name]) => (
-                <button
-                  key={id}
-                  aria-describedby={notificationDescription(id)}
-                  data-section={id}
-                  className={tab === id ? 'selected' : ''}
-                  aria-current={tab === id ? 'page' : undefined}
-                  onClick={() => navigate(id)}
-                >
-                  <StudyIcon
-                    name={
-                      id === 'overview'
-                        ? 'sun'
-                        : id === 'library'
-                          ? 'book'
-                          : id === 'calendar' || id === 'schedule'
-                            ? 'calendar'
-                            : id === 'admin'
-                              ? 'settings'
-                              : id === 'groups'
-                                ? 'course'
-                                : 'note'
-                    }
-                  />
-                  {name}
-                  {id === 'announcements' && (
-                    <NotificationBell
-                      count={announcementCount}
-                      title={'Непрочитанных объявлений: ' + announcementCount}
-                    />
-                  )}{' '}
-                  {id === 'tasks' && (
-                    <NotificationBell
-                      count={overdueCount}
-                      title={'Просроченных несданных заданий: ' + overdueCount}
-                    />
-                  )}
-                </button>
-              ))}
-            </nav>
-            <div className="sidebar-bottom">
-              <p>
-                {teacherOnly ? 'StudyHub · работа преподавателя' : 'StudyHub · учиться каждый день'}
-              </p>
-              <small>
-                {teacherOnly
-                  ? 'Материалы, занятия, проверка и результаты ваших групп.'
-                  : 'Материалы, задания, расписание и объявления вашей группы.'}
-              </small>
-            </div>
-          </aside>
+          <AppSidebar
+            snapshot={snap}
+            teacherOnly={teacherOnly}
+            hasTeaching={hasTeaching}
+            hasLeaderAdmin={hasLeaderAdmin}
+            tab={tab}
+            navigate={navigate}
+            notificationDescription={notificationDescription}
+            announcementCount={announcementCount}
+            overdueCount={overdueCount}
+          />
           <main className="workspace">
-            <header>
-              <div>
-                <div className="eyebrow">
-                  {snap.owner
-                    ? 'КАБИНЕТ ВЛАДЕЛЬЦА'
-                    : leaderStudy && tab !== 'admin'
-                      ? 'СТУДЕНТ · СТАРОСТА'
-                      : roles.join(' · ') || 'НОВЫЙ УЧАСТНИК'}
-                </div>
-                <h1>
-                  {tab === 'profile'
-                    ? 'Профиль'
-                    : tab === 'admin'
-                      ? 'Админ'
-                      : tab === 'overview'
-                        ? snap.owner
-                          ? 'Обзор проекта'
-                          : teacherOnly
-                            ? 'Кабинет преподавателя'
-                            : 'Ваше пространство'
-                        : tab === 'teaching'
-                          ? 'Преподавание'
-                          : tab === 'journal'
-                            ? 'Задания и журнал'
-                            : tab === 'groups'
-                              ? teacherOnly
-                                ? 'Мои дисциплины'
-                                : 'Группы и дисциплины'
-                              : tab === 'invitations'
-                                ? 'Приглашения'
-                                : tab === 'library'
-                                  ? 'Библиотека'
-                                  : tab === 'schedule'
-                                    ? 'Расписание'
-                                    : tab === 'calendar'
-                                      ? 'Календарь'
-                                      : tab === 'tasks'
-                                        ? teacherOnly
-                                          ? 'Работы на проверку'
-                                          : 'Все задания'
-                                        : tab === 'announcements'
-                                          ? 'Объявления'
-                                          : tab === 'notes'
-                                            ? 'Мои заметки'
-                                            : tab === 'search'
-                                              ? 'Поиск'
-                                              : tab === 'offline'
-                                                ? 'Сохранённые материалы'
-                                                : 'Управление доступом'}
-                </h1>
-              </div>
-              <div className="account">
-                {!snap.owner && !teacherOnly && (
-                  <button
-                    className="header-search"
-                    aria-label="Открыть поиск"
-                    title="Поиск (Ctrl+K)"
-                    onClick={() => navigate('search')}
-                  >
-                    <StudyIcon name="search" />
-                  </button>
-                )}
-                <button
-                  className="account-profile"
-                  aria-label="Открыть профиль"
-                  onClick={() => navigate('profile')}
-                >
-                  {snap.me.full_name}
-                </button>
-                {(hasLeaderAdmin || snap.owner) && (
-                  <button
-                    className="account-admin"
-                    aria-label={
-                      tab === 'admin'
-                        ? snap.owner
-                          ? 'Открыть обзор проекта'
-                          : 'К учебному пространству'
-                        : 'Открыть админ'
-                    }
-                    onClick={() => navigate(tab === 'admin' ? 'overview' : 'admin')}
-                  >
-                    {tab === 'admin' ? (snap.owner ? 'К обзору' : 'К учёбе') : 'Админ'}
-                  </button>
-                )}
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      if (!mayLeaveDrafts()) return;
-                      await api.logout();
-                      setSnap(null);
-                      go({ tab: 'overview' }, true);
-                    })
-                  }
-                >
-                  Выйти
-                </button>
-              </div>
-            </header>
+            <AppHeader
+              snapshot={snap}
+              tab={tab}
+              teacherOnly={teacherOnly}
+              leaderStudy={leaderStudy}
+              roles={roles}
+              hasLeaderAdmin={hasLeaderAdmin}
+              busy={busy}
+              navigate={navigate}
+              onLogout={() =>
+                void run(async () => {
+                  if (!mayLeaveDrafts()) return;
+                  await api.logout();
+                  setSnap(null);
+                  go({ tab: 'overview' }, true);
+                })
+              }
+            />
             <span id="announcement-notification-description" className="visually-hidden">
               Непрочитанных объявлений: {announcementCount}
             </span>
@@ -714,219 +600,226 @@ export function App() {
                   )}
                 </section>
               )}
-            {routeUnavailable ? (
-              <section className="card empty" role="alert">
-                <h2>Страница недоступна</h2>
-                <p>Ссылка неверна, материал удалён или у вашего аккаунта нет доступа.</p>
-                <button onClick={() => navigate('overview')}>На главную</button>
-                {allowed.includes('groups') && (
-                  <button onClick={() => navigate('groups')}>К дисциплинам</button>
-                )}
-              </section>
-            ) : (
-              <>
-                {' '}
-                {!teacherOnly &&
-                  (tab === 'calendar' ||
-                    tab === 'tasks' ||
-                    (tab === 'overview' && !snap.owner)) && (
-                    <StudyHome
-                      key={snap.me.id + tab + String(demo)}
-                      api={api}
-                      snapshot={studySnap!}
-                      view={tab === 'calendar' ? 'calendar' : tab === 'tasks' ? 'tasks' : 'home'}
-                      onNavigate={navigate}
-                      onCourse={openCourse}
-                      onRead={(item) => {
-                        if (mayLeaveDrafts()) go({ tab: 'library', book: item.id });
-                      }}
-                    />
-                  )}
-                {teacherOnly && teacherSections[tab] && (
-                  <TeacherWorkbench
-                    key={snap.me.id + String(demo)}
-                    api={api}
-                    snapshot={snap}
-                    initialSection={teacherSections[tab]}
-                    onSection={(s) => navigate(teacherRoutes[s])}
-                  />
-                )}
-                {tab === 'teaching' && hasTeaching && !teacherOnly && (
-                  <TeacherWorkbench key={snap.me.id + String(demo)} api={api} snapshot={snap} />
-                )}
-                {tab === 'overview' && snap.owner && (
-                  <OwnerOverview
-                    api={api}
-                    snapshot={snap}
-                    onManage={(section, id) => {
-                      if (!mayLeaveDrafts()) return;
-                      setOwnerSection(section);
-                      setOwnerGroup(id || '');
-                      navigate('admin');
-                    }}
-                  />
-                )}
-                {tab === 'admin' && snap.owner && (
-                  <OwnerAdminPanel
-                    key={snap.me.id + String(demo) + ownerSection + ownerGroup}
-                    api={api}
-                    snapshot={snap}
-                    initialSection={ownerSection}
-                    initialGroup={ownerGroup}
-                    onChanged={refresh}
-                    onOverview={() => navigate('overview')}
-                  />
-                )}
-                {tab === 'admin' && hasLeaderAdmin && (
-                  <LeaderAdminPanel
-                    showStudyLink={false}
-                    key={snap.me.id + String(demo)}
-                    api={api}
-                    snapshot={snap}
-                    onChanged={refresh}
-                    onStudy={() => navigate('overview')}
-                  />
-                )}
-                {!teacherOnly &&
-                tab === 'groups' &&
-                courseId &&
-                snap.courses.find((c) => c.id === courseId) ? (
-                  <CoursePanel
-                    allowManagement={!leaderStudy && !snap.owner}
-                    initialTab={courseStart}
-                    initialMaterial={route.material}
-                    onLocation={(section, task, material) =>
-                      go({ tab: 'groups', course: courseId!, section, task, material })
-                    }
-                    initialKind={courseStart === 'assignment' ? 'assignment' : undefined}
-                    initialAssignment={taskId}
-                    userId={snap.me.id}
-                    groupName={snap.groups.find((g) => g.id === group)?.name || ''}
-                    snapshot={studySnap!}
-                    key={courseId + taskId + courseStart + String(demo)}
-                    api={api}
-                    course={snap.courses.find((c) => c.id === courseId)!}
-                    onClose={() => go({ tab: 'groups' })}
-                  />
+            <PageBoundary key={tab + (courseId || '')}>
+              <Suspense fallback={<p role="status">Открываем раздел…</p>}>
+                {routeUnavailable ? (
+                  <section className="card empty" role="alert">
+                    <h2>Страница недоступна</h2>
+                    <p>Ссылка неверна, материал удалён или у вашего аккаунта нет доступа.</p>
+                    <button onClick={() => navigate('overview')}>На главную</button>
+                    {allowed.includes('groups') && (
+                      <button onClick={() => navigate('groups')}>К дисциплинам</button>
+                    )}
+                  </section>
                 ) : (
-                  !teacherOnly &&
-                  tab === 'groups' && (
-                    <>
-                      <div className="toolbar">
-                        {context?.canChoose ? (
-                          <label>
-                            Текущая группа
-                            <select value={group} onChange={(e) => setGroup(e.target.value)}>
-                              <option value="">Выберите группу</option>
-                              {snap.groups.map((g) => (
-                                <option key={g.id} value={g.id}>
-                                  {g.name}
-                                  {g.blocked ? ' · закрыта' : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : (
-                          context?.name && (
-                            <span className="group-context">
-                              <span>Моя группа</span>
-                              <b>{context.name}</b>
-                            </span>
-                          )
-                        )}
-                      </div>
-                      <div className="two-columns">
-                        <section className="card">
-                          <h2>Дисциплины</h2>
-                          <div className="course-list">
-                            {snap.courses
-                              .filter((c) => c.group_id === group && !c.archived)
-                              .map((c) => (
-                                <div key={c.id}>
-                                  <b>{c.title}</b>
-                                  <button onClick={() => openCourse(c.id)}>
-                                    Открыть дисциплину
-                                  </button>
-                                </div>
-                              ))}
+                  <>
+                    {' '}
+                    {!teacherOnly &&
+                      (tab === 'calendar' ||
+                        tab === 'tasks' ||
+                        (tab === 'overview' && !snap.owner)) && (
+                        <StudyHome
+                          key={snap.me.id + tab + String(demo)}
+                          api={api}
+                          snapshot={studySnap!}
+                          view={
+                            tab === 'calendar' ? 'calendar' : tab === 'tasks' ? 'tasks' : 'home'
+                          }
+                          onNavigate={navigate}
+                          onCourse={openCourse}
+                          onRead={(item) => {
+                            if (mayLeaveDrafts()) go({ tab: 'library', book: item.id });
+                          }}
+                        />
+                      )}
+                    {teacherOnly && teacherSections[tab] && (
+                      <TeacherWorkbench
+                        key={snap.me.id + String(demo)}
+                        api={api}
+                        snapshot={snap}
+                        initialSection={teacherSections[tab]}
+                        onSection={(s) => navigate(teacherRoutes[s])}
+                      />
+                    )}
+                    {tab === 'teaching' && hasTeaching && !teacherOnly && (
+                      <TeacherWorkbench key={snap.me.id + String(demo)} api={api} snapshot={snap} />
+                    )}
+                    {tab === 'overview' && snap.owner && (
+                      <OwnerOverview
+                        api={api}
+                        snapshot={snap}
+                        onManage={(section, id) => {
+                          if (!mayLeaveDrafts()) return;
+                          setOwnerSection(section);
+                          setOwnerGroup(id || '');
+                          navigate('admin');
+                        }}
+                      />
+                    )}
+                    {tab === 'admin' && snap.owner && (
+                      <OwnerAdminPanel
+                        key={snap.me.id + String(demo) + ownerSection + ownerGroup}
+                        api={api}
+                        snapshot={snap}
+                        initialSection={ownerSection}
+                        initialGroup={ownerGroup}
+                        onChanged={refresh}
+                        onOverview={() => navigate('overview')}
+                      />
+                    )}
+                    {tab === 'admin' && hasLeaderAdmin && (
+                      <LeaderAdminPanel
+                        showStudyLink={false}
+                        key={snap.me.id + String(demo)}
+                        api={api}
+                        snapshot={snap}
+                        onChanged={refresh}
+                        onStudy={() => navigate('overview')}
+                      />
+                    )}
+                    {!teacherOnly &&
+                    tab === 'groups' &&
+                    courseId &&
+                    snap.courses.find((c) => c.id === courseId) ? (
+                      <CoursePanel
+                        allowManagement={!leaderStudy && !snap.owner}
+                        initialTab={courseStart}
+                        initialMaterial={route.material}
+                        onLocation={(section, task, material) =>
+                          go({ tab: 'groups', course: courseId!, section, task, material })
+                        }
+                        initialKind={courseStart === 'assignment' ? 'assignment' : undefined}
+                        initialAssignment={taskId}
+                        userId={snap.me.id}
+                        groupName={snap.groups.find((g) => g.id === group)?.name || ''}
+                        snapshot={studySnap!}
+                        key={courseId + taskId + courseStart + String(demo)}
+                        api={api}
+                        course={snap.courses.find((c) => c.id === courseId)!}
+                        onClose={() => go({ tab: 'groups' })}
+                      />
+                    ) : (
+                      !teacherOnly &&
+                      tab === 'groups' && (
+                        <>
+                          <div className="toolbar">
+                            {context?.canChoose ? (
+                              <label>
+                                Текущая группа
+                                <select value={group} onChange={(e) => setGroup(e.target.value)}>
+                                  <option value="">Выберите группу</option>
+                                  {snap.groups.map((g) => (
+                                    <option key={g.id} value={g.id}>
+                                      {g.name}
+                                      {g.blocked ? ' · закрыта' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : (
+                              context?.name && (
+                                <span className="group-context">
+                                  <span>Моя группа</span>
+                                  <b>{context.name}</b>
+                                </span>
+                              )
+                            )}
                           </div>
-                          {!snap.courses.some((c) => c.group_id === group && !c.archived) && (
-                            <p>В вашей группе пока нет дисциплин.</p>
-                          )}
-                        </section>
-                      </div>
-                    </>
-                  )
+                          <div className="two-columns">
+                            <section className="card">
+                              <h2>Дисциплины</h2>
+                              <div className="course-list">
+                                {snap.courses
+                                  .filter((c) => c.group_id === group && !c.archived)
+                                  .map((c) => (
+                                    <div key={c.id}>
+                                      <b>{c.title}</b>
+                                      <button onClick={() => openCourse(c.id)}>
+                                        Открыть дисциплину
+                                      </button>
+                                    </div>
+                                  ))}
+                              </div>
+                              {!snap.courses.some((c) => c.group_id === group && !c.archived) && (
+                                <p>В вашей группе пока нет дисциплин.</p>
+                              )}
+                            </section>
+                          </div>
+                        </>
+                      )
+                    )}
+                    {tab === 'library' && (
+                      <LibraryPanel
+                        allowManagement={!leaderStudy && !snap.owner}
+                        initialBook={route.book}
+                        onLocation={(book) => go({ tab: 'library', book })}
+                        key={snap.me.id + String(demo)}
+                        api={api}
+                        snapshot={studySnap!}
+                      />
+                    )}
+                    {!teacherOnly && tab === 'schedule' && (
+                      <SchedulePanel
+                        allowManagement={!leaderStudy && !snap.owner}
+                        key={snap.me.id + String(demo)}
+                        api={api}
+                        snapshot={studySnap!}
+                        onCourse={openCourse}
+                      />
+                    )}
+                    {!teacherOnly && tab === 'announcements' && (
+                      <BoardPanel
+                        key={snap.me.id + String(demo)}
+                        api={api}
+                        snapshot={snap}
+                        kind="announcement"
+                        allowManagement={!leaderStudy && !snap.owner}
+                      />
+                    )}
+                    {tab === 'profile' && (
+                      <ProfilePanel
+                        key={String(demo) + snap.me.id}
+                        api={api}
+                        snapshot={snap}
+                        onSaved={refresh}
+                        onShelf={() => navigate('offline')}
+                      />
+                    )}
+                    {tab === 'offline' && (
+                      <OfflineShelf api={api} user={(demo ? 'demo:' : 'live:') + snap.me.id} />
+                    )}
+                    {tab === 'search' && (
+                      <StudySearch
+                        key={String(api.demo) + snap.me.id}
+                        api={api}
+                        snapshot={studySnap!}
+                        onCourse={openCourse}
+                        onTasks={() => navigate('tasks')}
+                        onOpen={(r) => {
+                          if (r.kind === 'course') openCourse(r.id);
+                          else if (r.kind === 'assignment' && r.courseId)
+                            openCourse(r.courseId, r.id);
+                          else if (r.kind === 'material' && r.courseId) {
+                            if (mayLeaveDrafts())
+                              go({
+                                tab: 'groups',
+                                course: r.courseId,
+                                section: 'materials',
+                                material: r.id,
+                              });
+                          } else if (r.kind === 'book') {
+                            if (mayLeaveDrafts()) go({ tab: 'library', book: r.id });
+                          } else if (r.kind === 'plan') navigate('tasks');
+                        }}
+                      />
+                    )}
+                    {tab === 'notes' && (
+                      <NotesPanel userId={snap.me.id} key={snap.me.id + String(demo)} api={api} />
+                    )}
+                  </>
                 )}
-                {tab === 'library' && (
-                  <LibraryPanel
-                    allowManagement={!leaderStudy && !snap.owner}
-                    initialBook={route.book}
-                    onLocation={(book) => go({ tab: 'library', book })}
-                    key={snap.me.id + String(demo)}
-                    api={api}
-                    snapshot={studySnap!}
-                  />
-                )}
-                {!teacherOnly && tab === 'schedule' && (
-                  <SchedulePanel
-                    allowManagement={!leaderStudy && !snap.owner}
-                    key={snap.me.id + String(demo)}
-                    api={api}
-                    snapshot={studySnap!}
-                    onCourse={openCourse}
-                  />
-                )}
-                {!teacherOnly && tab === 'announcements' && (
-                  <BoardPanel
-                    key={snap.me.id + String(demo)}
-                    api={api}
-                    snapshot={snap}
-                    kind="announcement"
-                    allowManagement={!leaderStudy && !snap.owner}
-                  />
-                )}
-                {tab === 'profile' && (
-                  <ProfilePanel
-                    key={String(demo) + snap.me.id}
-                    api={api}
-                    snapshot={snap}
-                    onSaved={refresh}
-                    onShelf={() => navigate('offline')}
-                  />
-                )}
-                {tab === 'offline' && (
-                  <OfflineShelf api={api} user={(demo ? 'demo:' : 'live:') + snap.me.id} />
-                )}
-                {tab === 'search' && (
-                  <StudySearch
-                    key={String(api.demo) + snap.me.id}
-                    api={api}
-                    snapshot={studySnap!}
-                    onCourse={openCourse}
-                    onTasks={() => navigate('tasks')}
-                    onOpen={(r) => {
-                      if (r.kind === 'course') openCourse(r.id);
-                      else if (r.kind === 'assignment' && r.courseId) openCourse(r.courseId, r.id);
-                      else if (r.kind === 'material' && r.courseId) {
-                        if (mayLeaveDrafts())
-                          go({
-                            tab: 'groups',
-                            course: r.courseId,
-                            section: 'materials',
-                            material: r.id,
-                          });
-                      } else if (r.kind === 'book') {
-                        if (mayLeaveDrafts()) go({ tab: 'library', book: r.id });
-                      } else if (r.kind === 'plan') navigate('tasks');
-                    }}
-                  />
-                )}
-                {tab === 'notes' && (
-                  <NotesPanel userId={snap.me.id} key={snap.me.id + String(demo)} api={api} />
-                )}
-              </>
-            )}
+              </Suspense>
+            </PageBoundary>
             {!snap.owner && (
               <nav className="mobile-study-nav" aria-label="Быстрые переходы">
                 {(teacherOnly

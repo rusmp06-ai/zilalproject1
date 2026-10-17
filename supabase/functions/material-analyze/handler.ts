@@ -1,20 +1,38 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.117.3';
 import { PDFDocument } from 'npm:pdf-lib@1.17.1';
 import { geminiRequest, validateAnalysis, type Course } from './contract.ts';
-const cors = {
-  'Access-Control-Allow-Origin': '*',
+const baseCors = {
+  Vary: 'Origin',
   'Access-Control-Allow-Headers': 'authorization,x-client-info,apikey,content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Cache-Control': 'no-store',
   'Content-Type': 'application/json',
 };
-const reply = (status: number, message: string, quota?: unknown) =>
-  new Response(JSON.stringify({ error: message, quota }), { status, headers: cors });
 export function createMaterialHandler(
-  config: { key?: string; model?: string; url: string; anonKey: string; serviceKey?: string },
+  config: {
+    key?: string;
+    model?: string;
+    url: string;
+    anonKey: string;
+    serviceKey?: string;
+    allowedOrigins?: string[];
+  },
   fetcher: typeof fetch = fetch,
 ) {
+  const allowed = new Set(config.allowedOrigins || []);
   return async (req: Request) => {
+    const origin = req.headers.get('origin');
+    const cors = {
+      ...baseCors,
+      ...(origin && allowed.has(origin) ? { 'Access-Control-Allow-Origin': origin } : {}),
+    };
+    const reply = (status: number, message: string, quota?: unknown) =>
+      new Response(JSON.stringify({ error: message, quota }), { status, headers: cors });
+    if (origin && !allowed.has(origin))
+      return reply(
+        403,
+        'Этот сайт не разрешён для помощника. Настройте ALLOWED_ORIGINS на сервере.',
+      );
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
     if (req.method !== 'POST') return reply(405, 'Используйте POST.');
     const key = config.key;

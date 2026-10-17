@@ -1,3 +1,4 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import { PDFDocument, StandardFonts, PDFName } from 'pdf-lib';
 import assert from 'node:assert/strict';
@@ -28,7 +29,7 @@ const original = await fixture({ unpacked: true }),
   interactive = await fixture({ form: true, unpacked: true }),
   signed = await fixture({ signature: true, unpacked: true });
 const browser = await chromium.launch({
-  executablePath: '/usr/bin/chromium',
+  executablePath: browserExecutable,
   args: ['--no-sandbox'],
 });
 try {

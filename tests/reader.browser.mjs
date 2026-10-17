@@ -1,3 +1,4 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -41,7 +42,7 @@ const offline = process.env.READER_TEST_OFFLINE === '1';
 let browser;
 try {
   browser = await chromium.launch({
-    executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
+    executablePath: process.env.CHROMIUM_PATH || browserExecutable,
     headless: true,
     args: ['--no-sandbox'],
   });
@@ -94,7 +95,7 @@ try {
   await dialog.getByRole('button', { name: 'Закрыть просмотр' }).click();
   if (offline) await page.context().setOffline(false);
   await page.reload();
-  await page.getByText('Ваше пространство', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Библиотека', exact: true }).waitFor();
   if (offline) await page.context().setOffline(true);
   await page.getByRole('button', { name: 'Библиотека', exact: true }).click();
   await card.getByRole('button', { name: 'Открыть', exact: true }).click();

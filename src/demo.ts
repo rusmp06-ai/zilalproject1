@@ -782,14 +782,12 @@ export const demoGateway: Gateway = {
         w.id === history[0].id &&
         w.student_id !== me().id &&
         ['submitted', 'graded'].includes(w.status),
-      history: history
-        .slice(0, 20)
-        .map((w) => ({
-          id: w.id,
-          attempt_no: w.attempt_no,
-          status: w.status,
-          submitted_at: w.submitted_at,
-        })),
+      history: history.slice(0, 20).map((w) => ({
+        id: w.id,
+        attempt_no: w.attempt_no,
+        status: w.status,
+        submitted_at: w.submitted_at,
+      })),
       group_name:
         state.groups.find((g) => g.id === state.courses.find((c) => c.id === a.course_id)?.group_id)
           ?.name || '',

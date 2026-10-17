@@ -1,7 +1,8 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({
-  executablePath: '/usr/bin/chromium',
+  executablePath: browserExecutable,
   args: ['--no-sandbox'],
 });
 try {
@@ -49,13 +50,11 @@ try {
   await roles.getByRole('button', { name: 'Студент', exact: true }).click();
   await open(tasks.first);
   await page.getByLabel('Ваш ответ').fill('Последний символ не должен потеряться: 12345');
-  await page
-    .getByLabel('Файл работы — необязательно')
-    .setInputFiles({
-      name: 'answer.txt',
-      mimeType: 'text/plain',
-      buffer: Buffer.from('Исходный файл работы'),
-    });
+  await page.getByLabel('Файл работы — необязательно').setInputFiles({
+    name: 'answer.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Исходный файл работы'),
+  });
   await nav.getByRole('button', { name: 'Расписание', exact: true }).click();
   await open(tasks.first);
   assert.equal(
@@ -83,13 +82,11 @@ try {
     await page.getByRole('button', { name: 'Отправить работу', exact: true }).isEnabled(),
     false,
   );
-  await page
-    .getByLabel('Файл работы — необязательно')
-    .setInputFiles({
-      name: 'answer.txt',
-      mimeType: 'text/plain',
-      buffer: Buffer.from('Исходный файл работы'),
-    });
+  await page.getByLabel('Файл работы — необязательно').setInputFiles({
+    name: 'answer.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Исходный файл работы'),
+  });
   await page.context().setOffline(true);
   await page.getByText(/Нет интернета. Продолжайте писать/).waitFor();
   await page.getByLabel('Ваш ответ').fill('Ответ дописан без сети');

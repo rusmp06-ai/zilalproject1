@@ -34,10 +34,13 @@ const { StudySearch } = await import('../src/StudySearch');
 async function ownerAdmin(section: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Открыть админ', exact: true }));
   fireEvent.click(
-    within(screen.getByRole('navigation', { name: 'Разделы владельца' })).getByRole('button', {
-      name: section,
-      exact: true,
-    }),
+    within(await screen.findByRole('navigation', { name: 'Разделы владельца' })).getByRole(
+      'button',
+      {
+        name: section,
+        exact: true,
+      },
+    ),
   );
 }
 
@@ -87,7 +90,7 @@ test('owner creates group, invites leader, new account accepts invitation and cr
   await screen.findByText('Приглашение принято.');
   assert.equal((await demoGateway.snapshot()).availableGroups, 1);
   fireEvent.click(screen.getByRole('button', { name: 'Открыть админ', exact: true }));
-  fireEvent.change(screen.getByLabelText('Название группы'), {
+  fireEvent.change(await screen.findByLabelText('Название группы'), {
     target: { value: 'Группа старосты' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Создать группу', exact: true }));
@@ -134,7 +137,9 @@ test('leader uploads material and owner deletes it; student only reads', async (
     name: /^(Ваше пространство|Обзор проекта|Кабинет преподавателя)$/,
   });
   fireEvent.click(screen.getByRole('button', { name: 'Открыть админ', exact: true }));
-  fireEvent.click(screen.getByRole('button', { name: 'Публикации в библиотеке', exact: true }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Публикации в библиотеке', exact: true }),
+  );
   await screen.findByText('Как пользоваться общей библиотекой');
   fireEvent.change(screen.getByLabelText('Название материала'), {
     target: { value: 'Лекция старосты' },
@@ -386,6 +391,9 @@ test('leader fills a weekday; student sees only their schedule; owner clears the
   fireEvent.change(screen.getByLabelText('Аудитория пары 1'), { target: { value: '101' } });
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить расписание', exact: true }));
   await screen.findByText('Расписание сохранено.');
+  await waitFor(() =>
+    assert.equal((screen.getByLabelText('Аудитория пары 1') as HTMLInputElement).value, '101'),
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Студент', exact: true }));
   await screen.findByRole('heading', { name: 'Ваше пространство', exact: true });
   fireEvent.click(screen.getByRole('button', { name: 'Расписание', exact: true }));
@@ -1316,4 +1324,28 @@ test('personal plan persists, hides from notes, enforces private ownership and o
   fireEvent.click(screen.getByRole('button', { name: 'Мои заметки', exact: true }));
   await screen.findByText('Новая заметка');
   assert.equal(screen.queryByText('Prepare seminar'), null);
+});
+
+test('late live refresh cannot clear an account after switching to demo', async () => {
+  resetDemo();
+  selectDemo('student');
+  history.replaceState(null, '', '/');
+  const { liveGateway } = await import('../src/api');
+  const original = liveGateway.groups;
+  const pending: Array<(reason: Error) => void> = [];
+  liveGateway.groups = () => new Promise((_resolve, reject) => pending.push(reject));
+  try {
+    render(<App />);
+    await waitFor(() => assert.ok(pending.length));
+    fireEvent.click(screen.getByRole('button', { name: 'Посмотреть демоверсию' }));
+    await screen.findByRole('heading', { name: 'Ваше пространство', exact: true });
+    await React.act(async () => {
+      pending.forEach((reject) => reject(new Error('Delayed live connection failure')));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.ok(screen.getByRole('heading', { name: 'Ваше пространство', exact: true }));
+    assert.equal(screen.queryByText('Delayed live connection failure'), null);
+  } finally {
+    liveGateway.groups = original;
+  }
 });

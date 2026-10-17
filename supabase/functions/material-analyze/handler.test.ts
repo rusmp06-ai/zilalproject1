@@ -59,7 +59,9 @@ function harness(
   });
   const fetcher: typeof fetch = async (url, init) => {
     const address = String(url);
-    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    const requestBody = init && 'body' in init ? init.body : undefined;
+    const requestHeaders = init && 'headers' in init ? init.headers : undefined;
+    const body = requestBody ? JSON.parse(String(requestBody)) : {};
     if (address.includes('/auth/v1/user'))
       return Response.json(
         options.auth === false
@@ -75,7 +77,7 @@ function harness(
         { status: options.context === false ? 403 : 200 },
       );
     if (address.includes('/rest/v1/rpc/claim_material_analysis')) {
-      assert(new Headers(init?.headers).get('apikey') === config.serviceKey);
+      assert(new Headers(requestHeaders).get('apikey') === config.serviceKey);
       currentKey = body.p_key;
       if (cache.has(currentKey))
         return Response.json({ status: 'cached', analysis: cache.get(currentKey), quota: quota() });
@@ -102,7 +104,7 @@ function harness(
     }
     if (address.endsWith(':generateContent')) {
       calls++;
-      assert(new Headers(init?.headers).get('x-goog-api-key') === config.key);
+      assert(new Headers(requestHeaders).get('x-goog-api-key') === config.key);
       assert(!address.includes(config.key));
       assert(body.systemInstruction.parts[0].text.includes('недоверенные'));
       assert(body.generationConfig.maxOutputTokens === 2048);
@@ -213,3 +215,41 @@ Deno.test('missing server key returns setup message', async () => {
   assert(r.status === 503);
   assert((await r.json()).error.includes('настроить Gemini'));
 });
+
+Deno.test(
+  'CORS allows only configured origins, varies caches, and rejects foreign preflights without upstream calls',
+  async () => {
+    let calls = 0;
+    const handler = createMaterialHandler(
+      { ...config, allowedOrigins: ['https://study.example'] },
+      async () => {
+        calls++;
+        throw Error('No network expected');
+      },
+    );
+    const allowed = await handler(
+      new Request('https://edge.example', {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://study.example' },
+      }),
+    );
+    assert(allowed.status === 200);
+    assert(allowed.headers.get('Access-Control-Allow-Origin') === 'https://study.example');
+    assert(allowed.headers.get('Vary') === 'Origin');
+    for (const origin of ['https://evil.example', 'null', 'https://study.example.evil.example']) {
+      const response = await handler(
+        new Request('https://edge.example', { method: 'OPTIONS', headers: { Origin: origin } }),
+      );
+      assert(response.status === 403);
+      assert(!response.headers.has('Access-Control-Allow-Origin'));
+    }
+    const missing = await handler(
+      new Request('https://edge.example', {
+        method: 'POST',
+        headers: { Origin: 'https://study.example' },
+      }),
+    );
+    assert(missing.status === 401);
+    assert(calls === 0);
+  },
+);

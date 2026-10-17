@@ -39,10 +39,13 @@ test.afterEach(async () => {
 async function openAdmin(section: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Открыть админ', exact: true }));
   fireEvent.click(
-    within(screen.getByRole('navigation', { name: 'Разделы владельца' })).getByRole('button', {
-      name: section,
-      exact: true,
-    }),
+    within(await screen.findByRole('navigation', { name: 'Разделы владельца' })).getByRole(
+      'button',
+      {
+        name: section,
+        exact: true,
+      },
+    ),
   );
 }
 test('owner summary counts unique people and includes leaders among students', async () => {

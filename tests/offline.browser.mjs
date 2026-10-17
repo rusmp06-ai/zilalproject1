@@ -1,7 +1,8 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({
-  executablePath: '/usr/bin/chromium',
+  executablePath: browserExecutable,
   headless: true,
   args: ['--no-sandbox'],
 });
@@ -15,13 +16,11 @@ try {
   await page.getByRole('button', { name: 'Открыть админ', exact: true }).click();
   await page.getByRole('button', { name: 'Публикации в библиотеке', exact: true }).click();
   await page.getByLabel('Название материала', { exact: true }).fill('Offline fixture');
-  await page
-    .getByLabel('Файл', { exact: true })
-    .setInputFiles({
-      name: 'offline.txt',
-      mimeType: 'text/plain',
-      buffer: Buffer.from('Offline reading works. '.repeat(300)),
-    });
+  await page.getByLabel('Файл', { exact: true }).setInputFiles({
+    name: 'offline.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Offline reading works. '.repeat(300)),
+  });
   await page.getByRole('button', { name: 'Загрузить материал', exact: true }).click();
   await page.getByText('Материал опубликован в общей библиотеке.', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Студент', exact: true }).click();

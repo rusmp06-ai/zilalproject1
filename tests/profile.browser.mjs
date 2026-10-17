@@ -1,7 +1,8 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({
-  executablePath: '/usr/bin/chromium',
+  executablePath: browserExecutable,
   args: ['--no-sandbox'],
 });
 try {
@@ -16,13 +17,11 @@ try {
   await profile.getByLabel('Имя и фамилия').fill('Мария Иванова');
   await profile.getByLabel('Университет', { exact: true }).fill('Учебный университет');
   await profile.getByLabel('Курс', { exact: true }).fill('2');
-  await profile
-    .getByLabel('Фото профиля', { exact: true })
-    .setInputFiles({
-      name: 'photo.png',
-      mimeType: 'image/png',
-      buffer: await page.screenshot({ clip: { x: 0, y: 0, width: 16, height: 16 } }),
-    });
+  await profile.getByLabel('Фото профиля', { exact: true }).setInputFiles({
+    name: 'photo.png',
+    mimeType: 'image/png',
+    buffer: await page.screenshot({ clip: { x: 0, y: 0, width: 16, height: 16 } }),
+  });
   await profile.getByRole('img', { name: 'Фото профиля' }).waitFor();
   await profile.getByRole('button', { name: 'Сохранить профиль', exact: true }).click();
   await profile.getByRole('status').filter({ hasText: 'Профиль сохранён' }).waitFor();

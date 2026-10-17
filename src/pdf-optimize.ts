@@ -1,4 +1,4 @@
-import OptimizerWorker from './pdf-optimize.worker?worker&inline';
+import OptimizerWorker from 'studyhub-optimizer-worker';
 import { loadPdf, type PDFDocumentProxy } from './pdf-reader';
 function equalBytes(a: Uint8ClampedArray, b: Uint8ClampedArray) {
   return a.length === b.length && a.every((v, i) => v === b[i]);

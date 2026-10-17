@@ -1,3 +1,4 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import JSZip from 'jszip';
 import assert from 'node:assert/strict';
@@ -19,7 +20,7 @@ const docx = await zip.generateAsync({ type: 'base64' }),
   artifacts = '/tmp/studyhub-reader-browser';
 await mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
+  executablePath: process.env.CHROMIUM_PATH || browserExecutable,
   args: ['--no-sandbox'],
 });
 try {

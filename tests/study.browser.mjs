@@ -1,3 +1,4 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
@@ -5,7 +6,7 @@ import { join } from 'node:path';
 const artifacts = process.env.STUDY_TEST_ARTIFACTS || '/tmp/studyhub-study-browser';
 await mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
+  executablePath: process.env.CHROMIUM_PATH || browserExecutable,
   headless: true,
   args: ['--no-sandbox'],
 });
@@ -13,6 +14,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }),
     errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  await page.clock.install({ time: new Date('2026-10-19T02:30:00Z') });
   await page.goto(process.env.STUDY_TEST_URL || 'http://127.0.0.1:5175/?demo=1');
   await page.locator('.demo-roles').waitFor();
   await page.evaluate(async () => {
@@ -36,7 +38,7 @@ try {
       c.id,
       'Подготовить конспект',
       'Прочитать главу 2',
-      new Date(Date.now() + 86400000).toISOString(),
+      new Date(Date.now() + 7200000).toISOString(),
       10,
       true,
     );
@@ -68,6 +70,11 @@ try {
   const id = await page.getByLabel('Выберите задание').inputValue();
   assert.ok(id);
   await page.getByRole('button', { name: 'Главная', exact: true }).click();
+  await page
+    .locator('details')
+    .filter({ has: page.locator('.bookshelf-card') })
+    .locator(':scope > summary')
+    .click();
   await page.getByRole('button', { name: /Основы экономики/ }).click();
   await page.getByText(/Страница 2 из 2 · Прогресс/).waitFor();
   await page.keyboard.press('Escape');
@@ -86,7 +93,7 @@ try {
   );
   await page.getByRole('button', { name: 'Быстрый переход: План' }).click();
   await page.getByLabel('Месяц', { exact: true }).waitFor();
-  const future = new Date(Date.now() + 1800000);
+  const future = new Date(await page.evaluate(() => Date.now() + 1800000));
   const day = future.toLocaleDateString('ru-RU', {
     timeZone: 'Asia/Bishkek',
     weekday: 'long',

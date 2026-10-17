@@ -1,10 +1,11 @@
+import { browserExecutable } from './browser-runtime.mjs';
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 const artifacts = '/tmp/studyhub-library-world';
 await mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({
-  executablePath: '/usr/bin/chromium',
+  executablePath: browserExecutable,
   args: ['--no-sandbox'],
 });
 try {
