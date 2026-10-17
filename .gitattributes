@@ -1,0 +1,2 @@
+# PDF xref padding is structural; encrypted fixtures must not be treated as text.
+tests/fixtures/*.pdf binary
