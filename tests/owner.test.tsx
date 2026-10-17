@@ -46,3 +46,47 @@ test('owner invitation and history are scoped to owner; tokens never enter the a
 test('owner can manage a different group without changing their personal account',async()=>{
  resetDemo();selectDemo('owner');render(<App/>);await screen.findByRole('heading',{name:'Обзор проекта',exact:true});await openAdmin('Дисциплины и преподаватели');fireEvent.change(screen.getByLabelText('Рабочая группа'),{target:{value:'g2'}});fireEvent.change(screen.getByLabelText('Новая дисциплина'),{target:{value:'Управление финансами'}});fireEvent.click(screen.getByRole('button',{name:'Добавить дисциплину'}));await screen.findByText('Дисциплина создана.');assert.ok((await demoGateway.snapshot()).courses.some(c=>c.title==='Управление финансами'&&c.group_id==='g2'));fireEvent.click(screen.getByRole('button',{name:'К обзору проекта'}));await screen.findByRole('heading',{name:'Обзор проекта',exact:true});assert.equal((await demoGateway.snapshot()).me.id,'owner');
 });
+
+test('owner operations loads requests across every group and every page, keeping partial failures explicit',async()=>{
+ const {loadOwnerOperations}=await import('../src/owner-operations');resetDemo();selectDemo('owner');const snapshot=await demoGateway.snapshot();const calls:string[]=[];
+ const api={...demoGateway,groupRequests:async(group:string|null,offset:number)=>{calls.push(group+':'+offset);if(group==='g1')throw Error('Offline');if(group!=='g0')return [];return Array.from({length:offset===0?50:1},(_,i)=>({user_id:'new-'+(offset+i),group_id:'g0',full_name:'New student',status:'pending',created_at:'2026-10-01T00:00:00Z'}));},invitationCatalog:async()=>{throw Error('Offline');}};
+ const result=await loadOwnerOperations(api,snapshot);assert.equal(result.requests.length,51);assert.equal(result.requestsComplete,false);assert.equal(result.invitations,null);assert.ok(result.issues.some(issue=>issue.includes('ИФ-2-24')));assert.ok(calls.includes('g0:50'));assert.ok(calls.includes('g3:0'));
+ const nonOwner={...snapshot,owner:false};let reads=0;await assert.rejects(()=>loadOwnerOperations({...api,groupRequests:async()=>{reads++;return [];}},nonOwner),/владельцу/);assert.equal(reads,0);
+});
+
+test('owner queue confirms decisions, preserves failed requests and retries successfully',async()=>{
+ const {OwnerOperations}=await import('../src/OwnerOperations');resetDemo();selectDemo('owner');const snapshot=await demoGateway.snapshot();let pending=true,fail=true,writes=0;
+ const api={...demoGateway,groupRequests:async(group:string|null)=>group==='g2'&&pending?[{user_id:'new',group_id:'g2',full_name:'Новый участник',status:'pending',created_at:'2026-10-01T00:00:00Z'}]:[],resolveGroupRequest:async(user:string,group:string,approve:boolean)=>{writes++;assert.equal(user,'new');assert.equal(group,'g2');assert.equal(approve,true);if(fail)throw Error('Заявка не передана');pending=false;}};
+ render(<OwnerOperations api={api} snapshot={snapshot} queue onChanged={async()=>{}}/>);await screen.findByRole('heading',{name:'Новый участник'});const confirm=window.confirm;window.confirm=()=>false;fireEvent.click(screen.getByRole('button',{name:'Принять студента'}));assert.equal(writes,0);window.confirm=()=>true;
+ try{fireEvent.click(screen.getByRole('button',{name:'Принять студента'}));await screen.findByText('Заявка не передана');assert.ok(screen.getByRole('heading',{name:'Новый участник'}));fail=false;fireEvent.click(screen.getByRole('button',{name:'Принять студента'}));await screen.findByText('Студент принят в группу.');await screen.findByText('Ожидающих заявок нет.');assert.equal(writes,2);}finally{window.confirm=confirm;}
+});
+
+test('owner directory finds IDs, distinguishes inactive membership, shows inherited restrictions and excludes owner from ungrouped',async()=>{
+ resetDemo();selectDemo('owner');const snapshot=await demoGateway.snapshot();snapshot.profiles.push({id:'new-person',full_name:'Без группы',blocked:false});snapshot.memberships.push({user_id:'new-person',group_id:'g3',role:'student',active:false});snapshot.groups[0].blocked=true;snapshot.denials.push({id:'restriction',group_id:'g0',user_id:null,section:'schedule',course_id:null});
+ render(<OwnerAdminPanel api={demoGateway} snapshot={snapshot} initialSection="accounts" onChanged={async()=>{}} onOverview={()=>{}}/>);
+ fireEvent.change(await screen.findByLabelText('Доступ аккаунта'),{target:{value:'ungrouped'}});assert.equal(document.querySelectorAll('.owner-account-list article').length,1);assert.ok(screen.getByRole('heading',{name:'Без группы'}));fireEvent.click(screen.getByRole('button',{name:'Подробнее об аккаунте'}));await screen.findByText(/членство отключено/);
+ fireEvent.click(screen.getByRole('button',{name:'Сбросить фильтры'}));fireEvent.change(screen.getByLabelText('Поиск участника'),{target:{value:'student'}});assert.equal(document.querySelectorAll('.owner-account-list article').length,1);fireEvent.click(screen.getByRole('button',{name:'Подробнее об аккаунте'}));await screen.findByText('Расписание · для группы ИФ-1-24');await screen.findByText(/группа закрыта/);
+ fireEvent.click(screen.getByRole('button',{name:'Сбросить фильтры'}));fireEvent.change(screen.getByLabelText('Роль участника'),{target:{value:'owner'}});assert.equal(document.querySelectorAll('.owner-account-list article').length,1);assert.ok(screen.getByRole('heading',{name:'Владелец платформы'}));
+});
+
+test('owner health does not report unknown requests or invitations as zero',async()=>{
+ const {OwnerOperations}=await import('../src/OwnerOperations');resetDemo();selectDemo('owner');const snapshot=await demoGateway.snapshot();const api={...demoGateway,groupRequests:async()=>{throw Error('Offline');},invitationCatalog:async()=>{throw Error('Offline');},library:async()=>{throw Error('Offline');}};
+ render(<OwnerOperations api={api} snapshot={snapshot}/>);await screen.findByText('Не все проверены');assert.equal(screen.queryByText('Ожидающих заявок нет.'),null);assert.equal(screen.getAllByText('Нет данных').length,2);
+});
+
+test('teacher details load all assignment pages and never show a partial list as complete',async()=>{
+ const {OwnerTeaching}=await import('../src/OwnerTeaching');resetDemo();selectDemo('owner');const snapshot=await demoGateway.snapshot();let fail=false;const calls:string[]=[];
+ const api={...demoGateway,teachingCatalog:async(group:string,offset:number)=>{calls.push(group+':'+offset);if(fail&&group==='g1')throw Error('Offline');if(group==='g0'&&!offset)return Array.from({length:50},(_,i)=>({teacher_id:'other',teacher_name:'Other',course_id:'c'+i}));if(group==='g0')return [{teacher_id:'teacher',teacher_name:'Teacher',course_id:'g0c0'}];return [];}};
+ const r=render(<OwnerTeaching api={api} snapshot={snapshot} user="teacher"/>);await screen.findByText('Корпоративные финансы · ИФ-1-24');assert.ok(calls.includes('g0:50'));r.unmount();fail=true;render(<OwnerTeaching api={api} snapshot={snapshot} user="teacher"/>);await screen.findByText('Назначения преподавателя не удалось загрузить.');assert.equal(screen.queryByText('Корпоративные финансы · ИФ-1-24'),null);assert.equal(screen.queryByText('Дисциплины не назначены.'),null);
+});
+
+test('a confirmed request remains confirmed when refreshing users fails',async()=>{
+ const {OwnerOperations}=await import('../src/OwnerOperations');resetDemo();selectDemo('owner');const snapshot=await demoGateway.snapshot();let pending=true;
+ const api={...demoGateway,groupRequests:async(group:string|null)=>group==='g0'&&pending?[{user_id:'new',group_id:'g0',full_name:'Новый участник',status:'pending',created_at:'2026-10-01T00:00:00Z'}]:[],resolveGroupRequest:async()=>{pending=false;}};
+ const confirm=window.confirm;window.confirm=()=>true;try{render(<OwnerOperations api={api} snapshot={snapshot} queue onChanged={async()=>{throw Error('Refresh failed');}}/>);await screen.findByRole('heading',{name:'Новый участник'});fireEvent.click(screen.getByRole('button',{name:'Принять студента'}));await screen.findByText('Ожидающих заявок нет.');assert.ok(screen.getByText('Студент принят в группу.'));assert.ok(screen.getByText('Заявка обработана, но список пользователей не обновился. Обновите страницу.'));}finally{window.confirm=confirm;}
+});
+
+test('owner creation stays confirmed when snapshot refresh fails, but an unsuccessful refresh never reports fresh users',async()=>{
+ resetDemo();selectDemo('owner');const snapshot=await demoGateway.snapshot();let writes=0;const api={...demoGateway,createGroup:async()=>{writes++;}};
+ const r=render(<OwnerAdminPanel api={api} snapshot={snapshot} onChanged={async()=>{throw Error('Refresh failed');}} onOverview={()=>{}}/>);fireEvent.change(screen.getByLabelText('Название группы'),{target:{value:'New group'}});fireEvent.click(screen.getByRole('button',{name:'Создать группу'}));await screen.findByText('Группа создана.');await screen.findByText('Изменение сохранено, но данные не обновились. Обновите страницу; повторять действие не нужно.');assert.equal(writes,1);r.unmount();render(<OwnerAdminPanel api={api} snapshot={snapshot} initialSection="accounts" onChanged={async()=>{throw Error('Refresh failed');}} onOverview={()=>{}}/>);fireEvent.click(await screen.findByRole('button',{name:'Обновить пользователей'}));await screen.findByText('Refresh failed');assert.equal(screen.queryByText('Список пользователей обновлён.'),null);
+});
