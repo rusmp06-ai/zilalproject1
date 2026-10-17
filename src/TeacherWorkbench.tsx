@@ -1,3 +1,4 @@
+import { CourseScenery, courseTheme } from './CourseScenery';
 import { MaterialIntake } from './MaterialIntake';
 import { useEffect, useState } from 'react';
 import type { Gateway, Snapshot, BoardItem } from './types';
@@ -352,9 +353,15 @@ export function TeacherWorkbench({
               </div>
               <div className="teacher-course-grid">
                 {courses.slice(0, 6).map((c) => (
-                  <section className="card" key={c.id}>
-                    <span className="eyebrow">{c.group_name}</span>
-                    <h3>{c.title}</h3>
+                  <section
+                    className={'card teacher-discipline-card cover-' + courseTheme(c.id)}
+                    key={c.id}
+                  >
+                    <header className="teacher-discipline-cover">
+                      <CourseScenery />
+                      <span className="eyebrow">{c.group_name}</span>
+                      <h3>{c.title}</h3>
+                    </header>
                     <p>
                       {c.can_grade
                         ? `${c.pending} на проверке · студентов: ${c.students}`
@@ -408,9 +415,15 @@ export function TeacherWorkbench({
               </div>
               <div className="teacher-course-grid">
                 {filtered.map((c) => (
-                  <section className="card" key={c.id}>
-                    <span className="eyebrow">{c.group_name}</span>
-                    <h3>{c.title}</h3>
+                  <section
+                    className={'card teacher-discipline-card cover-' + courseTheme(c.id)}
+                    key={c.id}
+                  >
+                    <header className="teacher-discipline-cover">
+                      <CourseScenery />
+                      <span className="eyebrow">{c.group_name}</span>
+                      <h3>{c.title}</h3>
+                    </header>
                     <p>
                       {c.can_grade
                         ? `${c.assignment_count} заданий · ${c.pending} работ на проверке`

@@ -1,3 +1,4 @@
+import { CourseScenery, courseTheme } from './CourseScenery';
 import { PageBoundary } from './PageBoundary';
 import { AppSidebar } from './AppSidebar';
 import { AppHeader } from './AppHeader';
@@ -725,26 +726,48 @@ export function App() {
                               )
                             )}
                           </div>
-                          <div className="two-columns">
-                            <section className="card">
+                          <section className="discipline-catalog" aria-label="Дисциплины группы">
+                            <div className="discipline-catalog-heading">
                               <h2>Дисциплины</h2>
-                              <div className="course-list">
-                                {snap.courses
-                                  .filter((c) => c.group_id === group && !c.archived)
-                                  .map((c) => (
-                                    <div key={c.id}>
-                                      <b>{c.title}</b>
-                                      <button onClick={() => openCourse(c.id)}>
-                                        Открыть дисциплину
-                                      </button>
-                                    </div>
-                                  ))}
-                              </div>
-                              {!snap.courses.some((c) => c.group_id === group && !c.archived) && (
-                                <p>В вашей группе пока нет дисциплин.</p>
-                              )}
-                            </section>
-                          </div>
+                              {context?.name && <p>Учебные материалы группы {context.name}</p>}
+                            </div>
+                            <div className="course-list discipline-grid">
+                              {snap.courses
+                                .filter((c) => c.group_id === group && !c.archived)
+                                .map((c) => (
+                                  <article
+                                    key={c.id}
+                                    className={'discipline-card cover-' + courseTheme(c.id)}
+                                  >
+                                    <button
+                                      onClick={() => openCourse(c.id)}
+                                      aria-label="Открыть дисциплину"
+                                      aria-describedby={'discipline-' + c.id}
+                                    >
+                                      <span className="discipline-card-cover">
+                                        <CourseScenery />
+                                        <strong id={'discipline-' + c.id}>{c.title}</strong>
+                                        <span>{context?.name}</span>
+                                      </span>
+                                      <span className="discipline-card-sections">
+                                        <span>Лекции</span>
+                                        <span>Задания</span>
+                                        <span>Доп. материалы</span>
+                                      </span>
+                                      <span className="discipline-card-footer">
+                                        <span>Всё по предмету</span>
+                                        <b>
+                                          Открыть <span aria-hidden="true">→</span>
+                                        </b>
+                                      </span>
+                                    </button>
+                                  </article>
+                                ))}
+                            </div>
+                            {!snap.courses.some((c) => c.group_id === group && !c.archived) && (
+                              <p className="card empty">В вашей группе пока нет дисциплин.</p>
+                            )}
+                          </section>
                         </>
                       )
                     )}

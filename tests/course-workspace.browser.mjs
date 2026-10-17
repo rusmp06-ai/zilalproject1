@@ -75,7 +75,7 @@ try {
       })
       .click();
     await page
-      .locator(teacher ? '.teacher-course-grid>.card' : '.course-list>div')
+      .locator(teacher ? '.teacher-course-grid>.card' : '.course-list>.discipline-card')
       .first()
       .getByRole('button', { name: 'Открыть дисциплину', exact: true })
       .click();

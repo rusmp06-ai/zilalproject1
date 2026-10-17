@@ -166,7 +166,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Группы и дисциплины', exact: true }).click();
   await page
-    .locator('.course-list>div')
+    .locator('.course-list>.discipline-card')
     .filter({ has: page.getByText(course, { exact: true }) })
     .getByRole('button', { name: 'Открыть дисциплину', exact: true })
     .click();

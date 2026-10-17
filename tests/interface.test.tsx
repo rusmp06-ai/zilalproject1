@@ -911,7 +911,7 @@ test('registered student keeps their group without selectors across study screen
     assert.equal(screen.queryByText('Собираем ваше учебное пространство…') === null, true),
   );
   assert.equal(screen.queryByRole('combobox') === null, true);
-  assert.ok(screen.getByText('ИФ-1-24'));
+  assert.ok(screen.getAllByText('ИФ-1-24').length > 0);
   for (const name of [
     'Календарь',
     'Все задания',
@@ -923,7 +923,7 @@ test('registered student keeps their group without selectors across study screen
       within(screen.getByRole('complementary')).getByRole('button', { name, exact: true }),
     );
     assert.equal(screen.queryByRole('combobox') === null, true);
-    assert.ok(screen.getByText('ИФ-1-24'));
+    assert.ok(screen.getAllByText('ИФ-1-24').length > 0);
   }
   assert.equal(screen.queryByText('Создание группы') === null, true);
 });

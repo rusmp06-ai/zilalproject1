@@ -1,0 +1,410 @@
+/* Discipline presentation, based on the supplied landscape-card prototype.
+   Navigation, permissions, loading and study actions remain in their existing components. */
+.discipline-catalog,
+.course-workspace {
+  --discipline-ink: #142b38;
+  --discipline-muted: #566975;
+  --discipline-line: #d9e1e7;
+  --discipline-accent: #0b6e86;
+  --discipline-soft: #e3eef2;
+  color: var(--discipline-ink);
+}
+.discipline-catalog-heading {
+  margin: 8px 0 24px;
+}
+.discipline-catalog-heading h2,
+.discipline-card-cover > strong,
+.course-workspace .course-cover h2 {
+  font-family: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.discipline-catalog-heading h2 {
+  margin: 0;
+  font-size: 30px;
+}
+.discipline-catalog-heading p {
+  margin: 7px 0 0;
+  color: var(--discipline-muted);
+  font-size: 14px;
+}
+.course-list.discipline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+  gap: 22px;
+}
+.discipline-card,
+.course-workspace > .course-cover {
+  --landscape-color: #0b5d75;
+}
+.discipline-card.cover-slate,
+.course-workspace > .course-cover.cover-slate {
+  --landscape-color: #334f85;
+}
+.discipline-card.cover-copper,
+.course-workspace > .course-cover.cover-copper {
+  --landscape-color: #8a4b12;
+}
+.discipline-card {
+  min-width: 0;
+}
+.discipline-card > button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--discipline-line);
+  border-radius: 22px;
+  background: #fff;
+  color: var(--discipline-ink);
+  text-align: left;
+  box-shadow: 0 6px 18px #0a1e450d;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+.discipline-card > button:hover {
+  background: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px #0a1e4517;
+}
+.discipline-card > button:focus-visible,
+.course-workspace button:focus-visible {
+  outline: 3px solid var(--discipline-accent);
+  outline-offset: 3px;
+}
+.discipline-card-cover {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 166px;
+  padding: 22px;
+  overflow: hidden;
+  background: var(--landscape-color);
+  color: #fff;
+}
+.discipline-card-cover > strong {
+  position: relative;
+  max-width: 85%;
+  font-size: 26px;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+.discipline-card-cover > span:last-child {
+  position: relative;
+  font-size: 13px;
+  color: #ffffffde;
+}
+.discipline-scenery {
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  pointer-events: none;
+}
+.discipline-scenery > svg {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 70%;
+}
+.discipline-sun {
+  position: absolute;
+  right: 22px;
+  top: 18px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #ffffff38;
+}
+.discipline-card-sections {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 16px 10px;
+  border-bottom: 1px solid var(--discipline-line);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--discipline-muted);
+}
+.discipline-card-sections > span + span {
+  border-left: 1px solid var(--discipline-line);
+}
+.discipline-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 20px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--discipline-muted);
+}
+.discipline-card-footer > b {
+  color: var(--discipline-accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.course-workspace {
+  padding: 20px;
+  border-radius: 24px;
+  background: #f2f5f7;
+}
+.course-workspace > button:first-child {
+  border: 0;
+  background: transparent;
+  color: var(--discipline-accent);
+  padding-left: 0;
+}
+.course-workspace > .course-cover {
+  position: relative;
+  min-height: 154px;
+  padding: 26px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--landscape-color);
+  color: white;
+}
+.course-workspace .course-cover h2 {
+  max-width: 850px;
+  margin: 8px 0;
+  color: #fff;
+  font-size: clamp(26px, 3vw, 36px);
+}
+.course-workspace .course-cover p,
+.course-workspace .course-cover .eyebrow,
+.course-workspace .course-cover-signature {
+  color: #ffffffde;
+}
+.course-workspace .course-cover-signature {
+  margin-top: 16px;
+}
+.course-workspace .course-cover-copy {
+  max-width: calc(100% - 110px);
+}
+.course-workspace .course-cover .course-refresh {
+  position: relative;
+  z-index: 1;
+  margin-left: auto;
+  background: #ffffff;
+  color: var(--discipline-accent);
+  border-color: #ffffff80;
+  border-radius: 12px;
+}
+.course-cover .discipline-sun {
+  right: 155px;
+}
+.course-workspace > .course-tabs {
+  padding: 5px;
+  gap: 3px;
+  background: var(--discipline-soft);
+  border: 0;
+  border-radius: 14px;
+}
+.course-workspace .course-tabs > button {
+  border-radius: 10px;
+  color: var(--discipline-muted);
+}
+.course-workspace .course-tabs > button[aria-current='page'] {
+  border-color: transparent;
+  background: #fff;
+  color: var(--discipline-ink);
+  box-shadow: 0 2px 5px #14212b08;
+}
+.course-workspace .course-overview-grid > .card,
+.course-workspace .course-doorway,
+.course-workspace .course-task,
+.course-workspace .course-book {
+  background: #fff;
+  border: 1px solid var(--discipline-line);
+  border-radius: 14px;
+  box-shadow: none;
+}
+.course-workspace .course-next {
+  border-top: 1px solid var(--discipline-line);
+}
+.course-workspace .course-doorway-icon {
+  background: var(--discipline-soft);
+  color: var(--discipline-accent);
+  border-radius: 12px;
+}
+.course-workspace .course-doorway-count {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 24px;
+  color: var(--discipline-ink);
+}
+.course-workspace .course-book-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.course-workspace .course-book {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  grid-template-areas: 'cover type action' 'cover title action' 'cover meta action';
+  align-items: center;
+  gap: 4px 16px;
+  padding: 16px;
+}
+.course-workspace .course-book > .eyebrow {
+  grid-area: type;
+}
+.course-workspace .course-book > small {
+  grid-area: meta;
+}
+.course-workspace .course-book .book-cover {
+  grid-area: cover;
+  width: 48px;
+  min-width: 48px;
+  height: 62px;
+  min-height: 62px;
+  align-self: center;
+  flex-shrink: 0;
+  border-radius: 7px;
+  box-shadow: none;
+}
+.course-workspace .course-book .book-cover svg {
+  width: 22px;
+}
+.course-workspace .course-book h4 {
+  grid-area: title;
+  margin: 0;
+  font-size: 16px;
+}
+.course-workspace .course-book > button:last-child {
+  grid-area: action;
+  justify-self: end;
+  margin: 0;
+  color: var(--discipline-accent);
+  border-color: #a9c5ce;
+  border-radius: 10px;
+}
+@media (max-width: 600px) {
+  .course-list.discipline-grid {
+    gap: 16px;
+  }
+  .discipline-card-cover {
+    min-height: 138px;
+    padding: 18px;
+  }
+  .discipline-card-cover > strong {
+    font-size: 24px;
+  }
+  .course-workspace {
+    padding: 12px;
+    border-radius: 20px;
+  }
+  .course-workspace > .course-cover {
+    min-height: 154px;
+    padding: 20px;
+  }
+  .course-workspace .course-cover-copy {
+    max-width: 100%;
+    padding-right: 40px;
+  }
+  .course-workspace .course-cover .course-refresh {
+    position: absolute;
+    right: 12px;
+    top: 14px;
+    padding: 10px !important;
+  }
+  .course-cover .discipline-sun {
+    right: 75px;
+  }
+  .course-workspace .course-cover .course-refresh span {
+    display: none;
+  }
+  .course-workspace .course-book > button:last-child {
+    width: auto;
+    min-width: 110px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .discipline-card > button {
+    transition: none;
+  }
+  .discipline-card > button:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .course-workspace .course-doorway strong {
+    font-size: 15px;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+  .course-workspace .course-doorway small {
+    font-size: 12px;
+  }
+}
+
+.course-workspace .course-book .book-cover-face {
+  min-height: 0;
+  height: 100%;
+  padding: 5px;
+}
+.course-workspace .course-book .book-cover-series,
+.course-workspace .course-book .book-cover-title,
+.course-workspace .course-book .book-cover-art {
+  display: none;
+}
+.course-workspace .course-book .book-cover-format {
+  position: static;
+  font-size: 10px;
+}
+@media (max-width: 600px) {
+  .course-workspace .course-book {
+    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-areas: 'cover type' 'cover title' 'meta meta' 'action action';
+    row-gap: 8px;
+  }
+}
+
+.teacher-course-grid > .teacher-discipline-card {
+  --landscape-color: #0b5d75;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d9e1e7;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 6px 18px #0a1e450d;
+}
+.teacher-course-grid > .cover-slate {
+  --landscape-color: #334f85;
+}
+.teacher-course-grid > .cover-copper {
+  --landscape-color: #8a4b12;
+}
+.teacher-discipline-cover {
+  position: relative;
+  min-height: 138px;
+  padding: 22px;
+  background: var(--landscape-color);
+  color: #fff;
+}
+.teacher-discipline-cover h3 {
+  position: relative;
+  margin: 10px 0 0;
+  font:
+    600 24px/1.2 'Iowan Old Style',
+    Georgia,
+    'Times New Roman',
+    serif;
+  overflow-wrap: anywhere;
+}
+.teacher-discipline-cover .eyebrow {
+  position: relative;
+  color: #ffffffde;
+}
+.teacher-discipline-card > p {
+  margin: 18px 22px;
+}
+.teacher-discipline-card > .card-actions {
+  padding: 0 22px 22px;
+}
+.teacher-discipline-card > button {
+  margin: 0 22px 22px;
+}
