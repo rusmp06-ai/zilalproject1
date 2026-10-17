@@ -3,6 +3,7 @@ import type {ReactNode} from 'react';
 export function StudyIcon({name,className=''}:{name:string;className?:string}){
  const paths:Record<string,ReactNode>={
   close:<path d="m7 7 10 10M17 7 7 17"/>,
+  refresh:<><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 18 17"/></>,
   search:<><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
   'bookmark-add':<><path d="M6 4h10v17l-5-4-5 4V4Z"/><path d="M19 3v6m-3-3h6"/></>,
   bookmark:<path d="M6 4h12v17l-6-4-6 4V4Z"/>,

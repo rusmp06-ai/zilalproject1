@@ -1,6 +1,6 @@
 {
   "name": "studyhub",
-  "version": "0.39.0",
+  "version": "0.40.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -38,7 +38,8 @@
     "test:schedule:sync:browser": "node tests/schedule-sync.browser.mjs",
     "test:navigation:browser": "node tests/navigation.browser.mjs",
     "test:upload:recovery:browser": "node tests/upload-recovery.browser.mjs",
-    "test:upgrade": "node tests/upgrade.test.mjs"
+    "test:upgrade": "node tests/upgrade.test.mjs",
+    "test:design:browser": "node tests/student-design.browser.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
