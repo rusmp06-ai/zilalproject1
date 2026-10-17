@@ -1,0 +1,47 @@
+begin;
+do $$ begin
+ if to_regclass('public.courses') is null or to_regclass('public.material_intakes') is null or to_regclass('public.private_tasks') is null then
+  raise exception 'Existing StudyHub database v0.35 required. Check selected project; no changes applied.';
+ end if;
+end $$;
+-- Managers can list archived metadata for restoration, without opening its materials.
+drop policy if exists courses_read on public.courses;
+create policy courses_read on public.courses for select to authenticated using (
+ public.can_view_course(id) or (archived and public.is_group_leader(group_id))
+);
+create or replace function public.manage_course(p_course uuid,p_action text,p_title text,p_expected_title text,p_expected_archived boolean) returns void
+language plpgsql security definer set search_path=pg_catalog as $$
+declare c public.courses%rowtype; next_title text;
+begin
+ if not public.is_active_user() then raise exception 'Course management denied';end if;
+ select * into c from public.courses where id=p_course for update;
+ if not found or not(public.is_owner() or public.is_group_leader(c.group_id)) then raise exception 'Course management denied';end if;
+ if p_action not in ('rename','archive','restore','delete') or p_action is null then raise exception 'Invalid course action';end if;
+ next_title=trim(p_title);
+ if p_action='rename' and (next_title is null or length(next_title) not between 1 and 200) then raise exception 'Invalid course title';end if;
+ -- A retry of the same successful change is harmless.
+ if p_action='rename' and c.title=next_title or p_action='archive' and c.archived or p_action='restore' and not c.archived then return;end if;
+ if c.title is distinct from p_expected_title or c.archived is distinct from p_expected_archived then raise exception 'Course changed; refresh';end if;
+ if p_action='delete' then
+  if exists(select 1 from public.course_content where course_id=c.id)
+   or exists(select 1 from public.assignments where course_id=c.id)
+   or exists(select 1 from public.group_board where course_id=c.id)
+   or exists(select 1 from public.course_topics where course_id=c.id)
+   or exists(select 1 from public.course_topic_links where course_id=c.id)
+   or exists(select 1 from public.teaching_assignments where course_id=c.id)
+   or exists(select 1 from public.invitation_courses where course_id=c.id)
+   or exists(select 1 from public.access_denials where course_id=c.id)
+   or exists(select 1 from public.material_intakes where payload->>'course'=c.id::text)
+   or exists(select 1 from public.private_notes where body like '%'||c.id::text||'%')
+   or exists(select 1 from public.private_tasks where body like '%'||c.id::text||'%')
+  then raise exception 'Course is not empty; archive instead';end if;
+  delete from public.courses where id=c.id;
+ else
+  update public.courses set title=case when p_action='rename' then next_title else title end,
+   archived=case when p_action='archive' then true when p_action='restore' then false else archived end where id=c.id;
+ end if;
+ insert into public.audit_events(actor_id,action,entity_id,details) values(auth.uid(),case p_action when 'rename' then 'course.renamed' when 'archive' then 'course.archived' when 'restore' then 'course.restored' else 'course.deleted' end,c.id,jsonb_build_object('group_id',c.group_id,'title',c.title,'new_title',case when p_action='rename' then next_title else c.title end));
+end $$;
+revoke all on function public.manage_course(uuid,text,text,text,boolean) from public,anon;
+grant execute on function public.manage_course(uuid,text,text,text,boolean) to authenticated;
+commit;

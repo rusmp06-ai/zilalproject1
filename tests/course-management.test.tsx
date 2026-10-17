@@ -1,0 +1,28 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
+const dom=new JSDOM('<!doctype html><body></body>',{url:'http://localhost/?demo=1'});
+for(const key of ['window','document','localStorage','sessionStorage','location','history','HTMLElement','HTMLInputElement','MutationObserver','DOMParser','FormData'])Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],configurable:true});
+Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;window.confirm=()=>true;window.alert=()=>{};
+const React=await import('react');const {render,screen,fireEvent,cleanup,act}=await import('@testing-library/react');
+const {demoGateway:api,resetDemo,selectDemo}=await import('../src/demo');const {CourseManager}=await import('../src/CourseManager');
+test.beforeEach(()=>{localStorage.clear();sessionStorage.clear();resetDemo();selectDemo('owner');});test.afterEach(()=>cleanup());
+test('owner and own-group leader rename/archive/restore without losing materials and grades; others cannot manage',async()=>{
+ let course=(await api.snapshot()).courses[0];await api.saveMaterial(course.id,'lecture','Keep lecture','Body',null,null);await api.createAssignment(course.id,'Work','Answer',null,100,true);const assignment=(await api.assignments(course.id)).items[0];selectDemo('student');await api.submit(assignment.id,'My work',null);selectDemo('owner');const work=(await api.works(assignment.id,0))[0];await api.grade(work.id,88,'Keep grade',true);
+ await api.manageCourse(course,'rename','Renamed course');await api.manageCourse(course,'rename','Renamed course');await assert.rejects(()=>api.manageCourse(course,'rename','Stale'),/изменилась/);course=(await api.snapshot()).courses.find(c=>c.id===course.id)!;
+ selectDemo('student');await assert.rejects(()=>api.manageCourse(course,'archive'),/прав/);selectDemo('teacher');await assert.rejects(()=>api.manageCourse(course,'archive'),/прав/);selectDemo('leader');const foreign={...course,id:'g1c1'};await assert.rejects(()=>api.manageCourse(foreign,'archive'),/прав/);await api.manageCourse(course,'archive');let archived=(await api.snapshot()).courses.find(c=>c.id===course.id)!;assert.equal(archived.archived,true);selectDemo('student');assert.equal((await api.snapshot()).courses.some(c=>c.id===course.id),false);await assert.rejects(()=>api.courseMaterials(course.id,'lecture',0));selectDemo('leader');await api.manageCourse(archived,'restore');selectDemo('owner');assert.equal((await api.courseMaterials(course.id,'lecture',0)).items[0].title,'Keep lecture');assert.equal((await api.works(assignment.id,0))[0].score,88);await assert.rejects(()=>api.manageCourse(course,'delete'),/архив/);
+});
+test('empty deletion, teaching assignments, invitations and private linked notes are checked',async()=>{
+ await api.createCourse('g0','Empty');const empty=(await api.snapshot()).courses.find(c=>c.title==='Empty')!;await api.manageCourse(empty,'delete');assert.equal((await api.snapshot()).courses.some(c=>c.id===empty.id),false);
+ const course=(await api.snapshot()).courses.find(c=>c.id==='g0c1')!;await api.saveNote('Private note','Course reference: '+course.id,null,null);await assert.rejects(()=>api.manageCourse(course,'delete'),/архив/);await api.createCourse('g0','Invited course');const invited=(await api.snapshot()).courses.find(c=>c.title==='Invited course')!;await api.invite('teacher','g0',[invited.id],1);await assert.rejects(()=>api.manageCourse(invited,'delete'),/архив/);const assigned=(await api.snapshot()).courses.find(c=>c.id==='g0c0')!;await assert.rejects(()=>api.manageCourse(assigned,'delete'),/архив/);
+});
+test('rename failure retains draft across remount; deletion needs confirmation and duplicate submits are locked',async()=>{
+ const snapshot=await api.snapshot();let writes=0;const mock={...api,manageCourse:async()=>{writes++;throw Error('Network failure');}};
+ let r=render(<CourseManager api={mock} snapshot={snapshot} group="g0" onOpen={()=>{}} onChanged={async()=>{}}/>);fireEvent.click(screen.getAllByRole('button',{name:'Переименовать',hidden:true})[0]);fireEvent.change(screen.getByLabelText('Новое название дисциплины'),{target:{value:'Keep my edit'}});fireEvent.click(screen.getByRole('button',{name:'Сохранить название'}));await screen.findByText('Network failure');r.unmount();r=render(<CourseManager api={mock} snapshot={snapshot} group="g0" onOpen={()=>{}} onChanged={async()=>{}}/>);assert.equal((screen.getByLabelText('Новое название дисциплины') as HTMLInputElement).value,'Keep my edit');fireEvent.click(screen.getByRole('button',{name:'Отмена переименования'}));fireEvent.click(screen.getAllByRole('button',{name:'Удалить пустую дисциплину',hidden:true})[0]);assert.equal(writes,1);fireEvent.click(screen.getByRole('button',{name:'Отменить действие'}));assert.equal(writes,1);
+});
+
+
+test('two synchronous form submits produce only one mutation',async()=>{
+ const snapshot=await api.snapshot();let writes=0;let release!:()=>void;const pending=new Promise<void>(r=>release=r);const mock={...api,manageCourse:async()=>{writes++;await pending;}};
+ render(<CourseManager api={mock} snapshot={snapshot} group="g0" onOpen={()=>{}} onChanged={async()=>{}}/>);fireEvent.click(screen.getAllByRole('button',{name:'Переименовать',hidden:true})[0]);fireEvent.change(screen.getByLabelText('Новое название дисциплины'),{target:{value:'New name'}});const form=screen.getByRole('button',{name:'Сохранить название'}).closest('form')!;await act(async()=>{fireEvent.submit(form);fireEvent.submit(form);});assert.equal(writes,1);await act(async()=>release());await screen.findByText('Название изменено.');
+});

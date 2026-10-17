@@ -1,0 +1,45 @@
+begin;
+insert into auth.users(id) select ('00000000-0000-0000-0000-00000000420'||n)::uuid from generate_series(1,4) n;
+insert into public.profiles(id,full_name) select id,'Course management fixture' from auth.users where id::text like '%00000000420_';
+insert into public.platform_owners values('00000000-0000-0000-0000-000000004201');
+insert into public.study_groups(id,name,created_by) values('00000000-0000-0000-0000-000000004211','Managed group','00000000-0000-0000-0000-000000004201'),('00000000-0000-0000-0000-000000004212','Other group','00000000-0000-0000-0000-000000004201');
+insert into public.group_memberships(group_id,user_id,role) values('00000000-0000-0000-0000-000000004211','00000000-0000-0000-0000-000000004202','leader'),('00000000-0000-0000-0000-000000004211','00000000-0000-0000-0000-000000004203','student'),('00000000-0000-0000-0000-000000004211','00000000-0000-0000-0000-000000004204','teacher');
+insert into public.courses(id,group_id,title) values('00000000-0000-0000-0000-000000004221','00000000-0000-0000-0000-000000004211','Empty'),('00000000-0000-0000-0000-000000004222','00000000-0000-0000-0000-000000004212','Other'),('00000000-0000-0000-0000-000000004223','00000000-0000-0000-0000-000000004211','With data');
+insert into public.course_topics(course_id,title,position) values('00000000-0000-0000-0000-000000004223','Keep topic',1);
+insert into public.courses(id,group_id,title) values('00000000-0000-0000-0000-000000004224','00000000-0000-0000-0000-000000004211','Topic only');
+insert into public.course_topics(course_id,title,position) values('00000000-0000-0000-0000-000000004224','Protect cascade topic',1);
+insert into public.assignments(id,course_id,author_id,title,description,max_score) values('00000000-0000-0000-0000-000000004231','00000000-0000-0000-0000-000000004223','00000000-0000-0000-0000-000000004201','Keep assignment','Instructions',100);
+insert into public.submissions(id,assignment_id,student_id,text_answer,attempt_no,status,submitted_at) values('00000000-0000-0000-0000-000000004232','00000000-0000-0000-0000-000000004231','00000000-0000-0000-0000-000000004203','Keep answer',1,'graded',now());
+insert into public.grades(submission_id,graded_by,score,feedback,released_at) values('00000000-0000-0000-0000-000000004232','00000000-0000-0000-0000-000000004201',91,'Keep feedback',now());
+set local role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000004202',true);
+do $$ begin
+ perform public.manage_course('00000000-0000-0000-0000-000000004221','rename','Renamed','Empty',false);
+ perform public.manage_course('00000000-0000-0000-0000-000000004221','rename','Renamed','Empty',false);
+ begin perform public.manage_course('00000000-0000-0000-0000-000000004221','rename','Stale','Empty',false);raise exception 'TEST FAILED stale rename';exception when others then if sqlerrm like 'TEST FAILED%' then raise;end if;if sqlerrm not like '%changed%' then raise;end if;end;
+ begin perform public.manage_course('00000000-0000-0000-0000-000000004222','delete',null,'Other',false);raise exception 'TEST FAILED foreign group';exception when others then if sqlerrm like 'TEST FAILED%' then raise;end if;if sqlerrm not like '%denied%' then raise;end if;end;
+ begin perform public.manage_course('00000000-0000-0000-0000-000000004223','delete',null,'With data',false);raise exception 'TEST FAILED deleted data';exception when others then if sqlerrm like 'TEST FAILED%' then raise;end if;if sqlerrm not like '%not empty%' then raise;end if;end;
+ begin perform public.manage_course('00000000-0000-0000-0000-000000004224','delete',null,'Topic only',false);raise exception 'TEST FAILED cascade topic removed';exception when others then if sqlerrm like 'TEST FAILED%' then raise;end if;if sqlerrm not like '%not empty%' then raise;end if;end;
+ perform public.manage_course('00000000-0000-0000-0000-000000004223','archive',null,'With data',false);
+ if not exists(select 1 from public.courses where id='00000000-0000-0000-0000-000000004223' and archived) then raise exception 'TEST FAILED leader cannot list archive';end if;
+ perform set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000004203',true);
+ if public.can_view_course('00000000-0000-0000-0000-000000004223') or exists(select 1 from public.courses where id='00000000-0000-0000-0000-000000004223') then raise exception 'TEST FAILED student reads archive';end if;
+ begin perform public.manage_course('00000000-0000-0000-0000-000000004221','archive',null,'Renamed',false);raise exception 'TEST FAILED student mutation';exception when others then if sqlerrm like 'TEST FAILED%' then raise;end if;if sqlerrm not like '%denied%' then raise;end if;end;
+ perform set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000004204',true);
+ begin perform public.manage_course('00000000-0000-0000-0000-000000004221','archive',null,'Renamed',false);raise exception 'TEST FAILED teacher mutation';exception when others then if sqlerrm like 'TEST FAILED%' then raise;end if;if sqlerrm not like '%denied%' then raise;end if;end;
+ perform set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000004202',true);
+ perform public.manage_course('00000000-0000-0000-0000-000000004223','restore',null,'With data',true);
+ perform public.manage_course('00000000-0000-0000-0000-000000004221','delete',null,'Renamed',false);
+ if exists(select 1 from public.courses where id='00000000-0000-0000-0000-000000004221') then raise exception 'TEST FAILED empty course not deleted';end if;
+ if not exists(select 1 from jsonb_array_elements(public.course_workspace('00000000-0000-0000-0000-000000004223')->'topics') item where item->>'title'='Keep topic') then raise exception 'TEST FAILED archive lost data';end if;
+ perform set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000004201',true);
+ perform public.manage_course('00000000-0000-0000-0000-000000004222','delete',null,'Other',false);
+ if (select count(*) from public.audit_events where entity_id='00000000-0000-0000-0000-000000004221' and action='course.renamed')<>1 then raise exception 'TEST FAILED rename audit retry';end if;
+end $$;
+reset role;
+-- Every related kind, including cascade topics, blocks deletion; no content is removed.
+do $$ begin
+ if not exists(select 1 from public.grades g join public.submissions w on w.id=g.submission_id join public.assignments a on a.id=w.assignment_id where a.course_id='00000000-0000-0000-0000-000000004223' and g.score=91 and w.text_answer='Keep answer' and g.feedback='Keep feedback') then raise exception 'TEST FAILED archive lost graded work';end if;
+ if has_function_privilege('anon','public.manage_course(uuid,text,text,text,boolean)','execute') then raise exception 'TEST FAILED anon RPC grant';end if;
+end $$;
+rollback;

@@ -221,3 +221,13 @@ button.close-button:disabled{opacity:.4;cursor:not-allowed}
 .owner-account-list .owner-person-detail{width:100%}
 @media(max-width:900px){.owner-health-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.owner-operations{padding:18px}.owner-operations .section-heading{align-items:flex-start;flex-direction:column}.owner-request-list article{align-items:flex-start;flex-direction:column}.owner-request-list .card-actions{width:100%}.owner-request-list button{flex:1;font-size:13px}.owner-admin button,.owner-overview button{min-height:44px}.owner-overview .owner-stats strong{font-size:27px}}
+
+.course-manager{margin:14px 0 20px}.course-manager>.card-actions{margin-bottom:16px}
+.course-manager>.card-actions [aria-pressed=true]{background:#eaf2fb;color:#245a94;border-color:#b6cee7}
+.course-list>.managed-course{flex-wrap:wrap;gap:14px}.managed-course>b{flex:1;min-width:140px;overflow-wrap:anywhere}.managed-course>.card-actions{margin:0;align-items:center}
+.managed-course summary{display:grid;place-items:center;list-style:none;cursor:pointer;min-width:44px;min-height:44px;border:1px solid #dce5ef;border-radius:10px;font-size:24px;line-height:1;background:#fff;color:#365575}
+.managed-course summary::-webkit-details-marker{display:none}.managed-course details{position:relative}.managed-course summary:focus-visible{outline:3px solid #2463a6;outline-offset:3px}
+.course-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:5;display:grid;gap:4px;padding:8px;width:245px;max-width:calc(100vw - 64px);background:#fff;border:1px solid #dce5ef;border-radius:12px;box-shadow:0 8px 28px #263e5c1a}
+.course-menu button{text-align:left;min-height:44px;font-size:13px;white-space:normal}.course-name-editor{padding:18px;background:#f2f6fc;border-radius:12px;margin:20px 0}.course-name-editor h3{margin:0}.course-name-editor .card-actions{margin:0}
+.course-manager .notice{margin-top:16px}.course-manager .delete-confirm{margin-top:20px}.course-manager .delete-confirm button{min-height:44px}
+@media(max-width:700px){.course-list>.managed-course{align-items:flex-start}.managed-course>.card-actions{width:100%;justify-content:space-between}.managed-course>.card-actions>button{min-height:44px}.course-menu{left:0;right:auto;transform:translateX(calc(-100% + 44px))}}

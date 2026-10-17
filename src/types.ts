@@ -108,6 +108,7 @@ export interface Gateway {
  joinGroup(group:string):Promise<void>;
  createGroup(name:string):Promise<void>;
  createCourse(group:string,title:string):Promise<void>;
+ manageCourse(course:Course,action:'rename'|'archive'|'restore'|'delete',title?:string):Promise<void>;
  invite(role:Role,group:string|null,courses:string[],max:number):Promise<string>;
  redeem(token:string):Promise<void>;
  block(user:string|null,group:string|null,blocked:boolean):Promise<void>;
