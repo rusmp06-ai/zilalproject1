@@ -557,8 +557,12 @@
     margin-top: 5px;
   }
   .home-shell .lesson-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 7px;
     margin-top: 14px;
+  }
+  .home-shell .lesson-actions button:last-child {
+    grid-column: auto;
   }
   .home-shell .lesson-actions button {
     padding: 8px 5px !important;
@@ -581,14 +585,17 @@
   }
   .home-shell .study-shortcuts > button {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
     padding: 12px;
     min-height: 68px;
   }
   .home-shell .study-shortcuts b {
     font-size: 13px;
     text-align: left;
+    overflow-wrap: normal;
+    word-break: normal;
   }
   .home-shell .shortcut-number {
     width: 34px;

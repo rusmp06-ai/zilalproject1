@@ -1,3 +1,4 @@
+import { CloseButton } from './CloseButton';
 import { useEffect, useMemo, useRef } from 'react';
 import { ReaderPanel } from './ReaderPanel';
 import { emptyReading, validateReading } from './reader-state';
@@ -100,9 +101,7 @@ export function TeacherWorkReader({
               {work.student_name} · попытка {work.attempt_no}
             </p>
           </div>
-          <button autoFocus onClick={onClose}>
-            Закрыть файл работы
-          </button>
+          <CloseButton autoFocus label="Закрыть файл работы" onClick={onClose} />
         </header>
         <ReaderPanel
           api={bridge.gateway}

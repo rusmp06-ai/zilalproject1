@@ -8,6 +8,7 @@ const files = [
   'docs/deployment-current.md',
   'docs/pilot-readiness.md',
   'docs/operations.md',
+  'docs/audit-v0.48.1.md',
 ];
 for (const file of files) {
   const text = await readFile(file, 'utf8');

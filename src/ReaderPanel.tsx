@@ -190,14 +190,14 @@ export function ReaderPanel({
     return () => onDirtyChange?.(false);
   }, [draft, onDirtyChange]);
   useEffect(() => {
-    if (!draft?.text.trim()) return;
+    if (!draft || (!draft.text.trim() && !draft.quote)) return;
     const prevent = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', prevent);
     return () => window.removeEventListener('beforeunload', prevent);
-  }, [draft?.text]);
+  }, [draft?.text, draft?.quote]);
   useEffect(() => {
     let alive = true;
     let task: ReturnType<(typeof import('./pdf-reader'))['loadPdf']> | undefined;

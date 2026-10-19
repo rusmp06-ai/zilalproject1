@@ -2,7 +2,7 @@ import { catalogSearch } from './study-search';
 import { uploadIntake } from './upload-intake';
 import { publishRecoverable } from './intake-recovery';
 import { notifyChanged } from './notifications';
-import { accountInput, profileName } from './account';
+import { accountInput, profileName, authError } from './account';
 import { catalogPages } from './catalog-pages';
 import { decodePlan } from './personal-plan';
 import { createClient } from '@supabase/supabase-js';
@@ -157,9 +157,11 @@ export const liveGateway: Gateway = {
   async materialAiQuota() {
     try {
       return await rpc('material_ai_quota');
-    } catch {
+    } catch (error) {
       throw Error(
-        'Счётчик ИИ недоступен. Примените SQL v0.31; ручная публикация остаётся доступной.',
+        (error as { code?: string }).code === 'PGRST202'
+          ? 'Для помощника требуется обновление базы. Ручная публикация остаётся доступной.'
+          : 'Не удалось проверить доступность ИИ. Проверьте соединение; материал можно опубликовать вручную.',
       );
     }
   },
@@ -327,13 +329,13 @@ export const liveGateway: Gateway = {
     if (password.length < 10 || password.length > 128)
       throw Error('Пароль: от 10 до 128 символов.');
     const { error } = await db().auth.updateUser({ password });
-    if (error) throw Error(error.message);
+    if (error) throw Error(authError(error));
   },
   async resetPassword(email) {
     const { error } = await db().auth.resetPasswordForEmail(email, {
       redirectTo: location.origin + location.pathname,
     });
-    if (error) throw Error(error.message);
+    if (error) throw Error(authError(error));
   },
   async account() {
     const { data, error } = await db().auth.getUser();
@@ -373,9 +375,14 @@ export const liveGateway: Gateway = {
       email: data.user.email,
       password: current,
     });
-    if (verified.error) throw Error('Текущий пароль неверен.');
+    if (verified.error)
+      throw Error(
+        verified.error.code === 'invalid_credentials'
+          ? 'Текущий пароль неверен.'
+          : authError(verified.error),
+      );
     const updated = await db().auth.updateUser({ password: next });
-    if (updated.error) throw Error(updated.error.message);
+    if (updated.error) throw Error(authError(updated.error));
   },
   async auditEvents(offset) {
     if (!Number.isInteger(offset) || offset < 0) throw Error('Некорректная страница.');
@@ -903,7 +910,7 @@ export const liveGateway: Gateway = {
         emailRedirectTo: location.origin + location.pathname + location.hash,
       },
     });
-    if (error) throw Error(error.message);
+    if (error) throw Error(authError(error));
     if (data.session) {
       await ensureProfile(name);
       if (group) await this.joinGroup(group);
@@ -911,13 +918,13 @@ export const liveGateway: Gateway = {
   },
   async login(email, password) {
     const { error } = await db().auth.signInWithPassword({ email, password });
-    if (error) throw Error(error.message);
+    if (error) throw Error(authError(error));
     const { data } = await db().auth.getUser();
     await ensureProfile(String(data.user?.user_metadata.full_name || 'Пользователь'));
   },
   async logout() {
     const { error } = await db().auth.signOut();
-    if (error) throw Error(error.message);
+    if (error) throw Error(authError(error));
   },
   async groups() {
     return rpc<{ id: string; name: string }[]>('signup_groups');

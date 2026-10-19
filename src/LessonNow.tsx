@@ -115,21 +115,27 @@ export function LessonNow({
               {onMaterials && (
                 <button
                   className="primary"
+                  aria-label="Материалы пары"
                   disabled={!focus?.course_id || status === 'saved'}
                   onClick={() => focus && onMaterials?.(focus)}
                 >
-                  Материалы пары
+                  Материалы
                 </button>
               )}
               {onNotes && (
                 <button
+                  aria-label="Открыть конспект"
                   disabled={!focus?.course_id || status === 'saved'}
                   onClick={() => focus && onNotes?.(focus)}
                 >
-                  Открыть конспект
+                  Конспект
                 </button>
               )}
-              {onToday && <button onClick={onToday}>Расписание сегодня</button>}
+              {onToday && (
+                <button aria-label="Расписание сегодня" onClick={onToday}>
+                  Расписание
+                </button>
+              )}
             </div>
           )}
           {focus && !focus.course_id && onMaterials && (

@@ -1,3 +1,5 @@
+import { registerNavigationGuard } from './drafts';
+import { CloseButton } from './CloseButton';
 import { useEffect, useRef } from 'react';
 import { ReaderPanel } from './ReaderPanel';
 import { CourseReader } from './CourseReader';
@@ -21,6 +23,12 @@ export function ReaderSourceDialog({
     if (!dirty.current || window.confirm('В читалке есть несохранённая заметка. Закрыть документ?'))
       onClose();
   };
+  useEffect(() => {
+    if (source.kind === 'course') return;
+    return registerNavigationGuard(
+      () => !dirty.current || window.confirm('В читалке есть несохранённая заметка. Перейти?'),
+    );
+  }, [source.kind]);
   useEffect(() => {
     if (source.kind === 'course') return;
     const previous = document.activeElement as HTMLElement | null,
@@ -72,9 +80,7 @@ export function ReaderSourceDialog({
       <div className="preview-content">
         <header>
           <h2>{source.item.title}</h2>
-          <button autoFocus onClick={close}>
-            Закрыть просмотр
-          </button>
+          <CloseButton autoFocus label="Закрыть просмотр" onClick={close} />
         </header>
         <ReaderPanel
           allowNotes={!localOnly}

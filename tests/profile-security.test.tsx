@@ -63,3 +63,71 @@ test('password confirmation rejects mismatch and clears inputs only after succes
   assert.equal((screen.getByLabelText('Текущий пароль') as HTMLInputElement).value, '');
   cleanup();
 });
+
+test('profile load can be retried and unsaved edits or pending saves cannot silently disappear', async () => {
+  selectDemo('student');
+  const snapshot = await demoGateway.snapshot();
+  let loads = 0,
+    saved = 0,
+    finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const account = await demoGateway.account();
+  const api = {
+    ...demoGateway,
+    account: async () => {
+      if (++loads === 1) throw Error('Временный сбой');
+      return account;
+    },
+    saveAccount: async () => {
+      saved++;
+      await pending;
+    },
+  };
+  const { mayLeaveDrafts } = await import('../src/drafts');
+  const confirm = window.confirm,
+    alert = window.alert;
+  let confirmations = 0;
+  window.confirm = () => {
+    confirmations++;
+    return false;
+  };
+  window.alert = () => {};
+  try {
+    render(
+      React.createElement(ProfilePanel, {
+        api,
+        snapshot,
+        onSaved: async () => {},
+        onShelf: () => {},
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Повторить загрузку профиля' }));
+    const input = await screen.findByLabelText('Имя и фамилия');
+    assert.equal(loads, 2);
+    assert.equal(screen.queryByText('Временный сбой'), null);
+    assert.equal(mayLeaveDrafts(), true);
+    fireEvent.change(input, { target: { value: 'Новое имя' } });
+    assert.equal(mayLeaveDrafts(), false);
+    assert.equal(confirmations, 1);
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить профиль', exact: true }));
+    assert.equal(mayLeaveDrafts(), false);
+    assert.equal(confirmations, 1);
+    assert.equal(
+      (screen.getByRole('button', { name: 'Безопасность', exact: true }) as HTMLButtonElement)
+        .disabled,
+      true,
+    );
+    finish();
+    await screen.findByText('Профиль сохранён.');
+    assert.equal(saved, 1);
+    assert.equal(mayLeaveDrafts(), true);
+    assert.equal(confirmations, 1);
+  } finally {
+    finish();
+    cleanup();
+    window.confirm = confirm;
+    window.alert = alert;
+  }
+});

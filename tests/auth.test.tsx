@@ -145,3 +145,49 @@ test('a pending request can be cancelled without creating membership', async () 
   await demoGateway.joinGroup('g1');
   assert.equal((await demoGateway.groupRequests(null, 0))[0].group_id, 'g1');
 });
+
+test('pending login cannot be submitted twice or interrupted by mode/demo controls', async () => {
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let calls = 0,
+    demos = 0;
+  render(
+    React.createElement(AuthPanel, {
+      api: {
+        ...demoGateway,
+        login: async () => {
+          calls++;
+          await pending;
+        },
+      },
+      groups: [],
+      invite: false,
+      onDone: async () => {},
+      onDemo: () => {
+        demos++;
+      },
+    }),
+  );
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.test' } });
+  fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'password123' } });
+  const form = screen.getByRole('button', { name: 'Войти', exact: true }).closest('form')!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  assert.equal(calls, 1);
+  for (const name of ['Создать аккаунт', 'Забыли пароль?', 'Посмотреть демоверсию']) {
+    const button = screen.getByRole('button', { name, exact: true }) as HTMLButtonElement;
+    assert.equal(button.disabled, true);
+    fireEvent.click(button);
+  }
+  assert.equal(demos, 0);
+  assert.equal((screen.getByLabelText('Email') as HTMLInputElement).disabled, true);
+  finish();
+  await waitFor(() =>
+    assert.equal(
+      (screen.getByRole('button', { name: 'Войти', exact: true }) as HTMLButtonElement).disabled,
+      false,
+    ),
+  );
+});

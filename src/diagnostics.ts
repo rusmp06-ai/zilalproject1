@@ -38,8 +38,10 @@ const views = new Set([
   'search',
   'admin',
   'journal',
+  'teaching',
 ]);
 let memory: Entry[] = [];
+let writeFailed = false;
 function storage() {
   try {
     return typeof window === 'undefined' ? null : window.localStorage;
@@ -71,6 +73,7 @@ function safeEntry(value: unknown): Entry | null {
   };
 }
 export function diagnosticEntries(): Entry[] {
+  if (writeFailed) return memory.map((entry) => ({ ...entry }));
   try {
     const store = storage();
     const raw = store?.getItem(key);
@@ -120,6 +123,7 @@ export function recordFailure(kind: FailureKind, error: unknown) {
       previous.kind === kind &&
       previous.name === name &&
       previous.view === view &&
+      Date.parse(entry.at) >= Date.parse(previous.at) &&
       Date.parse(entry.at) - Date.parse(previous.at) < 5000
     ) {
       previous.count = Math.min(1000, previous.count + 1);
@@ -127,8 +131,11 @@ export function recordFailure(kind: FailureKind, error: unknown) {
     } else entries.push(entry);
     memory = entries.slice(-30);
     try {
-      storage()?.setItem(key, JSON.stringify(memory));
+      const store = storage();
+      writeFailed = !store;
+      store?.setItem(key, JSON.stringify(memory));
     } catch {
+      writeFailed = true;
       /* Keep an in-memory report when storage is unavailable. */
     }
   } catch {

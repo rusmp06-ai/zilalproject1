@@ -202,6 +202,26 @@ try {
     });
     await page.screenshot({ path: artifacts + '/' + kind + '-mobile.png' });
     assert.ok(await dialog.evaluate((e) => e.scrollWidth <= e.clientWidth + 1));
+    if (!live && kind === 'library') {
+      stage = 'защита несохранённой заметки';
+      await dialog.locator('.reader-more > summary').click();
+      await dialog.getByRole('button', { name: 'Заметка к странице', exact: true }).click();
+      await dialog.getByLabel('Мысль или вопрос', { exact: true }).fill('Несохранённая мысль');
+      let warningText = '';
+      const prompt = page.waitForEvent('dialog').then(async (warning) => {
+        warningText = warning.message();
+        await warning.dismiss();
+      });
+      await page.keyboard.press('Control+k');
+      await prompt;
+      assert.match(warningText, /несохранённая заметка/);
+      assert.equal(new URL(page.url()).searchParams.get('view'), 'notes');
+      assert.equal(await dialog.count(), 1);
+      assert.equal(await dialog.locator('textarea').inputValue(), 'Несохранённая мысль');
+      const discard = page.waitForEvent('dialog').then((warning) => warning.accept());
+      await dialog.getByRole('button', { name: 'Отменить запись', exact: true }).click();
+      await discard;
+    }
     await dialog.getByRole('button', { name: 'Закрыть просмотр', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
     await page.waitForFunction(() =>
@@ -215,7 +235,8 @@ try {
       (live ? 'real Supabase' : 'demo') +
       ': notebook → library/course page 2, search highlighting, mobile width, return focus; no browser errors',
   );
-} catch {
+} catch (error) {
+  if (!live) console.error(error);
   failed = true;
   console.error('FAIL notes-source browser: ' + stage + ' (credential values omitted)');
 } finally {

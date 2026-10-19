@@ -56,3 +56,25 @@ export async function avatarFile(file: File): Promise<string> {
     bitmap.close();
   }
 }
+
+// Provider messages may be English or include internal request details.
+export function authError(error: { code?: string; name?: string; status?: number }) {
+  const messages: Record<string, string> = {
+    invalid_credentials: 'Неверная почта или пароль.',
+    email_not_confirmed: 'Подтвердите почту по ссылке из письма, затем войдите.',
+    weak_password: 'Выберите более надёжный пароль: не менее 10 символов.',
+    same_password: 'Новый пароль должен отличаться от текущего.',
+    over_email_send_rate_limit: 'Письма отправляются слишком часто. Подождите и повторите позже.',
+    over_request_rate_limit: 'Слишком много попыток. Подождите и повторите позже.',
+    otp_expired: 'Ссылка истекла. Запросите новое письмо.',
+    session_not_found: 'Сессия завершена. Войдите снова.',
+    reauthentication_needed: 'Для этого действия войдите в аккаунт заново.',
+    signup_disabled: 'Регистрация временно недоступна. Обратитесь к владельцу проекта.',
+    email_address_invalid: 'Проверьте адрес электронной почты.',
+    user_banned: 'Доступ к аккаунту закрыт. Обратитесь к владельцу.',
+  };
+  if (error.code && Object.hasOwn(messages, error.code)) return messages[error.code];
+  if (error.name === 'AuthRetryableFetchError' || error.status === 0)
+    return 'Не удалось связаться с сервером. Проверьте интернет и повторите.';
+  return 'Не удалось выполнить действие с аккаунтом. Попробуйте позже.';
+}

@@ -6,15 +6,25 @@ export function OfflineShelf({ api, user }: { api: Gateway; user: string }) {
   const [items, setItems] = useState<OfflineFile[]>([]),
     [selected, setSelected] = useState<OfflineFile | null>(null),
     [error, setError] = useState(''),
-    [revision, setRevision] = useState(0);
+    [revision, setRevision] = useState(0),
+    [loading, setLoading] = useState(true),
+    [removing, setRemoving] = useState('');
   useEffect(() => {
     let alive = true;
+    setLoading(true);
+    setError('');
     offlineFiles(user)
       .then((rows) => {
-        if (alive) setItems(rows);
+        if (alive) {
+          setItems(rows);
+          setError('');
+        }
       })
       .catch(() => {
         if (alive) setError('Хранилище устройства недоступно.');
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
       });
     return () => {
       alive = false;
@@ -58,7 +68,15 @@ export function OfflineShelf({ api, user }: { api: Gateway; user: string }) {
         заменяют данные аккаунта. Копии остаются доступными без сети; актуальность доступа
         проверяется при новом скачивании.
       </p>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <div role="alert">
+          <p>{error}</p>
+          <button disabled={loading} onClick={() => setRevision((n) => n + 1)}>
+            Повторить загрузку
+          </button>
+        </div>
+      )}
+      {loading && <p role="status">Загрузка сохранённых материалов…</p>}
       {items.map((f) => (
         <article key={f.key} className="card" style={{ marginTop: 16 }}>
           <h3>{f.item.title}</h3>
@@ -66,18 +84,24 @@ export function OfflineShelf({ api, user }: { api: Gateway; user: string }) {
           <div className="card-actions">
             <button onClick={() => setSelected(f)}>Читать сохранённую копию</button>
             <button
-              onClick={() =>
+              disabled={!!removing}
+              onClick={() => {
+                setRemoving(f.item.id);
+                setError('');
                 void removeOffline(user, f.item.id)
                   .then(() => setRevision((n) => n + 1))
                   .catch(() => setError('Не удалось удалить копию.'))
-              }
+                  .finally(() => setRemoving(''));
+              }}
             >
-              Удалить с устройства
+              {removing === f.item.id ? 'Удаление…' : 'Удалить с устройства'}
             </button>
           </div>
         </article>
       ))}
-      {!items.length && !error && <p>Сохраните нужную книгу из библиотеки, пока есть интернет.</p>}
+      {!loading && !items.length && !error && (
+        <p>Сохраните нужную книгу из библиотеки, пока есть интернет.</p>
+      )}
     </section>
   );
 }

@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { FilePicker } from './FilePicker';
+import { registerNavigationGuard } from './drafts';
+import React, { useEffect, useRef, useState } from 'react';
 import { avatarFile, type AccountDetails } from './account';
 import type { Gateway, Snapshot } from './types';
 export function ProfilePanel({
@@ -17,22 +19,62 @@ export function ProfilePanel({
     [name, setName] = useState(snapshot.me.full_name),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [message, setMessage] = useState('');
+    [message, setMessage] = useState(''),
+    [baseline, setBaseline] = useState(''),
+    [loadError, setLoadError] = useState(false),
+    [revision, retry] = useState(0);
+  const pending = useRef(false);
+  const changed = !!details && !!baseline && JSON.stringify({ name, details }) !== baseline;
+  const guardState = useRef({ busy, changed });
+  guardState.current = { busy, changed };
+  useEffect(() => {
+    const guard = () => {
+      if (guardState.current.busy) {
+        window.alert('Дождитесь завершения изменения профиля.');
+        return false;
+      }
+      return (
+        !guardState.current.changed ||
+        window.confirm('Изменения профиля не сохранены. Всё равно уйти?')
+      );
+    };
+    return registerNavigationGuard(guard);
+  }, []);
+  useEffect(() => {
+    if (!busy && !changed) return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', guard);
+    return () => window.removeEventListener('beforeunload', guard);
+  }, [busy, changed]);
   useEffect(() => {
     let active = true;
+    setLoadError(false);
+    setError('');
     api
       .account()
       .then((d) => {
-        if (active) setDetails(d);
+        if (active) {
+          setDetails(d);
+          setName(snapshot.me.full_name);
+          setBaseline(JSON.stringify({ name: snapshot.me.full_name, details: d }));
+        }
       })
       .catch((e) => {
-        if (active) setError(e.message);
+        if (active) {
+          setLoadError(true);
+          setError(e instanceof Error ? e.message : 'Не удалось загрузить профиль.');
+        }
       });
     return () => {
       active = false;
     };
-  }, [api, snapshot.me.id]);
+  }, [api, snapshot.me.id, revision]);
   async function run(work: () => Promise<void>, success: string) {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setError('');
     setMessage('');
@@ -42,6 +84,7 @@ export function ProfilePanel({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить.');
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   }
@@ -63,6 +106,7 @@ export function ProfilePanel({
         ].map(([id, title]) => (
           <button
             key={id}
+            disabled={busy}
             aria-current={tab === id ? 'page' : undefined}
             onClick={() => {
               setTab(id);
@@ -89,13 +133,18 @@ export function ProfilePanel({
           <section className="card">
             <h2>Личные данные</h2>
             {!details ? (
-              <p>Загрузка профиля…</p>
+              loadError ? (
+                <button onClick={() => retry((n) => n + 1)}>Повторить загрузку профиля</button>
+              ) : (
+                <p role="status">Загрузка профиля…</p>
+              )
             ) : (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   void run(async () => {
                     await api.saveAccount(name, details);
+                    setBaseline(JSON.stringify({ name, details }));
                     await onSaved();
                   }, 'Профиль сохранён.');
                 }}
@@ -107,23 +156,21 @@ export function ProfilePanel({
                     <span aria-label="Инициалы">{initials || 'S'}</span>
                   )}
                   <div>
-                    <label>
-                      Фото профиля
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        disabled={busy}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f)
-                            void run(async () => {
-                              const avatar = await avatarFile(f);
-                              setDetails((d) => (d ? { ...d, avatar } : d));
-                            }, 'Фото подготовлено. Сохраните профиль.');
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
+                    <FilePicker
+                      label="Фото профиля"
+                      actionLabel="Выбрать фото"
+                      emptyLabel={details.avatar ? 'Фото выбрано' : 'Фото не выбрано'}
+                      file={null}
+                      accept="image/png,image/jpeg,image/webp"
+                      disabled={busy}
+                      onChange={(file) => {
+                        if (file)
+                          void run(async () => {
+                            const avatar = await avatarFile(file);
+                            setDetails((d) => (d ? { ...d, avatar } : d));
+                          }, 'Фото подготовлено. Сохраните профиль.');
+                      }}
+                    />
                     {details.avatar && (
                       <button
                         type="button"

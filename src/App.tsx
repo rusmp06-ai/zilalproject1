@@ -102,16 +102,26 @@ export function App() {
       return;
     }
     if (!navigator.onLine) return;
-    void client.auth.getSession().then((r) => {
-      const id = r.data.session ? 'live:' + r.data.session.user.id : '';
-      setOfflineUser(id);
-      try {
-        if (id) sessionStorage.setItem('studyhub-offline-user', id);
-        else sessionStorage.removeItem('studyhub-offline-user');
-      } catch {
-        /* Offline fallback stays in memory. */
-      }
-    });
+    let active = true;
+    void client.auth
+      .getSession()
+      .then((r) => {
+        if (!active) return;
+        const id = r.data.session ? 'live:' + r.data.session.user.id : '';
+        setOfflineUser(id);
+        try {
+          if (id) sessionStorage.setItem('studyhub-offline-user', id);
+          else sessionStorage.removeItem('studyhub-offline-user');
+        } catch {
+          /* Offline fallback stays in memory. */
+        }
+      })
+      .catch(() => {
+        /* Keep the last known account when connectivity changes. */
+      });
+    return () => {
+      active = false;
+    };
   }, [demo, snap]);
   const [token, setToken] = useState(
     () => new URLSearchParams(location.hash.slice(1)).get('invite') || '',
@@ -446,7 +456,7 @@ export function App() {
             {offlineUser && (
               <details>
                 <summary>Сохранённые материалы</summary>
-                <OfflineShelf api={api} user={offlineUser} />
+                <OfflineShelf key={offlineUser} api={api} user={offlineUser} />
               </details>
             )}
           </div>
@@ -809,7 +819,11 @@ export function App() {
                       />
                     )}
                     {tab === 'offline' && (
-                      <OfflineShelf api={api} user={(demo ? 'demo:' : 'live:') + snap.me.id} />
+                      <OfflineShelf
+                        key={String(demo) + snap.me.id}
+                        api={api}
+                        user={(demo ? 'demo:' : 'live:') + snap.me.id}
+                      />
                     )}
                     {tab === 'search' && (
                       <StudySearch

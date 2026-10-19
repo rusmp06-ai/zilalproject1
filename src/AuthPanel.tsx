@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import type { Gateway } from './types';
 import type { AccountInput } from './account';
 export function AuthPanel({
@@ -20,8 +20,11 @@ export function AuthPanel({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [message, setMessage] = useState('');
+  const pending = useRef(false);
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (pending.current) return;
+    pending.current = true;
     const form = e.currentTarget,
       d = new FormData(form);
     setBusy(true);
@@ -68,6 +71,7 @@ export function AuthPanel({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось выполнить действие.');
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   }
@@ -105,19 +109,20 @@ export function AuthPanel({
         {!recovery && mode === 'signup' && (
           <label>
             Имя и фамилия
-            <input name="name" required maxLength={150} autoComplete="name" />
+            <input disabled={busy} name="name" required maxLength={150} autoComplete="name" />
           </label>
         )}
         {!recovery && (
           <label>
             Email
-            <input name="email" type="email" required autoComplete="email" />
+            <input disabled={busy} name="email" type="email" required autoComplete="email" />
           </label>
         )}
         {(recovery || mode !== 'forgot') && (
           <label>
             Пароль
             <input
+              disabled={busy}
               name="password"
               type="password"
               required
@@ -131,6 +136,7 @@ export function AuthPanel({
           <label>
             Повторите пароль
             <input
+              disabled={busy}
               name="repeat"
               type="password"
               required
@@ -141,7 +147,7 @@ export function AuthPanel({
           </label>
         )}
         {!recovery && mode === 'signup' && (
-          <fieldset>
+          <fieldset disabled={busy}>
             <legend>Учебные данные</legend>
             {(
               [
@@ -207,6 +213,7 @@ export function AuthPanel({
           {mode === 'login' ? (
             <button
               className="text-button"
+              disabled={busy}
               onClick={() => {
                 setMode('forgot');
                 setError('');
@@ -217,10 +224,19 @@ export function AuthPanel({
             </button>
           ) : (
             mode === 'forgot' && (
-              <button onClick={() => setMode('login')}>Вернуться ко входу</button>
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setMode('login');
+                  setError('');
+                  setMessage('');
+                }}
+              >
+                Вернуться ко входу
+              </button>
             )
           )}
-          <button className="text-button" onClick={onDemo}>
+          <button className="text-button" disabled={busy} onClick={onDemo}>
             Посмотреть демоверсию
           </button>
         </>

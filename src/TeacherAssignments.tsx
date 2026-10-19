@@ -1,3 +1,4 @@
+import { CloseButton } from './CloseButton';
 import { AssignmentSource } from './AssignmentSource';
 import { useEffect, useState } from 'react';
 import { mayLeaveDrafts, useDraft } from './drafts';
@@ -47,14 +48,13 @@ function AssignmentEditor({
     <section className="card teacher-assignment-editor">
       <div className="section-heading">
         <h3>{task ? 'Изменить задание' : 'Новое задание'}</h3>
-        <button
+        <CloseButton
+          label="Закрыть редактор"
           disabled={busy}
           onClick={() => {
             if (mayLeaveDrafts()) onClose();
           }}
-        >
-          Закрыть редактор
-        </button>
+        />
       </div>
       <p>
         {course.title} · {course.group_name}

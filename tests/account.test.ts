@@ -23,3 +23,15 @@ test('profile rejects external or active image content and oversized data', () =
   assert.throws(() => accountInput({ faculty: 'a'.repeat(151) }));
   assert.equal(profileName(' Мария '), 'Мария');
 });
+
+test('account errors are actionable Russian messages without provider payloads', async () => {
+  const { authError } = await import('../src/account');
+  assert.match(authError({ code: 'invalid_credentials' }), /Неверная почта или пароль/);
+  assert.match(authError({ code: 'email_not_confirmed' }), /Подтвердите почту/);
+  assert.match(authError({ name: 'AuthRetryableFetchError' }), /Проверьте интернет/);
+  assert.match(authError({ code: 'over_email_send_rate_limit' }), /Подождите/);
+  assert.equal(
+    authError({ code: 'private-provider-error' }),
+    'Не удалось выполнить действие с аккаунтом. Попробуйте позже.',
+  );
+});

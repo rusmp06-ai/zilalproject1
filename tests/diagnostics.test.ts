@@ -82,3 +82,23 @@ test('unavailable localStorage cannot crash reporting', () => {
     Object.defineProperty(dom.window, 'localStorage', descriptor);
   }
 });
+
+test('quota-full localStorage retains new reports in memory and records the teaching route', () => {
+  recordFailure('page-render', new Error('reset write fallback'));
+  dom.window.localStorage.clear();
+  dom.reconfigure({ url: 'https://app.test/?view=teaching' });
+  const prototype = Object.getPrototypeOf(dom.window.localStorage);
+  const original = prototype.setItem;
+  prototype.setItem = () => {
+    throw new dom.window.DOMException('full', 'QuotaExceededError');
+  };
+  try {
+    recordFailure('app-render', new TypeError('private contents'));
+    assert.equal(diagnosticEntries().at(-1)?.view, 'teaching');
+    assert.equal(diagnosticEntries().at(-1)?.name, 'TypeError');
+    assert.ok(!JSON.stringify(diagnosticsReport()).includes('private contents'));
+  } finally {
+    prototype.setItem = original;
+    recordFailure('window-error', new Error('reset fallback'));
+  }
+});
