@@ -6,6 +6,7 @@ const checks = [
   'format:check',
   'sql:check',
   'docs:check',
+  'edge:check',
   'test',
   'build',
   'build:budget',

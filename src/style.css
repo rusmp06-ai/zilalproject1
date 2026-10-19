@@ -5279,3 +5279,10 @@ button.close-button:disabled {
     transform: translateX(calc(-100% + 44px));
   }
 }
+
+.app-recovery {
+  max-width: 640px;
+  margin: clamp(24px, 10vh, 100px) auto;
+  padding: 24px;
+  width: calc(100% - 32px);
+}

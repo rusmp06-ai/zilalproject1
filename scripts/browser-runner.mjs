@@ -7,6 +7,7 @@ const mode = process.argv.includes('--smoke')
     ? 'offline'
     : 'all';
 const smoke = [
+  'app-recovery',
   'auth',
   'weekly-schedule',
   'course-world',
@@ -20,6 +21,7 @@ const production = [
   'day-offline',
   'navigation-production',
   'submission-draft-production',
+  'bootstrap-production',
 ].map((name) => name + '.browser.mjs');
 const files = (await readdir('tests'))
   .filter(

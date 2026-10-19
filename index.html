@@ -7,7 +7,38 @@
     <title>StudyHub — учебное пространство</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <section
+        aria-label="Загрузка StudyHub"
+        style="
+          max-width: 560px;
+          margin: 12vh auto;
+          padding: 24px;
+          font-family: system-ui, sans-serif;
+          line-height: 1.5;
+          color: #243d52;
+        "
+      >
+        <h1>StudyHub</h1>
+        <p role="status">Загружаем учебное пространство…</p>
+        <button
+          type="button"
+          onclick="location.reload()"
+          style="
+            padding: 12px 18px;
+            border: 1px solid #cbd9e5;
+            border-radius: 12px;
+            background: white;
+            color: #285b95;
+            font: inherit;
+            cursor: pointer;
+          "
+        >
+          Повторить загрузку
+        </button>
+        <noscript><p>Для работы StudyHub включите JavaScript в браузере.</p></noscript>
+      </section>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

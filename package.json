@@ -1,6 +1,6 @@
 {
   "name": "studyhub",
-  "version": "0.47.0",
+  "version": "0.48.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -33,7 +33,7 @@
     "test:teacher:browser": "node tests/teacher.browser.mjs",
     "test:pdf:optimize:browser": "node tests/pdf-optimize.browser.mjs",
     "test:material:intake:browser": "node tests/material-intake.browser.mjs",
-    "test:ai:edge": "deno test --allow-env supabase/functions/material-analyze/handler.test.ts",
+    "test:ai:edge": "deno test --allow-env supabase/functions/material-analyze/handler.test.ts supabase/functions/material-analyze/editor-bundle.test.ts",
     "test:submission:draft:browser": "node tests/submission-draft.browser.mjs",
     "test:schedule:sync:browser": "node tests/schedule-sync.browser.mjs",
     "test:navigation:browser": "node tests/navigation.browser.mjs",
@@ -53,7 +53,10 @@
     "sql:check": "node scripts/sql-bundles.mjs --check",
     "build:budget": "node scripts/build-budget.mjs",
     "verify": "node scripts/verify.mjs",
-    "docs:check": "node scripts/check-docs.mjs"
+    "docs:check": "node scripts/check-docs.mjs",
+    "test:deployment": "node --use-env-proxy scripts/check-deployment.mjs",
+    "edge:generate": "node scripts/edge-bundle.mjs",
+    "edge:check": "node scripts/edge-bundle.mjs --check"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

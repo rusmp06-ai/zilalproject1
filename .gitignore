@@ -7,3 +7,5 @@ dist/
 preview.html
 test-results/
 coverage/
+supabase/.temp/
+backups/

@@ -712,17 +712,30 @@ test('leader revokes own invitation and removes only one teaching assignment', a
     name: /^(Ваше пространство|Обзор проекта|Кабинет преподавателя)$/,
   });
   fireEvent.click(screen.getByRole('button', { name: 'Открыть админ', exact: true }));
-  fireEvent.click(screen.getByRole('button', { name: 'Приглашения', exact: true }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Приглашения', exact: true }));
   fireEvent.click(await screen.findByRole('button', { name: 'Отозвать приглашение' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить отзыв' }));
+  const revoke = await screen.findByRole('button', { name: 'Подтвердить отзыв' });
+  await waitFor(() => assert.equal((revoke as HTMLButtonElement).disabled, false));
+  fireEvent.click(revoke);
   await screen.findByText('Приглашение отозвано.');
+  cleanup();
   assert.equal((await demoGateway.invitationCatalog(0)).length, 1);
   selectDemo('student');
   await assert.rejects(() => demoGateway.redeem(token), /недоступно/);
   selectDemo('leader');
-  fireEvent.click(screen.getByRole('button', { name: 'Дисциплины и преподаватели', exact: true }));
+  history.replaceState(null, '', '/?demo=1');
+  render(<App />);
+  await screen.findByRole('heading', {
+    name: /^(Ваше пространство|Обзор проекта|Кабинет преподавателя)$/,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть админ', exact: true }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Дисциплины и преподаватели', exact: true }),
+  );
   fireEvent.click(await screen.findByRole('button', { name: 'Снять назначение' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить снятие назначения' }));
+  const remove = await screen.findByRole('button', { name: 'Подтвердить снятие назначения' });
+  await waitFor(() => assert.equal((remove as HTMLButtonElement).disabled, false));
+  fireEvent.click(remove);
   await screen.findByText('Назначение преподавателя снято.');
   await screen.findByText('Назначений в этой группе нет.');
   await assert.rejects(() => demoGateway.removeTeaching('g1c0', 'teacher'), /прав/);
